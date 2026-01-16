@@ -15,18 +15,20 @@ require(["./engine/engine"], function (scaliaEngine) {
             var child = window.child = new scaliaEngine.gameObjects.Cube();
             scaliaEngine.utils.glMatrix.vec3.random(child.transform.position, 40);
 
+            var size = Math.random()*4|0 + 1;
+
             myGame.logic.world.AddGameObject(child);
-            child.transform.SetScale(Math.random()*4|0 + 1,Math.random()*4|0 + 1,Math.random()*4|0 + 1);
+            child.transform.SetScale(size, size, size);
             child.transform.Rotate((Math.random()*360) | 0, (Math.random()*360) | 0, (Math.random()*360) | 0);
 
             cube.transform.AddChildren(child.transform);
         }
 
 
-        var size = [document.width, document.height];
+        var size = [window.innerWidth, window.innerHeight];
 
         var cameraObject = window.camera = new scaliaEngine.gameObjects.Camera();
-        cameraObject.camera.SetSize(document.width, document.height);
+        cameraObject.camera.SetSize(window.innerWidth, window.innerHeight);
         cameraObject.transform.SetPosition(0,0,0);
 
         myGame.logic.world.AddGameObject(cameraObject);
