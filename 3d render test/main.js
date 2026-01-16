@@ -18,11 +18,12 @@ require(["./engine/engine"], function (scaliaEngine) {
         myGame.logic.world.AddGameObject(axis);
 
 
-
-        var size = [document.width, document.height];
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        var size = [width, height];
 
         var cameraObject = window.camera = new scaliaEngine.gameObjects.Camera();
-        cameraObject.camera.SetSize(document.width, document.height);
+        cameraObject.camera.SetSize(width, height);
         //cameraObject.camera.SetSize(100, 100);
         //cameraObject.transform.SetPosition(700,1000,700);
         cameraObject.transform.Rotate(-30,45,0);
