@@ -12,7 +12,7 @@ define(['lib/eventmanager', './config'], function (EventManager, config) {
             pointerdown: 2,
             pointerup: 3,
             pointermove: 4,
-            poiterin: 5,
+            pointerin: 5,
             pointerout: 6
         }
 
@@ -24,7 +24,7 @@ define(['lib/eventmanager', './config'], function (EventManager, config) {
         this.width = 0;
         this.height = 0;
 
-        this.viewportMatrix = new Float32Array(16);
+        this.viewportMatrix = new Int16Array(16);
 
         //generate layers
         this.layers = [];

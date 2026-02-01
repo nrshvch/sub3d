@@ -248,5 +248,14 @@ define(["../Component", "../lib/gl-matrix"], function (Component, glMatrix) {
         this.dispatchEvent(this.events.update, this);
     }
 
+    p.scale = function(x, y, z) {
+        glMatrix.mat4.scale(this.local, this.local, [x, y, z]);
+
+        this.dirtyL = true; //flag to update localToWorld
+        this.dirtyW = true; //flag to update worldToLocal
+
+        this.dispatchEvent(this.events.update, this);
+    }
+
     return Transform;
 });

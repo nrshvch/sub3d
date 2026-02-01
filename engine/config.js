@@ -1,6 +1,8 @@
 define({
-    depthSortingMask: 1,
-    layersCount: 1,
+    depthSortingMask: parseInt('10',2), //bitmask, bit per layer
+    layerClearMask: parseInt('11',2), //bitmask, bit per layer
+    layersCount: 2,
     useOctree: false,
-    renderOctree: false
+    renderOctree: false,
+    debug: true
 });

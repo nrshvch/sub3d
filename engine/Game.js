@@ -1,41 +1,40 @@
-define(["./Logic", "./Graphics"], function (Logic, Graphics) {
+define(["./World", "./Render"], function (World, Render) {
     /**
      * @constructor
      */
     function Game() {
-        this.logic = new Logic(this);
-        this.graphics = new Graphics(this);
+        this.world = new World(this);
+        this.render = new Render(this);
 
-        var self = this,
-            logic = this.logic,
-            graphics = this.graphics;
+        var world = this.world,
+            render = this.render;
 
-        this.tick = function(){
-            logic.tick();
-            graphics.render();
+        this.tick = function tick(){
+            world.tick();
+            render.render();
 
-            requestAnimFrame(self.tick);
+            requestAnimFrame(tick);
         }
     }
 
     var p = Game.prototype;
 
     /**
-     * @type {Logic}
+     * @type {World}
      */
-    p.logic = null;
+    p.world = null;
 
     /**
-     * @type {Graphics}
+     * @type {Render}
      */
-    p.graphics = null;
+    p.render = null;
 
     /**
      * @type {void}
      */
     p.run = function () {
-        this.logic.start();
-        this.graphics.start();
+        this.world.start();
+        this.render.start();
         this.tick();
     }
 
