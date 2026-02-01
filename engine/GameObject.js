@@ -92,8 +92,8 @@ define(['./components/TransformComponent'], function (Transform) {
     /**
      * @param {World} world
      */
-    p.setWorld = function (world) {
-        this.world = world;
+    p.setScene = function (scene) {
+        this.scene = scene;
     };
 
     /**
@@ -131,29 +131,29 @@ define(['./components/TransformComponent'], function (Transform) {
         return null;
     }
 
-    p.tick = function (time) {
-        var components = this.components,
-            component,
-            len = this.componentsCount,
-            i;
-
-        for (i = 0; i < len; i++){//24
-          component = components[i];//24
-          if(component.tick !== null) //14
-            component.tick(time);
-        }
-
-        if(this.removeQueueWaiting){
-            var len = this.removeQueue.length;
-
-            for(i = 0; i < len; i++){
-                this.components.splice(this.components.indexOf(this.removeQueue.pop()), 1);
-                this.componentsCount--;
-            }
-
-            this.removeQueueWaiting = false;
-        }
-    }
+    // p.tick = function (time) {
+    //     var components = this.components,
+    //         component,
+    //         len = this.componentsCount,
+    //         i;
+    //
+    //     // for (i = 0; i < len; i++){//24
+    //     //   component = components[i];//24
+    //     //   if(component.tick !== null) //14
+    //     //     component.tick(time);
+    //     // }
+    //
+    //     if(this.removeQueueWaiting){
+    //         var len = this.removeQueue.length;
+    //
+    //         for(i = 0; i < len; i++){
+    //             this.components.splice(this.components.indexOf(this.removeQueue.pop()), 1);
+    //             this.componentsCount--;
+    //         }
+    //
+    //         this.removeQueueWaiting = false;
+    //     }
+    // }
 
     p.destroy = function () {
         this.world.removeGameObject(this);
