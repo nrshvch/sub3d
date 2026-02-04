@@ -1,101 +1,87 @@
 define(["../GameObject", "../components/MeshComponent"], function (GameObject, MeshComponent) {
-    function generateBoxData(segments) {
-        // 6 sides, each side has (s+1)*(s+1) vertices
-        var vertsPerSide = (segments + 1) * (segments + 1);
-        var facesPerSide = segments * segments * 2;
+    function generateBoxMesh(width, height, depth, segments) {
+        const verts = [];
+        const faces = [];
+        const lookup = {}; // Key: "x,y,z" | Value: index in verts array
 
-        var vertices = new Float32Array(6 * vertsPerSide * 3);
-        var faces = new Uint16Array(6 * facesPerSide * 3);
-
-        var vPtr = 0;
-        var iPtr = 0;
-        var vertexOffset = 0;
-
-        // Helper to generate a single side
-        // dims: array of 3 indices representing [right, up, forward]
-        // sign: 1 or -1 for the fixed axis
-        function buildSide(dim1, dim2, dim3, sign) {
-            for (var y = 0; y <= segments; y++) {
-                for (var x = 0; x <= segments; x++) {
-                    var v = new Float32Array(3);
-                    v[dim1] = (x / segments - 0.5) * 2;
-                    v[dim2] = (y / segments - 0.5) * 2;
-                    v[dim3] = sign; // This is the fixed face (e.g., front/back)
-
-                    vertices[vPtr++] = v[0] * 0.5; // Scaling to unit size
-                    vertices[vPtr++] = v[1] * 0.5;
-                    vertices[vPtr++] = v[2] * 0.5;
-                }
+        function getVertexIndex(x, y, z) {
+            // Rounding to fix floating point precision issues at corners
+            const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+            if (lookup[key] !== undefined) {
+                return lookup[key];
             }
-
-            for (var y = 0; y < segments; y++) {
-                for (var x = 0; x < segments; x++) {
-                    var a = vertexOffset + x + y * (segments + 1);
-                    var b = vertexOffset + x + (y + 1) * (segments + 1);
-                    var c = vertexOffset + (x + 1) + (y + 1) * (segments + 1);
-                    var d = vertexOffset + (x + 1) + y * (segments + 1);
-
-                    // Triangle 1
-                    faces[iPtr++] = a; faces[iPtr++] = b; faces[iPtr++] = d;
-                    // Triangle 2
-                    faces[iPtr++] = b; faces[iPtr++] = c; faces[iPtr++] = d;
-                }
-            }
-            vertexOffset += vertsPerSide;
+            const index = verts.length / 3;
+            verts.push(x, y, z);
+            lookup[key] = index;
+            return index;
         }
 
-        // Build the 6 sides of the cube
-        buildSide(0, 1, 2,  1); // Front
-        buildSide(0, 1, 2, -1); // Back
-        buildSide(2, 1, 0,  1); // Right
-        buildSide(2, 1, 0, -1); // Left
-        buildSide(0, 2, 1,  1); // Top
-        buildSide(0, 2, 1, -1); // Bottom
+        function buildPlane(u, v, w, uDir, vDir, wDir, width, height, depth, segments) {
+            const segmentWidth = width / segments;
+            const segmentHeight = height / segments;
+            const widthHalf = width / 2;
+            const heightHalf = height / 2;
+            const depthHalf = (depth / 2) * wDir;
+
+            // Create indices for this specific side
+            const grid = [];
+
+            for (let i = 0; i <= segments; i++) {
+                const row = [];
+                const y = i * segmentHeight - heightHalf;
+                for (let j = 0; j <= segments; j++) {
+                    const x = j * segmentWidth - widthHalf;
+
+                    const pos = [0, 0, 0];
+                    pos[u] = x * uDir;
+                    pos[v] = y * vDir;
+                    pos[w] = depthHalf;
+
+                    row.push(getVertexIndex(pos[0], pos[1], pos[2]));
+                }
+                grid.push(row);
+            }
+
+            for (let i = 0; i < segments; i++) {
+                for (let j = 0; j < segments; j++) {
+                    const a = grid[i][j];
+                    const b = grid[i + 1][j];
+                    const c = grid[i + 1][j + 1];
+                    const d = grid[i][j + 1];
+
+                    // Global Winding: Swap b and d if you need to flip all faces
+                    faces.push(a, b, d);
+                    faces.push(b, c, d);
+                }
+            }
+        }
+
+        // Build the 6 sides
+        buildPlane(0, 1, 2,  1,  1,  1, width, height, depth, segments); // Front
+        buildPlane(0, 1, 2, -1,  1, -1, width, height, depth, segments); // Back
+        buildPlane(2, 1, 0, -1,  1,  1, depth, height, width, segments); // Right
+        buildPlane(2, 1, 0,  1,  1, -1, depth, height, width, segments); // Left
+        buildPlane(0, 2, 1,  1, -1,  1, width, depth, height, segments); // Top
+        buildPlane(0, 2, 1,  1,  1, -1, width, depth, height, segments); // Bottom
 
         return {
-            vertices: vertices,
-            faces: faces,
-            vertexCount: vertices.length / 3,
-            faceCount: faces.length / 3
+            vertices: new Float32Array(verts),
+            faces: new Uint16Array(faces)
         };
     }
 
-    const faces = new Uint16Array([
-        0,3,6, //front1
-        3,9,6, //front2
-        12,18,15, //back1
-        15,18,21, //back2
-        3,15,9, //right1
-        15,21,9, //right2
-        12,0,6, //left1
-        12,6,18, //left2
-        0,12,3, //bottom1
-        3,12,15, //bottom2
-        6,9,18, //top1
-        18,9,21 //top2
-    ]);
+    const boxMesh = generateBoxMesh(1,1,1,1);
 
-    const vertices = new Float32Array([
-        -0.5,-0.5,-0.5,
-        0.5,-0.5,-0.5,
-        -0.5,0.5,-0.5,
-        0.5,0.5,-0.5,
-        -0.5,-0.5,0.5,
-        0.5,-0.5,0.5,
-        -0.5,0.5,0.5,
-        0.5,0.5,0.5,
-    ]);
-
-    const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(24), vertices);
+    const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(24), boxMesh.vertices);
 
     function Box() {
         GameObject.call(this);
 
         var mesh = new MeshComponent(this);
 
-        mesh.vertices = vertices;
+        mesh.vertices = boxMesh.vertices;
 
-        mesh.faces = faces;
+        mesh.faces = boxMesh.faces;
 
         // mesh.computeBounds();
 
@@ -110,13 +96,13 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
         this.transform.translate(0,-50,0, 'world')
 
 
-        this.scene.world.tickRegister(this);
+        // this.scene.world.tickRegister(this);
     }
 
     var p = Box.prototype = Object.create(GameObject.prototype);
 
     p.tick = function(time){
-        GameObject.prototype.tick.call(this);
+        // GameObject.prototype.tick.call(this);
         // console.log(Math.sin(time.time/1000) * 100);
         this.transform.translate(0,Math.sin(time.time/500) * 10,0, 'world')
         this.transform.rotate(0,10,0, 'world');

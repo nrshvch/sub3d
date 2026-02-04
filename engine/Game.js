@@ -1,17 +1,14 @@
-define(["./World", "./Render"], function (World, Render) {
+define(["./World"], function (World) {
     /**
      * @constructor
      */
     function Game() {
         this.world = new World(this);
-        this.render = new Render(this);
 
-        var world = this.world,
-            render = this.render;
+        var world = this.world;
 
         this.tick = function tick(){
             world.tick();
-            render.render();
 
             requestAnimFrame(tick);
         }
@@ -34,16 +31,10 @@ define(["./World", "./Render"], function (World, Render) {
      */
     p.run = function () {
         this.world.start();
-        this.render.start();
         this.tick();
     }
 
     p.rafHandler = null;
-
-    /**
-     * @type {void}
-     */
-    //p.mainLoop =
 
     return Game;
 });

@@ -77,9 +77,9 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
         }
 
         for (let f = 0; f < faces.length; f+=3) {
-            var faceV0 = faces[f];
-            var faceV1 = faces[f+1];
-            var faceV2 = faces[f+2];
+            var faceV0 = faces[f] * 3;
+            var faceV1 = faces[f+1] * 3;
+            var faceV2 = faces[f+2] * 3;
 
             var v0x = vec3Cache1[faceV0];
             var v0y = vec3Cache1[faceV0+1];
@@ -416,7 +416,7 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
             renderer, renderers, renderersCount, localToWorld, transform,
             i, j, l, ctx, layer;
 
-        var worldToScreenMatrix = camera.camera.getWorldToScreen();
+        var worldToScreenMatrix = viewport.getWorldToScreen();
         var cameraLocal = camera.transform.getWorldToLocal();
 
         this.drawCalls = 0;
