@@ -1,58 +1,73 @@
 define(["../GameObject", "../components/MeshComponent"], function (GameObject, MeshComponent) {
 
-    function generateBallMesh(rings, sectors, radius){
+    function generateBallMesh(rings, sectors, radius) {
         const verts = [];
         const faces = [];
+        const lookup = {};
 
-        // 1. Generate Vertices
-        for (let r = 0; r <= rings; r++) {
-            let phi = (r * Math.PI) / rings;
-            let sinPhi = Math.sin(phi);
-            let cosPhi = Math.cos(phi);
+        function getVertexIndex(x, y, z) {
+            const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+            if (lookup[key] !== undefined) return lookup[key];
 
-            for (let s = 0; s <= sectors; s++) {
-                let theta = (s * 2 * Math.PI) / sectors;
-                let sinTheta = Math.sin(theta);
-                let cosTheta = Math.cos(theta);
-
-                let x = cosTheta * sinPhi;
-                let y = cosPhi;
-                let z = sinTheta * sinPhi;
-
-                verts.push(x * radius, y * radius, z * radius);
-            }
+            const index = verts.length / 3;
+            verts.push(x, y, z);
+            lookup[key] = index;
+            return index;
         }
 
-        // 2. Generate Faces (Corrected Winding for your renderer)
+        // 1. Build the grid of shared indices
+        const grid = [];
+        for (let r = 0; r <= rings; r++) {
+            const row = [];
+            const phi = (r * Math.PI) / rings;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
+
+            for (let s = 0; s <= sectors; s++) {
+                const theta = (s * 2 * Math.PI) / sectors;
+                const x = Math.cos(theta) * sinPhi * radius;
+                const y = cosPhi * radius;
+                const z = Math.sin(theta) * sinPhi * radius;
+                row.push(getVertexIndex(x, y, z));
+            }
+            grid.push(row);
+        }
+
+        // 2. Generate Faces using your original skipping logic
         for (let r = 0; r < rings; r++) {
             for (let s = 0; s < sectors; s++) {
-                let first = r * (sectors + 1) + s;
-                let second = first + sectors + 1;
+                const first = grid[r][s];
+                const firstNext = grid[r][s + 1];
+                const second = grid[r + 1][s];
+                const secondNext = grid[r + 1][s + 1];
 
-                // Swapped the second and third indices to flip the winding direction
-                // Triangle 1
-                faces.push(first * 3, second * 3, (first + 1) * 3);
+                // Triangle 1: Skip North Pole
+                if (r !== 0) {
+                    faces.push(first, second, firstNext);
+                }
 
-                // Triangle 2
-                faces.push(second * 3, (second + 1) * 3, (first + 1) * 3);
+                // Triangle 2: Skip South Pole
+                if (r !== rings - 1) {
+                    faces.push(second, secondNext, firstNext);
+                }
             }
         }
 
         return {
-            verts: new Float32Array(verts),
+            vertices: new Float32Array(verts),
             faces: new Uint16Array(faces)
-        }
+        };
     }
 
     const ballMesh = generateBallMesh(16, 16, 2);
 
-    const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(ballMesh.verts.length), ballMesh.verts);
+    const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(24), ballMesh.vertices);
 
     function Sphere() {
         GameObject.call(this);
 
         var mesh = new MeshComponent(this);
-        mesh.vertices = ballMesh.verts;
+        mesh.vertices = ballMesh.vertices;
         mesh.faces = ballMesh.faces;
         mesh.bounds = bounds;
         mesh.color = [255, 100, 0]; // Orange

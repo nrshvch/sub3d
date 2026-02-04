@@ -1,48 +1,51 @@
 define(["../GameObject", "../components/MeshComponent"], function (GameObject, MeshComponent) {
 
-    function generateConeMesh(segments, radius, height){
+    function generateConeMesh(segments, radius, height) {
         const verts = [];
         const faces = [];
 
-        // 0: Apex (Top)
-        verts.push(0, height / 2, 0);
-        // 1: Base Center (Bottom)
-        verts.push(0, -height / 2, 0);
+        // 1. Generate Vertices
+        // Index 0: Apex (Top) - Now at full height
+        verts.push(0, height, 0);
+        // Index 1: Base Center (Bottom) - Now at 0
+        verts.push(0, 0, 0);
 
-        // Create the base ring
+        // Indices 2 to (segments + 1): The Ring
         for (let i = 0; i < segments; i++) {
-            let angle = (i / segments) * Math.PI * 2;
-            let x = Math.cos(angle) * radius;
-            let z = Math.sin(angle) * radius;
-            verts.push(x, -height / 2, z);
+            const angle = (i / segments) * Math.PI * 2;
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            verts.push(x, 0, z); // Y is 0 for the base ring
         }
 
-        // Generate Faces with flipped winding
+        // 2. Generate Faces
         for (let i = 0; i < segments; i++) {
-            let current = i + 2;
-            let next = (i === segments - 1) ? 2 : current + 1;
+            const current = i + 2;
+            const next = (i === segments - 1) ? 2 : i + 3;
 
-            // Sides: Changed from [0, next, current] to [0, current, next]
-            faces.push(0, current * 3, next * 3);
+            // Sides (Connect to Apex)
+            // Winding: Apex -> Current -> Next
+            faces.push(0, current, next);
 
-            // Base: Changed from [1, current, next] to [1, next, current]
-            faces.push(3, next * 3, current * 3);
+            // Base (Connect to Center)
+            // Winding: Center -> Next -> Current
+            faces.push(1, next, current);
         }
 
         return {
-            verts: new Float32Array(verts),
+            vertices: new Float32Array(verts),
             faces: new Uint16Array(faces)
-        }
+        };
     }
 
-    var coneMesh = generateConeMesh(8, 0.5, 1);
-    const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(coneMesh.verts.length), coneMesh.verts);
+    var coneMesh = generateConeMesh(5, 0.5, 1);
+    const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(24), coneMesh.vertices);
 
     function Cone() {
         GameObject.call(this);
 
         var mesh = new MeshComponent(this);
-        mesh.vertices = coneMesh.verts;
+        mesh.vertices = coneMesh.vertices;
         mesh.faces = coneMesh.faces;
         mesh.bounds = bounds;
         mesh.color = [0, 200, 255]; // Bright Blue

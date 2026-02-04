@@ -17,63 +17,38 @@ require(["./engine/main"], function (scaliaEngine) {
                     var tree = new scaliaEngine.Cone();
                     tree.meshRenderer.color = new Uint8Array([0, 100, 0]);
                     tree.meshRenderer.layer = 1;
-                    tree.transform.translate((i - N / 2) * 45.255, 25, (j - N / 2) * 45.255);
+                    tree.transform.translate((i - N / 2) * 45.255, 0, (j - N / 2) * 45.255);
                     tree.transform.scale(25,50,25);
                     myGame.world.scene.addGameObject(tree);
+                    tree.debug = true;
                 }
             }
         }
 
-        // const box = new scaliaEngine.Ball();
-        // // box.transform.translate(0,0,0)
-        // box.transform.scale(100,100,100);
-        // box.meshRenderer.color = new Uint8Array([0,0,255]);
-        // box.meshRenderer.layer = 0;
-        // myGame.world.scene.addGameObject(box);
-        // myGame.world.tickRegister(box);
-        // box.debug = true;
-
-
-        // var mesh = createBoxMesh();
-        // var tick = (box) => {
-        //     console.log(box.position);
-        // }
-        // function go() {
-        //     const box = new GameObject();
-        //     box.addComponent(new MeshComponent());
-        //     box.transform(0, 0, 0);
-        //     const mesh = box.getComponent('mesh');
-        //     mesh.layer = 1;
-        //     box.tick = tick;
-        // }
-
-
-        // setInterval(()=>{
-        //     box.transform.rotate(1,1,1 )
-        // }, 10)
-
-
-    // var axis = window.axis = new scaliaEngine.gameObjects.Axis();
-        // myGame.logic.world.AddGameObject(axis);
+        const box = new scaliaEngine.Ball();
+        // box.transform.translate(0,0,0)
+        box.transform.scale(100,100,100);
+        box.meshRenderer.color = new Uint8Array([0,0,255]);
+        box.meshRenderer.layer = 1;
+        myGame.world.scene.addGameObject(box);
+        myGame.world.tickRegister(box);
+        box.debug = true;
 
 
         var cameraObject = window.camera = new scaliaEngine.Camera();
-        // cameraObject.camera.setup(width, height, 9999999);
-        //cameraObject.camera.SetSize(100, 100);
-        //cameraObject.transform.SetPosition(700,1000,700);
         cameraObject.transform.rotate(-45,45,0);
-        // cameraObject.transform.Rotate(-90,0,0);
-    var dt = null;
-    myGame.world.tickRegister({
-        tick: (time)=>{
-            if(dt !== null) {
-                var d = time.now - dt;
 
-                cameraObject.transform.rotate(0, 0.1, 0, 'world');
+        var dt = null;
+        myGame.world.tickRegister({
+            tick: (time)=>{
+                if(dt !== null) {
+                    var d = time.now - dt;
+
+                    cameraObject.transform.rotate(0, 0.1, 0, 'world');
+                }
+                dt = time.now;
             }
-            dt = time.now;
-        }
-    });
+        });
 
         document.onkeydown = function(e){
             if(e.keyCode == 65){ //a
@@ -121,13 +96,13 @@ require(["./engine/main"], function (scaliaEngine) {
         myGame.world.scene.addGameObject(cameraObject);
 
         myGame.run();
-    //document.getElementById('canvas').getContext('2d').imageSmoothingEnabled = false;
-        myGame.render.createViewport(document.getElementById('canvas'), camera);
 
-        // document.body.appendChild(viewport.canvas);
+        const viewport = new scaliaEngine.Canvas2dViewport(camera.camera, document.getElementById('canvas'));
+
+        viewport.start();
 
         window.myGame = myGame;
-
+        var renderer = viewport.renderer;
         var fps, avgDt, maxFps = 0;
         var fpsEl = document.getElementById('fps');
         var maxFpsEl = document.getElementById('maxFps');
@@ -140,24 +115,24 @@ require(["./engine/main"], function (scaliaEngine) {
         const debugBtn = document.getElementById('debug-btn');
         const debugWireframeBtn = document.getElementById('debug-wireframe-btn');
         debugBtn.addEventListener('click', ()=>{
-            myGame.render.renderer.wireframe = false;
-            myGame.render.renderer.debug = !myGame.render.renderer.debug;
+            renderer.wireframe = false;
+            renderer.debug = !renderer.debug;
         });
         debugWireframeBtn.addEventListener('click', ()=>{
-            myGame.render.renderer.debug = false;
-            myGame.render.renderer.wireframe = !myGame.render.renderer.wireframe;
+            renderer.debug = false;
+            renderer.wireframe = !renderer.wireframe;
         });
 
         setInterval(()=>{
-            fps =  myGame.render.dt > 0 ? (1000 / myGame.render.dt) | 0 : 1000
-            avgDt = avgDt === undefined ? myGame.render.dt : ((avgDt + myGame.render.dt) / 2);
+            fps =  dt > 0 ? (1000 / dt) | 0 : 1000
+            avgDt = avgDt === undefined ? dt : ((avgDt + dt) / 2);
             maxFps = Math.max(maxFps, fps)
             fpsEl.innerText = fps;
             maxFpsEl.innerText = maxFps;
-                drawCallsEl.innerText = myGame.render.renderer.drawCalls;
+                drawCallsEl.innerText = renderer.drawCalls;
             objectsEl.innerText = myGame.world.scene.gameObjects.length;
-            visibleObjectsEl.innerText = myGame.render.renderer.visibleObjects;
-            vec3PoolSizeEl.innerText = myGame.render.renderer.vec3Pool.length;
-            facesCountEl.innerText = myGame.render.renderer.faces;
+            visibleObjectsEl.innerText = renderer.visibleObjects;
+            vec3PoolSizeEl.innerText = renderer.vec3Pool.length;
+            facesCountEl.innerText = renderer.faces;
         }, 10);
 });

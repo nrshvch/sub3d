@@ -27,8 +27,9 @@ define([
     './primitives/Plane',
     './primitives/Box',
     './primitives/Cone',
-    './primitives/Ball'
-], function (config, Game, GameObject, Component, Camera, CameraComponent, TransformComponent, SpriteRenderer, glMatrix, AssetManager, SpriteManager, PathRenderer, TextRenderer, Plane, Box, Cone, Ball) {
+    './primitives/Ball',
+    './Canvas2dViewport'
+], function (config, Game, GameObject, Component, Camera, CameraComponent, TransformComponent, SpriteRenderer, glMatrix, AssetManager, SpriteManager, PathRenderer, TextRenderer, Plane, Box, Cone, Ball, Canvas2dViewport) {
     return window.scaliaEngine = {
         config: config,
         Game: Game,
@@ -46,6 +47,7 @@ define([
         Plane: Plane,
         Box: Box,
         Cone: Cone,
-        Ball: Ball
+        Ball: Ball,
+        Canvas2dViewport: Canvas2dViewport
     };
 });
