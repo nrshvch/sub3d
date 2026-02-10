@@ -28,9 +28,9 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
                 const d = (iy + 1) * row + (ix + 1);// Bottom-right
 
                 // Triangle 1: Top-left, Top-right, Bottom-left
-                faces.push(a, b, c);
+                faces.push(a, c, b);
                 // Triangle 2: Bottom-right, Bottom-left, Top-right
-                faces.push(d, c, b);
+                faces.push(d, b, c);
             }
         }
 
@@ -40,7 +40,7 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
         };
     }
 
-    const planeMesh = generatePlaneMesh(1,1,2);
+    const planeMesh = generatePlaneMesh(1,1,1);
 
     var bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(24), planeMesh.vertices);
 

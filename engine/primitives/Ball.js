@@ -43,12 +43,12 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
 
                 // Triangle 1: Skip North Pole
                 if (r !== 0) {
-                    faces.push(first, second, firstNext);
+                    faces.push(first, firstNext, second);
                 }
 
                 // Triangle 2: Skip South Pole
                 if (r !== rings - 1) {
-                    faces.push(second, secondNext, firstNext);
+                    faces.push(second, firstNext, secondNext);
                 }
             }
         }

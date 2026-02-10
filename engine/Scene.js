@@ -57,6 +57,8 @@ define(['./lib/Octree'], function (Octree) {
      */
     p.started = false;
 
+    p.light = null;
+
     /**
      * Array with gameObjects
      * @param {GameObject} gameObject
@@ -96,6 +98,11 @@ define(['./lib/Octree'], function (Octree) {
                 this.addGameObject(child);
             }
         }
+    }
+
+    p.addLightSource = function (gameObject) {
+        this.light = gameObject;
+        return this.addGameObject(gameObject);
     }
 
     /**

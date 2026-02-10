@@ -1,4 +1,11 @@
 define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glMatrix, Component, BoundingBox) {
+    const FogType = {
+        'NONE': 'NONE',
+        'RADIAL': 'RADIAL',
+        'RADIAL_FAST': 'RADIAL_FAST',
+        'LINEAR': 'LINEAR'
+    }
+
 
     /**
      * @constructor
@@ -38,7 +45,17 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glM
     CameraComponent.prototype.frustumBox = null;
     CameraComponent.prototype.projectionMatrix = null;
 
-    CameraComponent.prototype.setup = function (width, height, length) {
+    CameraComponent.prototype.nearClippingPane = 0;
+    CameraComponent.prototype.farClippingPane = 1000;
+
+    CameraComponent.prototype.fogType = FogType.LINEAR;
+    CameraComponent.prototype.fogNearPane = 250;
+    CameraComponent.prototype.fogFarPane = 750;
+    CameraComponent.prototype.fogColor = new Uint8Array([150,150,150]);
+
+    CameraComponent.prototype.ambientLight = 0.5;
+
+    CameraComponent.prototype.setup = function (width, height) {
 
         //update frustum size
         this.frustumSize = [
@@ -52,7 +69,7 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glM
         glMatrix.vec3.transformMat4(this.frustumBox[1], this.frustumSize[1], localToWorld);
 
         //update projection matrix
-        glMatrix.mat4.ortho(this.projectionMatrix, -width / 2, width / 2, -height / 2, height / 2, 0, length);
+        glMatrix.mat4.ortho(this.projectionMatrix, -width / 2, width / 2, -height / 2, height / 2, this.nearClippingPane, this.farClippingPane);
 
         //update aabbox
         this.bounds.Calculate(this.frustumBox);
@@ -69,6 +86,8 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glM
         this.gameObject.transform.removeEventListener(this.gameObject.transform.events.update, this.transformUpdateEventHandler);
         Component.prototype.unsetGameObject.call(this);
     }
+
+    CameraComponent.FogType = FogType;
 
     return CameraComponent;
 });
