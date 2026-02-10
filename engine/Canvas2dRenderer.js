@@ -1,4 +1,4 @@
-define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./components/SpriteRenderer", "./components/TextRenderer", "./components/MeshComponent", "./math"], function (config, glMatrix, PathRenderer, SpriteRenderer, TextRenderer, MeshComponent, math) {
+define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./components/SpriteRenderer", "./components/TextRenderer", "./components/MeshComponent", "./components/CameraComponent", "./math"], function (config, glMatrix, PathRenderer, SpriteRenderer, TextRenderer, MeshComponent, CameraComponent, math) {
     function createPalette16Bit() {
         var palette = new Array(65536);
         for (let i = 0; i < 65536; i++) {
@@ -20,11 +20,6 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
     }
     const PALETTE_16BIT = createPalette16Bit();
 
-    // At the top of your module or in config
-    const FOG_NEAR = 100;
-    const FOG_FAR = 2000;
-    const FOG_COLOR = [150, 150, 150]; // Match your background color
-
     var mat4Mul = glMatrix.mat4.multiply;
     var vec3TransformMat4 = glMatrix.vec3.transformMat4;
     var visibleObjectsBuffer = [];
@@ -32,15 +27,10 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
     var layerBuffers = [];
     var layerBufferLengths = new Uint32Array(1);
     var depthSort = function(a, b) {
-        // TODO: in right hand system should be b-a
-        return depthBuffer[a] - depthBuffer[b];
+        return depthBuffer[b] - depthBuffer[a];
     };
 
-    // A normalized vector pointing from the light source to the scene
-    var lightDirection = new Float32Array([1,1,1]);
-    // Normalize it (simple manual normalization if gl-matrix isn't used here)
-    var len = Math.sqrt(lightDirection[0]*lightDirection[0] + lightDirection[1]*lightDirection[1] + lightDirection[2]*lightDirection[2]);
-    lightDirection[0] /= len; lightDirection[1] /= len; lightDirection[2] /= len;
+    var lightDirection = new Float32Array([0,0,0]);
 
     var vec3Cache1 = new Float32Array([0,0,0]);
     var vec3Cache2 = new Float32Array([0,0,0]);
@@ -48,8 +38,10 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
     var depthBuffer = new Float32Array(0);
     var indexBuffer = new Uint32Array(0);
     var geometryBuffer = new Uint32Array(0);
-    var colorBuffer = new Int16Array(0);
+    var colorBuffer = new Uint16Array(0);
     var typeBuffer = new Uint8Array(0);
+
+    var t0 = undefined;
 
     function meshToRenderCommands(i, camera, mesh, w, h, ViewportM, cameraLocal){
         const gameObject = mesh.gameObject;
@@ -106,100 +98,135 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
             // 2. Intersection check: Screen AABB vs Triangle AABB
             // This ensures triangles larger than the screen stay visible.
             if (maxX >= 0 && minX <= w && maxY >= 0 && minY <= h) {
-                var w0x = vec3Cache2[faceV0];
-                var w0y = vec3Cache2[faceV0+1];
-                var w0z = vec3Cache2[faceV0+2];
+                var w0z = vec3Cache2[faceV0 + 2];
+                var w1z = vec3Cache2[faceV1 + 2];
+                var w2z = vec3Cache2[faceV2 + 2];
+                var cam = camera.camera;
 
-                var w1x = vec3Cache2[faceV1];
-                var w1y = vec3Cache2[faceV1+1];
-                var w1z = vec3Cache2[faceV1+2];
+                depth = (w0z + w1z + w2z) * 0.33333;
 
-                var w2x = vec3Cache2[faceV2];
-                var w2y = vec3Cache2[faceV2+1];
-                var w2z = vec3Cache2[faceV2+2];
+                if (depth >= cam.nearClippingPane && depth <= cam.farClippingPane) {
+                    var w0x = vec3Cache2[faceV0];
+                    var w0y = vec3Cache2[faceV0 + 1];
+                    var w1x = vec3Cache2[faceV1];
+                    var w1y = vec3Cache2[faceV1 + 1];
+                    var w2x = vec3Cache2[faceV2];
+                    var w2y = vec3Cache2[faceV2 + 1];
 
-                // --- LIGHTING CALCULATION ---
-                // 1. Calculate Normal (using world/camera-local positions)
-                var e1x = w1x - w0x, e1y = w1y - w0y, e1z = w1z - w0z;
-                var e2x = w2x - w0x, e2y = w2y - w0y, e2z = w2z - w0z;
+                    // --- LIGHTING CALCULATION ---
+                    // 1. Calculate Normal (using world/camera-local positions)
+                    var e1x = w1x - w0x, e1y = w1y - w0y, e1z = w1z - w0z;
+                    var e2x = w2x - w0x, e2y = w2y - w0y, e2z = w2z - w0z;
 
-                var nx = e1y * e2z - e1z * e2y;
-                var ny = e1z * e2x - e1x * e2z;
-                var nz = e1x * e2y - e1y * e2x;
+                    var nx = e1y * e2z - e1z * e2y;
+                    var ny = e1z * e2x - e1x * e2z;
+                    var nz = e1x * e2y - e1y * e2x;
 
-                var nLen = 1 / Math.sqrt(nx*nx + ny*ny + nz*nz);
-                nx *= nLen; ny *= nLen; nz *= nLen;
+                    var nLen = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+                    nx *= nLen;
+                    ny *= nLen;
+                    nz *= nLen;
 
-                // 2. Light Intensity (Dot product + Ambient)
-                // Assuming lightDirection is defined globally as [-0.5, -0.7, 1.0]
-                var dot = nx * -lightDirection[0] + ny * -lightDirection[1] + nz * -lightDirection[2];
-                var intensity = Math.max(0.5, dot); // 0.1 is minimum ambient light
-                // console.log(intensity);
-                // 3. Apply Intensity to RGB
-                // Assuming mesh.color is [r, g, b]
-                var r = (mesh.color[0] * intensity) | 0;
-                var g = (mesh.color[1] * intensity) | 0;
-                var b = (mesh.color[2] * intensity) | 0;
+                    // 2. Light Intensity (Dot product + Ambient)
+                    var dot = nx * -lightDirection[0] + ny * -lightDirection[1] + nz * -lightDirection[2];
+                    var intensity = Math.max(camera.camera.ambientLight, dot);
 
-                depth = (w0z + w1z + w2z) * 0.33;
+                    // 3. Apply Intensity to RGB
+                    var r = (mesh.color[0] * intensity) | 0;
+                    var g = (mesh.color[1] * intensity) | 0;
+                    var b = (mesh.color[2] * intensity) | 0;
 
-                //FOG
-                var fogAmount = (FOG_FAR - depth) / (FOG_FAR - FOG_NEAR);
-                if (fogAmount > 1) fogAmount = 1;
-                if (fogAmount < 0) fogAmount = 0;
+                    //FOG
 
-                // Blend the mesh color with the fog color
-                // final = color * fogAmount + fogColor * (1 - fogAmount)
-                r = (r * fogAmount + FOG_COLOR[0] * (1 - fogAmount)) | 0;
-                g = (g * fogAmount + FOG_COLOR[1] * (1 - fogAmount)) | 0;
-                b = (b * fogAmount + FOG_COLOR[2] * (1 - fogAmount)) | 0;
+                    if(cam.fogType !== CameraComponent.FogType.NONE) {
+                        var fogAmount = 0;
+                        if(cam.fogType === CameraComponent.FogType.RADIAL_FAST || cam.fogType === CameraComponent.FogType.RADIAL) {
+                            // 1. Get the local camera-space coordinates from your cache
+                            // We use the average of the 3 vertices for the face
+                            var lx = (vec3Cache2[faceV0] + vec3Cache2[faceV1] + vec3Cache2[faceV2]) * 0.33333;
+                            var ly = (vec3Cache2[faceV0 + 1] + vec3Cache2[faceV1 + 1] + vec3Cache2[faceV2 + 1]) * 0.33333;
+                            var lz = (vec3Cache2[faceV0 + 2] + vec3Cache2[faceV1 + 2] + vec3Cache2[faceV2 + 2]) * 0.33333;
 
-                // 1. Quantize 8-bit to 5-6-5 bits
-                const qr = r & 0xF8; // Keep 5 bits
-                const qg = g & 0xFC; // Keep 6 bits
-                const qb = b & 0xF8; // Keep 5 bits
+                            if(cam.fogType === CameraComponent.FogType.RADIAL_FAST) {
+                                // We need the squares of your panes for the comparison
+                                const nearSq = cam.fogNearPane * cam.fogNearPane;
+                                const farSq = cam.fogFarPane * cam.fogFarPane;
+                                const invFogRangeSq = 1.0 / (farSq - nearSq);
 
-                // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-                const key = (qr << 8) | (qg << 3) | (qb >> 3);
+                                // Calculate Squared Distance (No Math.sqrt!)
+                                const distSq = lx * lx + ly * ly + lz * lz;
 
-                if(depthBuffer.length <= i) {
+                                // Calculate fogAmount based on the squared distribution
+                                fogAmount = (distSq - nearSq) * invFogRangeSq;
+                            }else{
+                                // 2. Calculate Radial Distance
+                                // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
+                                var distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
 
-                    var newLen = (i+1) * 2;
+                                // 3. Calculate fogAmount using distance instead of depth
+                                fogAmount = (distance - cam.fogNearPane) / (cam.fogFarPane - cam.fogNearPane);
+                            }
+                        }else if(cam.fogType === CameraComponent.FogType.LINEAR) {
+                            fogAmount = (depth - cam.fogNearPane) / (cam.fogFarPane - cam.fogNearPane);
+                        }
 
-                    var newArr = new Float32Array(newLen);
-                    newArr.set(depthBuffer);
-                    depthBuffer = newArr;
+                        if (fogAmount > 1) fogAmount = 1;
 
-                    newArr = new Uint32Array(newLen);
-                    newArr.set(indexBuffer);
-                    indexBuffer = newArr;
+                        // Blend the mesh color with the fog color
+                        if(fogAmount > 0) {
+                            r = (r * (1 - fogAmount) + cam.fogColor[0] * fogAmount) | 0;
+                            g = (g * (1 - fogAmount) + cam.fogColor[1] * fogAmount) | 0;
+                            b = (b * (1 - fogAmount) + cam.fogColor[2] * fogAmount) | 0;
+                        }
+                    }
 
-                    newArr = new Uint8Array(newLen);
-                    newArr.set(typeBuffer);
-                    typeBuffer = newArr;
+                    // 1. Quantize 8-bit color channels to 5-6-5 bits
+                    const qr = r & 0xF8; // Keep 5 bits
+                    const qg = g & 0xFC; // Keep 6 bits
+                    const qb = b & 0xF8; // Keep 5 bits
 
-                    newArr = new Int16Array(newLen);
-                    newArr.set(colorBuffer);
-                    colorBuffer = newArr;
+                    // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+                    const key = (qr << 8) | (qg << 3) | (qb >> 3);
 
-                    newArr = new Int16Array(newLen*6);
-                    newArr.set(geometryBuffer);
-                    geometryBuffer = newArr;
+                    // Extend buffers size if necessary
+                    if (depthBuffer.length <= i) {
+                        var newLen = (i + 1) * 2;
+
+                        var newArr = new Float32Array(newLen);
+                        newArr.set(depthBuffer);
+                        depthBuffer = newArr;
+
+                        newArr = new Uint32Array(newLen);
+                        newArr.set(indexBuffer);
+                        indexBuffer = newArr;
+
+                        newArr = new Uint8Array(newLen);
+                        newArr.set(typeBuffer);
+                        typeBuffer = newArr;
+
+                        newArr = new Uint16Array(newLen);
+                        newArr.set(colorBuffer);
+                        colorBuffer = newArr;
+
+                        newArr = new Int16Array(newLen * 6);
+                        newArr.set(geometryBuffer);
+                        geometryBuffer = newArr;
+                    }
+
+                    indexBuffer[i] = i;
+                    depthBuffer[i] = depth;
+                    colorBuffer[i] = key;
+                    typeBuffer[i] = 0; // 0 = FACE
+
+                    geometryBuffer[i * 6] = v0x;
+                    geometryBuffer[i * 6 + 1] = v0y;
+                    geometryBuffer[i * 6 + 2] = v1x;
+                    geometryBuffer[i * 6 + 3] = v1y;
+                    geometryBuffer[i * 6 + 4] = v2x;
+                    geometryBuffer[i * 6 + 5] = v2y;
+
+                    i++;
                 }
-
-                indexBuffer[i] = i;
-                depthBuffer[i] = depth;
-                colorBuffer[i] = key;
-                typeBuffer[i] = 0; // 0 = FACE
-
-                geometryBuffer[i*6] = v0x;
-                geometryBuffer[i*6+1] = v0y;
-                geometryBuffer[i*6+2] = v1x;
-                geometryBuffer[i*6+3] = v1y;
-                geometryBuffer[i*6+4] = v2x;
-                geometryBuffer[i*6+5] = v2y;
-
-                i++;
             }
         }
 
@@ -207,38 +234,6 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
     }
 
     function screenSpaceCulling(bounds, a, worldToScreenMatrix, vw, vh) {
-
-
-        // if (gameObject.spriteRenderer !== undefined && gameObject.spriteRenderer.enabled) {
-        //     gameObject.transform.getPosition(bufferVec3);
-        //     vec3TransformMat4(bufferVec3, bufferVec3, worldToScreenMatrix);
-        //
-        //     var sprite = gameObject.spriteRenderer;
-        //     bufferVec3[0] -= sprite.pivotX;
-        //     bufferVec3[1] -= sprite.pivotY;
-        //
-        //     if (bufferVec3[0] <= viewport.width && bufferVec3[0] + sprite.sprite.width >= 0 && bufferVec3[1] <= viewport.height && bufferVec3[1] + sprite.sprite.height >= 0)
-        //         this.layerBuffers[sprite.layer].push(sprite);
-        // }
-        //
-        // if (gameObject.pathRenderer !== undefined && gameObject.pathRenderer.enabled) {
-        //     gameObject.transform.getPosition(bufferVec3);
-        //     vec3TransformMat4(bufferVec3, bufferVec3, worldToScreenMatrix);
-        //
-        //     if (bufferVec3[0] <= viewport.width && bufferVec3[0] >= 0 && bufferVec3[1] <= viewport.height && bufferVec3[1] >= 0)
-        //         this.layerBuffers[gameObject.pathRenderer.layer].push(gameObject.pathRenderer)
-        // }
-        //
-        // if (gameObject.textRenderer !== undefined && gameObject.textRenderer.enabled) {
-        //     gameObject.transform.getPosition(bufferVec3);
-        //     vec3TransformMat4(bufferVec3, bufferVec3, worldToScreenMatrix);
-        //
-        //     if (bufferVec3[0] <= viewport.width && bufferVec3[0] >= 0 && bufferVec3[1] <= viewport.height && bufferVec3[1] >= 0)
-        //         this.layerBuffers[gameObject.textRenderer.layer].push(gameObject.textRenderer)
-        // }
-
-        //primitive culling
-
             // Inlining mat4Mul(bufferMat4, worldToScreenMatrix, a)
             // Because only rows 0 and 1 are needed of the result for X and Y projection
             var b = worldToScreenMatrix;
@@ -404,12 +399,15 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
         mat4Buffer1 = new Float32Array(16),
         bufferMat4 = new Float32Array(16);
 
-    p.render = function (camera, viewport) {
+    p.render = function (camera, viewport, stats) {
+        t0 = Date.now();
+
         this.vec3Pool = vec3Cache1;
 
         var gameObjects = camera.scene.retrieve(camera),
             gameObjectsCount = gameObjects.length,
             gameObject,
+            light = camera.scene.light,
             layersCount = config.layersCount,
             vw = viewport.width,
             vh = viewport.height,
@@ -419,10 +417,41 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
         var worldToScreenMatrix = viewport.getWorldToScreen();
         var cameraLocal = camera.transform.getWorldToLocal();
 
+
+
+        if(light) {
+            // 1. Get the world forward vector of the light
+            light.transform.forward(lightDirection);
+
+            // 2. TRANSFORM LIGHT INTO CAMERA SPACE
+            // We only want the rotation, so we use the top-left 3x3 of the cameraLocal matrix
+            var lx = lightDirection[0], ly = lightDirection[1], lz = lightDirection[2];
+
+            // In-place transformation (multiplying by the rotation part of cameraLocal)
+            lightDirection[0] = lx * cameraLocal[0] + ly * cameraLocal[4] + lz * cameraLocal[8];
+            lightDirection[1] = lx * cameraLocal[1] + ly * cameraLocal[5] + lz * cameraLocal[9];
+            lightDirection[2] = lx * cameraLocal[2] + ly * cameraLocal[6] + lz * cameraLocal[10];
+        }
+
+
+
         this.drawCalls = 0;
         this.faces = 0;
 
-        viewport.context.clearRect(0, 0, viewport.width, viewport.height);
+        if(camera.camera.fogType !== CameraComponent.FogType.NONE) {
+            const cam = camera.camera;
+
+            // 1. Quantize 8-bit to 5-6-5 bits
+            const qr = cam.fogColor[0] & 0xF8; // Keep 5 bits
+            const qg = cam.fogColor[1] & 0xFC; // Keep 6 bits
+            const qb = cam.fogColor[2] & 0xF8; // Keep 5 bits
+
+            // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+            const key = (qr << 8) | (qg << 3) | (qb >> 3);
+            // console.log(key);
+            viewport.context.fillStyle = PALETTE_16BIT[key];
+            viewport.context.fillRect(0, 0, viewport.width, viewport.height);
+        }
 
         // filter out non-visible objects and put results into visibleObjectsBuffer
         for (i = 0; i < gameObjectsCount; i++) {
@@ -510,7 +539,7 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
                 if(this.debug){
                     if(count > 1) {
-                        ctx.fillStyle = `rgb(0,0,255)`
+                        ctx.fillStyle = `rgb(0,0,${b%255})`
                         ctx.fill();
                     }else{
                         ctx.fillStyle = ctx.strokeStyle = PALETTE_16BIT[colorKey];
@@ -541,7 +570,7 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
                         var centerY = (geometryBuffer[g + 1] + geometryBuffer[g + 3] + geometryBuffer[g + 5]) / 3;
 
                         // 'k' is the actual sequence index in the final render array
-                        ctx.fillText(k.toString(), centerX, centerY);
+                        ctx.fillText(k.toString()+','+b, centerX, centerY);
                     }
                 }
             }
@@ -558,7 +587,6 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
             viewport.context.drawImage(ctx.canvas, 0, 0);
 
-            cmdPoolCursor = 0;
             this.drawCalls += batchCount;
             this.faces += l;
             layerBufferLengths[i] = 0;
@@ -566,6 +594,8 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
         this.visibleObjects = visibleObjectsBufferLen;
         visibleObjectsBufferLen = 0;
+
+        stats.dt = Date.now() - t0;
     }
 
     //Rounding coordinates with Math.round is slow, but looks better

@@ -5,9 +5,9 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
         const faces = [];
 
         // 1. Generate Vertices
-        // Index 0: Apex (Top) - Now at full height
+        // Index 0: Apex (Top)
         verts.push(0, height, 0);
-        // Index 1: Base Center (Bottom) - Now at 0
+        // Index 1: Base Center (Bottom)
         verts.push(0, 0, 0);
 
         // Indices 2 to (segments + 1): The Ring
@@ -15,7 +15,7 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
             const angle = (i / segments) * Math.PI * 2;
             const x = Math.cos(angle) * radius;
             const z = Math.sin(angle) * radius;
-            verts.push(x, 0, z); // Y is 0 for the base ring
+            verts.push(x, 0, z);
         }
 
         // 2. Generate Faces
@@ -23,13 +23,11 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
             const current = i + 2;
             const next = (i === segments - 1) ? 2 : i + 3;
 
-            // Sides (Connect to Apex)
-            // Winding: Apex -> Current -> Next
-            faces.push(0, current, next);
+            // Sides
+            faces.push(0, next, current);
 
-            // Base (Connect to Center)
-            // Winding: Center -> Next -> Current
-            faces.push(1, next, current);
+            // Base
+            faces.push(1, current, next);
         }
 
         return {
@@ -38,7 +36,7 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
         };
     }
 
-    var coneMesh = generateConeMesh(5, 0.5, 1);
+    var coneMesh = generateConeMesh(7, 0.5, 1);
     const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(24), coneMesh.vertices);
 
     function Cone() {

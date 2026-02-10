@@ -36,6 +36,8 @@ define(["./lib/gl-matrix", 'lib/eventmanager', './config', "./Canvas2dRenderer",
 
             requestAnimFrame(tick);
         }
+
+        this.lastRenderStats = {};
     }
 
     var p = Canvas2dViewport.prototype;
@@ -77,7 +79,7 @@ define(["./lib/gl-matrix", 'lib/eventmanager', './config', "./Canvas2dRenderer",
 
     p.render = function () {
         if(this.camera !== null)
-            this.renderer.render(this.camera.gameObject, this);
+            this.renderer.render(this.camera.gameObject, this, this.lastRenderStats);
     };
 
     /**
@@ -92,10 +94,10 @@ define(["./lib/gl-matrix", 'lib/eventmanager', './config', "./Canvas2dRenderer",
         this.canvas.height = height;
 
         //update viewport matrix
-        this.viewportMatrix[0] = (width/2)|0;
-        this.viewportMatrix[5] = -(height/2)|0;
-        this.viewportMatrix[12] = (width/2)|0;
-        this.viewportMatrix[13] = (height/2)|0;
+        this.viewportMatrix[0] = width/2;
+        this.viewportMatrix[5] = -height/2;
+        this.viewportMatrix[12] = width/2;
+        this.viewportMatrix[13] = height/2;
 
         //update layer sizes
         for (var i = 0; i < this.layers.length; i++) {
@@ -104,7 +106,7 @@ define(["./lib/gl-matrix", 'lib/eventmanager', './config', "./Canvas2dRenderer",
             ctx.canvas.height = height;
         }
 
-        this.camera.setup(this.width, this.height, 100);
+        this.camera.setup(this.width, this.height);
 
         return this;
     };

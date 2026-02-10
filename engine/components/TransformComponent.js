@@ -257,5 +257,18 @@ define(["../Component", "../lib/gl-matrix"], function (Component, glMatrix) {
         this.dispatchEvent(this.events.update, this);
     }
 
+    p.forward = function(out){
+        if (out === undefined)
+            out = [];
+
+        var m = this.getLocalToWorld();
+
+        out[0] = m[8];
+        out[1] = m[9];
+        out[2] = m[10];
+
+        return out;
+    }
+
     return Transform;
 });

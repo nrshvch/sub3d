@@ -7,9 +7,7 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
         function getVertexIndex(x, y, z) {
             // Rounding to fix floating point precision issues at corners
             const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
-            if (lookup[key] !== undefined) {
-                return lookup[key];
-            }
+            if (lookup[key] !== undefined) return lookup[key];
             const index = verts.length / 3;
             verts.push(x, y, z);
             lookup[key] = index;
@@ -49,9 +47,9 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
                     const c = grid[i + 1][j + 1];
                     const d = grid[i][j + 1];
 
-                    // Global Winding: Swap b and d if you need to flip all faces
-                    faces.push(a, b, d);
-                    faces.push(b, c, d);
+                    // REVERTED WINDING: Swapped b/d and c/d positions
+                    faces.push(a, d, b);
+                    faces.push(b, d, c);
                 }
             }
         }
@@ -90,11 +88,6 @@ define(["../GameObject", "../components/MeshComponent"], function (GameObject, M
         // mesh.ComputeNormals();
 
         this.addComponent(mesh);
-
-        this.transform.rotate(0, 0, 45);
-        this.transform.rotate(35.264, 0, 0, 'world');
-        this.transform.translate(0,-50,0, 'world')
-
 
         // this.scene.world.tickRegister(this);
     }
