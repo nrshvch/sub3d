@@ -448,7 +448,7 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
             // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
             const key = (qr << 8) | (qg << 3) | (qb >> 3);
-            // console.log(key);
+
             viewport.context.fillStyle = PALETTE_16BIT[key];
             viewport.context.fillRect(0, 0, viewport.width, viewport.height);
         }
@@ -516,6 +516,8 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
                 indexBuffer.subarray(0, l).sort(depthSort);
             }
 
+            var stroke = (config.layerStrokeMask & (i + 1)) === (i+1);
+
             generateBatches(indexBuffer, l);
 
             for (var b = 0; b < batchCount; b++) {
@@ -551,7 +553,7 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
                     ctx.stroke();
                 }else{
                     ctx.fillStyle = ctx.strokeStyle = PALETTE_16BIT[colorKey];
-                    ctx.stroke();
+                    if(stroke) ctx.stroke();
                     ctx.fill();
                 }
 
