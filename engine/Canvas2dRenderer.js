@@ -39,8 +39,7 @@ define([
   var vec3TransformMat4to2D = math.vec3TransformMat4to2D;
   var vec3TransformMat4 = math.vec3TransformMat4;
   var mat4Mul = math.mat4Mul;
-  var visibleObjectsBuffer = [];
-  var visibleObjectsBufferLen = [];
+  let visibleObjectsBuffer = new Uint32Array(100);
   var layerBuffers = [];
   var layerBufferLengths = new Uint32Array(1);
   var depthSort = function (a, b) {
@@ -295,15 +294,14 @@ define([
     return i;
   }
 
-  // 1. Rewrite the culling to accept the object list directly
-  // but use internal DOD-style math to keep the CPU pipeline full.
-  function batchScreenSpaceCulling(
+
+  // Filters out everything that's outside of screen
+  function screenSpaceCulling(
+    out_visibilityBuffer,
     gameObjects,
-    count,
     worldToScreen,
     vw,
     vh,
-    visibleBuffer, // We pass the target buffer in to avoid re-allocation
   ) {
     const b0 = worldToScreen[0],
       b1 = worldToScreen[1],
@@ -312,59 +310,70 @@ define([
       b8 = worldToScreen[8],
       b9 = worldToScreen[9],
       b12 = worldToScreen[12],
-      b13 = worldToScreen[13];
+      b13 = worldToScreen[13],
+      count = gameObjects.length;
 
     let visibleCount = 0;
 
     for (let i = 0; i < count; i++) {
-      const renderer = gameObjects[i].meshRenderer;
-      if (!renderer || !renderer.enabled) continue;
-
-      const transform = gameObjects[i].transform;
+      const go = gameObjects[i];
+      const transform = go.transform;
       // Direct access to the internal Float32Array without copying
       const a = transform.dirtyL
         ? transform.getLocalToWorld()
         : transform.localToWorld;
-      const bounds = renderer.bounds;
 
-      // --- DOD INLINE MATH ---
-      const m0 = b0 * a[0] + b4 * a[1] + b8 * a[2] + b12 * a[3];
-      const m4 = b0 * a[4] + b4 * a[5] + b8 * a[6] + b12 * a[7];
-      const m8 = b0 * a[8] + b4 * a[9] + b8 * a[10] + b12 * a[11];
       const m12 = b0 * a[12] + b4 * a[13] + b8 * a[14] + b12 * a[15];
-
-      const m1 = b1 * a[0] + b5 * a[1] + b9 * a[2] + b13 * a[3];
-      const m5 = b1 * a[4] + b5 * a[5] + b9 * a[6] + b13 * a[7];
-      const m9 = b1 * a[8] + b5 * a[9] + b9 * a[10] + b13 * a[11];
       const m13 = b1 * a[12] + b5 * a[13] + b9 * a[14] + b13 * a[15];
 
-      // Project first corner
-      const bx = bounds[0],
-        by = bounds[1],
-        bz = bounds[2];
-      let sMinX = m0 * bx + m4 * by + m8 * bz + m12;
-      let sMaxX = sMinX;
-      let sMinY = m1 * bx + m5 * by + m9 * bz + m13;
-      let sMaxY = sMinY;
+      // 3. Logic-Only / Empty Object Check
+      // If there is no renderer or no bounds, just check the center point
+      const renderer = go.meshRenderer;
+      if (renderer && renderer.enabled && renderer.bounds) {
+        const bounds = renderer.bounds;
 
-      // Project remaining 7 corners - SIMD/Vectorization target
-      for (let j = 3; j < 24; j += 3) {
-        const px = bounds[j],
-          py = bounds[j + 1],
-          pz = bounds[j + 2];
-        const vx = m0 * px + m4 * py + m8 * pz + m12;
-        const vy = m1 * px + m5 * py + m9 * pz + m13;
+        // inline vec3transform
+        const m0 = b0 * a[0] + b4 * a[1] + b8 * a[2] + b12 * a[3];
+        const m4 = b0 * a[4] + b4 * a[5] + b8 * a[6] + b12 * a[7];
+        const m8 = b0 * a[8] + b4 * a[9] + b8 * a[10] + b12 * a[11];
 
-        sMinX = Math.min(sMinX, vx);
-        sMaxX = Math.max(sMaxX, vx);
-        sMinY = Math.min(sMinY, vy);
-        sMaxY = Math.max(sMaxY, vy);
-      }
+        const m1 = b1 * a[0] + b5 * a[1] + b9 * a[2] + b13 * a[3];
+        const m5 = b1 * a[4] + b5 * a[5] + b9 * a[6] + b13 * a[7];
+        const m9 = b1 * a[8] + b5 * a[9] + b9 * a[10] + b13 * a[11];
 
-      if (sMaxX >= 0 && sMinX <= vw && sMaxY >= 0 && sMinY <= vh) {
-        visibleBuffer[visibleCount++] = renderer;
+        // Project first corner
+        const bx = bounds[0],
+          by = bounds[1],
+          bz = bounds[2];
+        let sMinX = m0 * bx + m4 * by + m8 * bz + m12;
+        let sMaxX = sMinX;
+        let sMinY = m1 * bx + m5 * by + m9 * bz + m13;
+        let sMaxY = sMinY;
+
+        // Project remaining 7 corners - SIMD/Vectorization target
+        for (let j = 3; j < 24; j += 3) {
+          const px = bounds[j],
+            py = bounds[j + 1],
+            pz = bounds[j + 2];
+          const vx = m0 * px + m4 * py + m8 * pz + m12;
+          const vy = m1 * px + m5 * py + m9 * pz + m13;
+
+          sMinX = Math.min(sMinX, vx);
+          sMaxX = Math.max(sMaxX, vx);
+          sMinY = Math.min(sMinY, vy);
+          sMaxY = Math.max(sMaxY, vy);
+        }
+
+        if (sMaxX >= 0 && sMinX <= vw && sMaxY >= 0 && sMinY <= vh) {
+          out_visibilityBuffer[visibleCount++] = i;
+        }
+      } else {
+        if (m12 >= 0 && m12 <= vw && m13 >= 0 && m13 <= vh) {
+          out_visibilityBuffer[visibleCount++] = i;
+        }
       }
     }
+
     return visibleCount;
   }
 
@@ -510,8 +519,6 @@ define([
     this.vec3Pool = vec3Cache1;
 
     var gameObjects = camera.scene.retrieve(camera),
-      gameObjectsCount = gameObjects.length,
-      gameObject,
       light = camera.scene.light,
       layersCount = config.layersCount,
       vw = viewport.width,
@@ -519,13 +526,10 @@ define([
       renderer,
       renderers,
       renderersCount,
-      localToWorld,
-      transform,
       i,
       j,
       l,
-      ctx,
-      layer;
+      ctx;
 
     var worldToScreenMatrix = viewport.getWorldToScreen();
     var cameraLocal = camera.transform.getWorldToLocal();
@@ -567,14 +571,18 @@ define([
       viewport.context.fillRect(0, 0, viewport.width, viewport.height);
     }
 
-    // 2. In your render function, replace the entire "Filter" block with this:
-    visibleObjectsBufferLen = batchScreenSpaceCulling(
+    if (visibleObjectsBuffer.length < gameObjects.length) {
+      const _visibleObjectsBuffer = visibleObjectsBuffer;
+      visibleObjectsBuffer = new Uint32Array(gameObjects.length);
+      visibleObjectsBuffer.set(_visibleObjectsBuffer);
+    }
+
+    const visibleObjectsBufferLen = screenSpaceCulling(
+      visibleObjectsBuffer,
       gameObjects,
-      gameObjectsCount,
       worldToScreenMatrix,
       vw,
       vh,
-      visibleObjectsBuffer,
     );
 
     // move outside render
@@ -589,9 +597,12 @@ define([
     }
     // group visible object to layer buffers
     for (i = 0; i < visibleObjectsBufferLen; i++) {
-      renderer = visibleObjectsBuffer[i];
-      layer = renderer.layer;
-      layerBuffers[layer][layerBufferLengths[layer]++] = renderer;
+      const go = gameObjects[visibleObjectsBuffer[i]];
+      if (go.meshRenderer){
+        const renderer = go.meshRenderer;
+        const layer = renderer.layer;
+        layerBuffers[layer][layerBufferLengths[layer]++] = renderer;
+      }
     }
 
     // render layer one-by-one
@@ -722,7 +733,6 @@ define([
     }
 
     this.visibleObjects = visibleObjectsBufferLen;
-    visibleObjectsBufferLen = 0;
 
     stats.dt = Date.now() - t0;
   };
