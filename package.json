@@ -1,0 +1,21 @@
+{
+  "name": "scalia",
+  "version": "0.0.1",
+  "description": "This is little game engine I created to make isometric simcity/transport tycoon/rollercoaster tycoon style game.",
+  "main": "main.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://git.narushevi.ch/denis/scalia"
+  },
+  "author": "Denis Narushevich",
+  "license": "ISC",
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  }
+}
