@@ -1,4 +1,4 @@
-define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./components/SpriteRenderer", "./components/TextRenderer", "./components/MeshComponent", "./components/CameraComponent", "./math"], function (config, glMatrix, PathRenderer, SpriteRenderer, TextRenderer, MeshComponent, CameraComponent, math) {
+define(["./config", "./components/PathRenderer", "./components/SpriteRenderer", "./components/TextRenderer", "./components/MeshComponent", "./components/CameraComponent", "./math"], function (config, PathRenderer, SpriteRenderer, TextRenderer, MeshComponent, CameraComponent, math) {
     function createPalette16Bit() {
         var palette = new Array(65536);
         for (let i = 0; i < 65536; i++) {
@@ -20,8 +20,9 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
     }
     const PALETTE_16BIT = createPalette16Bit();
 
-    var mat4Mul = glMatrix.mat4.multiply;
-    var vec3TransformMat4 = glMatrix.vec3.transformMat4;
+    var vec3TransformMat4to2D = math.vec3TransformMat4to2D;
+    var vec3TransformMat4 = math.vec3TransformMat4;
+    var mat4Mul = math.mat4Mul;
     var visibleObjectsBuffer = [];
     var visibleObjectsBufferLen = [];
     var layerBuffers = [];
@@ -67,8 +68,8 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
         // transform all vertices at once and put them in temporary buffer
         for(var l = 0; l < verts.length; l+=3){
-            math.vec3TransformMat4to2D(vec3Cache1, l, verts[l], verts[l+1], verts[l+2], mat4Buffer1);
-            math.vec3TransformMat4(vec3Cache2, l, verts[l], verts[l+1], verts[l+2], bufferMat4);
+            vec3TransformMat4to2D(vec3Cache1, l, verts[l], verts[l+1], verts[l+2], mat4Buffer1);
+            vec3TransformMat4(vec3Cache2, l, verts[l], verts[l+1], verts[l+2], bufferMat4);
         }
 
         for (let f = 0; f < faces.length; f+=3) {
@@ -339,7 +340,7 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
         // 2. Project the Origin to Screen Space
         // We project the world position, NOT (0,0,0)
-        math.vec3TransformMat4to2D(vec3Cache1, 0, worldPosX, worldPosY, worldPosZ, worldToScreenMatrix);
+        vec3TransformMat4to2D(vec3Cache1, 0, worldPosX, worldPosY, worldPosZ, worldToScreenMatrix);
         var ox = vec3Cache1[0], oy = vec3Cache1[1];
 
         var gizmoSize = 50;
@@ -369,7 +370,7 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
             // 4. Project the Tip
             // Tip Position = World Position + (Normalized Direction * Size)
-            math.vec3TransformMat4to2D(
+            vec3TransformMat4to2D(
                 vec3Cache1, 0,
                 worldPosX + nx * gizmoSize,
                 worldPosY + ny * gizmoSize,
