@@ -295,43 +295,52 @@ define([
     return i;
   }
 
-  function screenSpaceCulling(bounds, a, worldToScreenMatrix, vw, vh) {
-    // Inlining mat4Mul(bufferMat4, worldToScreenMatrix, a)
-    // Because only rows 0 and 1 are needed of the result for X and Y projection
-    var b = worldToScreenMatrix;
+  function screenSpaceCulling(
+    bounds,
+    localToWorld,
+    worldToScreenMatrix,
+    vw,
+    vh,
+  ) {
+    const a = localToWorld;
+    const b = worldToScreenMatrix;
 
-    // mat4Mul result Row 0 (for X)
-    var m0 = b[0] * a[0] + b[4] * a[1] + b[8] * a[2] + b[12] * a[3];
-    var m4 = b[0] * a[4] + b[4] * a[5] + b[8] * a[6] + b[12] * a[7];
-    var m8 = b[0] * a[8] + b[4] * a[9] + b[8] * a[10] + b[12] * a[11];
-    var m12 = b[0] * a[12] + b[4] * a[13] + b[8] * a[14] + b[12] * a[15];
+    // Cache matrix components to registers (locals)
+    // Row 0
+    const m0 = b[0] * a[0] + b[4] * a[1] + b[8] * a[2] + b[12] * a[3];
+    const m4 = b[0] * a[4] + b[4] * a[5] + b[8] * a[6] + b[12] * a[7];
+    const m8 = b[0] * a[8] + b[4] * a[9] + b[8] * a[10] + b[12] * a[11];
+    const m12 = b[0] * a[12] + b[4] * a[13] + b[8] * a[14] + b[12] * a[15];
 
-    // mat4Mul result Row 1 (for Y)
-    var m1 = b[1] * a[0] + b[5] * a[1] + b[9] * a[2] + b[13] * a[3];
-    var m5 = b[1] * a[4] + b[5] * a[5] + b[9] * a[6] + b[13] * a[7];
-    var m9 = b[1] * a[8] + b[5] * a[9] + b[9] * a[10] + b[13] * a[11];
-    var m13 = b[1] * a[12] + b[5] * a[13] + b[9] * a[14] + b[13] * a[15];
+    // Row 1
+    const m1 = b[1] * a[0] + b[5] * a[1] + b[9] * a[2] + b[13] * a[3];
+    const m5 = b[1] * a[4] + b[5] * a[5] + b[9] * a[6] + b[13] * a[7];
+    const m9 = b[1] * a[8] + b[5] * a[9] + b[9] * a[10] + b[13] * a[11];
+    const m13 = b[1] * a[12] + b[5] * a[13] + b[9] * a[14] + b[13] * a[15];
 
-    // Inline vec3TransformMat4 to project first bounding box corner
-    var sMinX = m0 * bounds[0] + m4 * bounds[1] + m8 * bounds[2] + m12;
-    var sMaxX = sMinX;
-    var sMinY = m1 * bounds[0] + m5 * bounds[1] + m9 * bounds[2] + m13;
-    var sMaxY = sMinY;
+    // Initial projection
+    const b0 = bounds[0],
+      b1 = bounds[1],
+      b2 = bounds[2];
+    let sMinX = m0 * b0 + m4 * b1 + m8 * b2 + m12;
+    let sMaxX = sMinX;
+    let sMinY = m1 * b0 + m5 * b1 + m9 * b2 + m13;
+    let sMaxY = sMinY;
 
     // Project remaining 7 corners
-    for (var i = 3; i < 24; i += 3) {
-      var px = bounds[i],
-        py = bounds[i + 1],
-        pz = bounds[i + 2];
+    for (let i = 3; i < 24; i += 3) {
+      const px = bounds[i];
+      const py = bounds[i + 1];
+      const pz = bounds[i + 2];
 
-      // inline vec3TransformMat4
-      var vx = m0 * px + m4 * py + m8 * pz + m12;
-      var vy = m1 * px + m5 * py + m9 * pz + m13;
+      const vx = m0 * px + m4 * py + m8 * pz + m12;
+      const vy = m1 * px + m5 * py + m9 * pz + m13;
 
-      if (vx < sMinX) sMinX = vx;
-      else if (vx > sMaxX) sMaxX = vx;
-      if (vy < sMinY) sMinY = vy;
-      else if (vy > sMaxY) sMaxY = vy;
+      // Math.min/max are translated to CPU instructions (MINSS/MAXSS), better than conditionals
+      sMinX = Math.min(sMinX, vx);
+      sMaxX = Math.max(sMaxX, vx);
+      sMinY = Math.min(sMinY, vy);
+      sMaxY = Math.max(sMaxY, vy);
     }
 
     // If object's on screen projected 2d bounds overlap with viewport
