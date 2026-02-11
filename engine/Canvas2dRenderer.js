@@ -295,56 +295,77 @@ define([
     return i;
   }
 
-  function screenSpaceCulling(
-    bounds,
-    localToWorld,
-    worldToScreenMatrix,
+  // 1. Rewrite the culling to accept the object list directly
+  // but use internal DOD-style math to keep the CPU pipeline full.
+  function batchScreenSpaceCulling(
+    gameObjects,
+    count,
+    worldToScreen,
     vw,
     vh,
+    visibleBuffer, // We pass the target buffer in to avoid re-allocation
   ) {
-    const a = localToWorld;
-    const b = worldToScreenMatrix;
+    const b0 = worldToScreen[0],
+      b1 = worldToScreen[1],
+      b4 = worldToScreen[4],
+      b5 = worldToScreen[5],
+      b8 = worldToScreen[8],
+      b9 = worldToScreen[9],
+      b12 = worldToScreen[12],
+      b13 = worldToScreen[13];
 
-    // Cache matrix components to registers (locals)
-    // Row 0
-    const m0 = b[0] * a[0] + b[4] * a[1] + b[8] * a[2] + b[12] * a[3];
-    const m4 = b[0] * a[4] + b[4] * a[5] + b[8] * a[6] + b[12] * a[7];
-    const m8 = b[0] * a[8] + b[4] * a[9] + b[8] * a[10] + b[12] * a[11];
-    const m12 = b[0] * a[12] + b[4] * a[13] + b[8] * a[14] + b[12] * a[15];
+    let visibleCount = 0;
 
-    // Row 1
-    const m1 = b[1] * a[0] + b[5] * a[1] + b[9] * a[2] + b[13] * a[3];
-    const m5 = b[1] * a[4] + b[5] * a[5] + b[9] * a[6] + b[13] * a[7];
-    const m9 = b[1] * a[8] + b[5] * a[9] + b[9] * a[10] + b[13] * a[11];
-    const m13 = b[1] * a[12] + b[5] * a[13] + b[9] * a[14] + b[13] * a[15];
+    for (let i = 0; i < count; i++) {
+      const renderer = gameObjects[i].meshRenderer;
+      if (!renderer || !renderer.enabled) continue;
 
-    // Initial projection
-    const b0 = bounds[0],
-      b1 = bounds[1],
-      b2 = bounds[2];
-    let sMinX = m0 * b0 + m4 * b1 + m8 * b2 + m12;
-    let sMaxX = sMinX;
-    let sMinY = m1 * b0 + m5 * b1 + m9 * b2 + m13;
-    let sMaxY = sMinY;
+      const transform = gameObjects[i].transform;
+      // Direct access to the internal Float32Array without copying
+      const a = transform.dirtyL
+        ? transform.getLocalToWorld()
+        : transform.localToWorld;
+      const bounds = renderer.bounds;
 
-    // Project remaining 7 corners
-    for (let i = 3; i < 24; i += 3) {
-      const px = bounds[i];
-      const py = bounds[i + 1];
-      const pz = bounds[i + 2];
+      // --- DOD INLINE MATH ---
+      const m0 = b0 * a[0] + b4 * a[1] + b8 * a[2] + b12 * a[3];
+      const m4 = b0 * a[4] + b4 * a[5] + b8 * a[6] + b12 * a[7];
+      const m8 = b0 * a[8] + b4 * a[9] + b8 * a[10] + b12 * a[11];
+      const m12 = b0 * a[12] + b4 * a[13] + b8 * a[14] + b12 * a[15];
 
-      const vx = m0 * px + m4 * py + m8 * pz + m12;
-      const vy = m1 * px + m5 * py + m9 * pz + m13;
+      const m1 = b1 * a[0] + b5 * a[1] + b9 * a[2] + b13 * a[3];
+      const m5 = b1 * a[4] + b5 * a[5] + b9 * a[6] + b13 * a[7];
+      const m9 = b1 * a[8] + b5 * a[9] + b9 * a[10] + b13 * a[11];
+      const m13 = b1 * a[12] + b5 * a[13] + b9 * a[14] + b13 * a[15];
 
-      // Math.min/max are translated to CPU instructions (MINSS/MAXSS), better than conditionals
-      sMinX = Math.min(sMinX, vx);
-      sMaxX = Math.max(sMaxX, vx);
-      sMinY = Math.min(sMinY, vy);
-      sMaxY = Math.max(sMaxY, vy);
+      // Project first corner
+      const bx = bounds[0],
+        by = bounds[1],
+        bz = bounds[2];
+      let sMinX = m0 * bx + m4 * by + m8 * bz + m12;
+      let sMaxX = sMinX;
+      let sMinY = m1 * bx + m5 * by + m9 * bz + m13;
+      let sMaxY = sMinY;
+
+      // Project remaining 7 corners - SIMD/Vectorization target
+      for (let j = 3; j < 24; j += 3) {
+        const px = bounds[j],
+          py = bounds[j + 1],
+          pz = bounds[j + 2];
+        const vx = m0 * px + m4 * py + m8 * pz + m12;
+        const vy = m1 * px + m5 * py + m9 * pz + m13;
+
+        sMinX = Math.min(sMinX, vx);
+        sMaxX = Math.max(sMaxX, vx);
+        sMinY = Math.min(sMinY, vy);
+        sMaxY = Math.max(sMaxY, vy);
+      }
+
+      if (sMaxX >= 0 && sMinX <= vw && sMaxY >= 0 && sMinY <= vh) {
+        visibleBuffer[visibleCount++] = renderer;
+      }
     }
-
-    // If object's on screen projected 2d bounds overlap with viewport
-    return sMaxX >= 0 && sMinX <= vw && sMaxY >= 0 && sMinY <= vh;
+    return visibleCount;
   }
 
   var batchCount = 0;
@@ -546,28 +567,15 @@ define([
       viewport.context.fillRect(0, 0, viewport.width, viewport.height);
     }
 
-    // filter out non-visible objects and put results into visibleObjectsBuffer
-    for (i = 0; i < gameObjectsCount; i++) {
-      gameObject = gameObjects[i];
-      renderer = gameObject.meshRenderer;
-      if (renderer !== undefined && renderer.enabled) {
-        transform = gameObject.transform;
-        localToWorld = transform.dirtyL
-          ? transform.getLocalToWorld()
-          : transform.localToWorld;
-        if (
-          screenSpaceCulling(
-            renderer.bounds,
-            localToWorld,
-            worldToScreenMatrix,
-            vw,
-            vh,
-          )
-        ) {
-          visibleObjectsBuffer[visibleObjectsBufferLen++] = renderer;
-        }
-      }
-    }
+    // 2. In your render function, replace the entire "Filter" block with this:
+    visibleObjectsBufferLen = batchScreenSpaceCulling(
+      gameObjects,
+      gameObjectsCount,
+      worldToScreenMatrix,
+      vw,
+      vh,
+      visibleObjectsBuffer,
+    );
 
     // move outside render
     // initialize layer buffers
