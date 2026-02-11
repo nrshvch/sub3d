@@ -49,7 +49,8 @@ define(["./config", "./components/PathRenderer", "./components/SpriteRenderer", 
 
     function meshToRenderCommands(i, camera, mesh, w, h, ViewportM, cameraLocal){
         const gameObject = mesh.gameObject;
-        var W = gameObject.transform.getLocalToWorld();
+        const transform = gameObject.transform;
+        var W = (transform.dirtyL) ? transform.getLocalToWorld() : transform.localToWorld;
 
         var faces = mesh.faces, verts = mesh.vertices, depth;
 
