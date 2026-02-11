@@ -16,9 +16,13 @@ require(["./engine/main"], function (scaliaEngine) {
                     var tree = new scaliaEngine.Cone();
                     tree.meshRenderer.color = new Uint8Array([0, 100, 0]);
                     tree.meshRenderer.layer = 1;
-                    tree.transform.translate((i - N / 2) * 45.255 + (Math.random()*24-12), 1, (j - N / 2) * 45.255 + (Math.random()*24-12));
+                    const offsetX = Math.random()*24-12;
+                    const offsetY = Math.random()*24-12;
                     const size = Math.random() / 2 + 0.5;
+                    const yRot = Math.random() * 50-25;
+                    tree.transform.translate((i - N / 2) * 45.255 + offsetX, 1, (j - N / 2) * 45.255 + offsetY);
                     tree.transform.scale(25 * size ,50 * size,25 * size);
+                    tree.transform.rotate(0,yRot, 0)
                     myGame.world.scene.addGameObject(tree);
                     // tree.debug = true;
                 }
@@ -53,18 +57,18 @@ require(["./engine/main"], function (scaliaEngine) {
         cameraObject.camera.fogColor = new Uint8Array([50,150,50]);
         cameraObject.camera.bgColor = new Uint8Array([50,150,50]);
         cameraObject.camera.ambientLight = 0.5;
-        cameraObject.transform.rotate(45,45,0);
+        cameraObject.transform.rotate(20,45,0);
         cameraObject.transform.translate(0,0,0);
 
     var dt = null;
         myGame.world.tickRegister({
             tick: (time)=>{
                 if(dt !== null) {
-                    var d = time.now - dt;
+                    var d = Date.now() - dt;
 
-                    cameraObject.transform.rotate(0, 0.1, 0, 'world');
-                    // cameraObject.transform.translate(0,0,-10);
+                    cameraObject.transform.rotate(0, d/1000, 0, 'world');
                 }
+
                 dt = time.now;
             }
         });
@@ -124,9 +128,9 @@ require(["./engine/main"], function (scaliaEngine) {
         myGame.world.tickRegister({
             tick: (time)=>{
                 if(dt !== null) {
-                    var d = time.now - dt;
+                    var d = Date.now(); - dt;
 
-                    sun.transform.rotate(0, 1, 0, 'world');
+                    sun.transform.rotate(0, 0.1, 0, 'world');
                 }
                 dt = time.now;
             }
