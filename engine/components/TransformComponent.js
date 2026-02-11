@@ -1,4 +1,6 @@
-define(["../Component", "../lib/gl-matrix"], function (Component, glMatrix) {
+define(["../Component", "../math", "../lib/gl-matrix"], function (Component, math, glMatrix) {
+    const mat4Mul = math.mat4Mul;
+
     /**
      * Create Transform component.
      * Every component has a game object.
@@ -126,7 +128,7 @@ define(["../Component", "../lib/gl-matrix"], function (Component, glMatrix) {
         if (relativeTo === "world") {
             glMatrix.mat4.identity(bufferMat4);
             glMatrix.mat4.translate(bufferMat4, bufferMat4, bufferVec3);
-            glMatrix.mat4.multiply(this.local, bufferMat4, this.local);
+            mat4Mul(this.local, bufferMat4, this.local);
         } else
             glMatrix.mat4.translate(this.local, this.local, bufferVec3);
 
@@ -147,7 +149,7 @@ define(["../Component", "../lib/gl-matrix"], function (Component, glMatrix) {
             mat4.rotateY(bufferMat4, bufferMat4, y * degreeToRad);
             mat4.rotateX(bufferMat4, bufferMat4, x * degreeToRad);
 
-            mat4.multiply(this.local, bufferMat4, this.local);
+            mat4Mul(this.local, bufferMat4, this.local);
         } else {
             mat4.rotateZ(this.local, this.local, z * degreeToRad);
             mat4.rotateY(this.local, this.local, y * degreeToRad);
@@ -163,9 +165,9 @@ define(["../Component", "../lib/gl-matrix"], function (Component, glMatrix) {
     p.getLocalToWorld = function () {
         if (this.dirtyL === true) {
             if (this.parent === null) {
-                glMatrix.mat4.copy(this.localToWorld, this.local);
+                this.localToWorld.set(this.local)
             } else {
-                glMatrix.mat4.multiply(this.localToWorld, this.parent.getLocalToWorld(), this.local)
+                mat4Mul(this.localToWorld, this.parent.getLocalToWorld(), this.local)
             }
             this.dirtyL = false;
         }
