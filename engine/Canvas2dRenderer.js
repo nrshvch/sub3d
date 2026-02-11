@@ -37,7 +37,10 @@ define(["./config", "./lib/gl-matrix", "./components/PathRenderer", "./component
 
     var depthBuffer = new Float32Array(0);
     var indexBuffer = new Uint32Array(0);
-    var geometryBuffer = new Uint32Array(0);
+    // Geometry buffer stores the 2D screen coordinates of vertices, 
+    // when face is partially on the screen, some of vertices may be negative, 
+    // so Int16Array is used, allowing -32768 to 32767 values.
+    var geometryBuffer = new Int16Array(0); 
     var colorBuffer = new Uint16Array(0);
     var typeBuffer = new Uint8Array(0);
 
