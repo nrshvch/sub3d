@@ -1,7 +1,7 @@
 require(["./engine/main"], function (scaliaEngine) {
   var myGame = new scaliaEngine.Game();
 
-  var N = 50;
+  var N = 200;
 
   for (var i = 0; i < N; i++) {
     for (var j = 0; j < N; j++) {
@@ -11,7 +11,7 @@ require(["./engine/main"], function (scaliaEngine) {
         Math.random() * 55 + 200,
         0,
       ]);
-      plane.meshRenderer.layer = 1;
+      plane.meshRenderer.layer = 0;
       plane.transform.translate((i - N / 2) * 45.255, 0, (j - N / 2) * 45.255);
       plane.transform.scale(45.255, 1, 45.255);
       myGame.world.scene.addGameObject(plane);
@@ -47,13 +47,13 @@ require(["./engine/main"], function (scaliaEngine) {
   // box.transform.rotate(35.264, 0, 0, 'world');
   // box.debug = true;
 
-  const ball = new scaliaEngine.Ball();
-  ball.transform.scale(100,100,100);
-  ball.meshRenderer.color = new Uint8Array([0,0,255]);
-  ball.meshRenderer.layer = 1;
-  myGame.world.scene.addGameObject(ball);
-  myGame.world.tickRegister(ball);
-  ball.debug = true;
+  // const ball = new scaliaEngine.Ball();
+  // ball.transform.scale(100,100,100);
+  // ball.meshRenderer.color = new Uint8Array([0,0,255]);
+  // ball.meshRenderer.layer = 1;
+  // myGame.world.scene.addGameObject(ball);
+  // myGame.world.tickRegister(ball);
+  // ball.debug = true;
 
   var cameraObject = (window.camera = new scaliaEngine.Camera());
   cameraObject.camera.farClippingPane = 2000;

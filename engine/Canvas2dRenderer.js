@@ -15,6 +15,10 @@ define([
   CameraComponent,
   math,
 ) {
+  var vec3TransformMat4to2D = math.vec3TransformMat4to2D;
+  var vec3TransformMat4 = math.vec3TransformMat4;
+  var mat4Mul = math.mat4Mul;
+
   function createPalette16Bit() {
     const palette = new Array(65536);
     for (let i = 0; i < 65536; i++) {
@@ -35,9 +39,87 @@ define([
     return palette;
   }
 
+  const PALETTE_16BIT = createPalette16Bit();
+
+  function roughCulling(out_visibleBuffer, gameObjects, worldToScreen, vw, vh) {
+    const b0 = worldToScreen[0],
+      b1 = worldToScreen[1],
+      b4 = worldToScreen[4],
+      b5 = worldToScreen[5],
+      b8 = worldToScreen[8],
+      b9 = worldToScreen[9],
+      b12 = worldToScreen[12],
+      b13 = worldToScreen[13];
+
+    let visibleCount = 0;
+    const count = gameObjects.length;
+
+    for (let i = 0; i < count; i++) {
+      const go = gameObjects[i];
+      const renderer = go.meshRenderer;
+
+      if (!renderer || !renderer.enabled) continue;
+
+      const transform = go.transform;
+      const a = transform.dirtyL
+        ? transform.getLocalToWorld()
+        : transform.localToWorld;
+
+      // 1. Combined Matrix Row Calculation (Model -> Screen)
+      // We only compute the X and Y projection rows (Rows 0 and 1)
+      const m0 = b0 * a[0] + b4 * a[1] + b8 * a[2],
+        m4 = b0 * a[4] + b4 * a[5] + b8 * a[6],
+        m8 = b0 * a[8] + b4 * a[9] + b8 * a[10],
+        m12 = b0 * a[12] + b4 * a[13] + b8 * a[14] + b12;
+
+      const m1 = b1 * a[0] + b5 * a[1] + b9 * a[2],
+        m5 = b1 * a[4] + b5 * a[5] + b9 * a[6],
+        m9 = b1 * a[8] + b5 * a[9] + b9 * a[10],
+        m13 = b1 * a[12] + b5 * a[13] + b9 * a[14] + b13;
+
+      // 2. Extract Center and calculate Screen Position
+      const bounds = renderer.bounds;
+      const cx = bounds[28],
+        cy = bounds[29],
+        cz = bounds[30];
+
+      const sx = m0 * cx + m4 * cy + m8 * cz + m12;
+      const sy = m1 * cx + m5 * cy + m9 * cz + m13;
+
+      // 3. Radius handling without Math.sqrt
+      // We calculate the squared radius in screen space.
+      // We find the max squared scale of the combined basis vectors.
+      const rModel = bounds[31];
+      const sX = m0 * m0 + m1 * m1;
+      const sY = m4 * m4 + m5 * m5;
+      const sZ = m8 * m8 + m9 * m9;
+      // Screen-space radius squared
+      const r2 =
+        rModel * rModel * (sX > sY ? (sX > sZ ? sX : sZ) : sY > sZ ? sY : sZ);
+
+      // 4. Robust Circle-AABB Intersection (No sqrt)
+      // Find the closest point on the screen-rect to the sphere center
+      let dx = 0;
+      if (sx < 0) dx = sx;
+      else if (sx > vw) dx = sx - vw;
+
+      let dy = 0;
+      if (sy < 0) dy = sy;
+      else if (sy > vh) dy = sy - vh;
+
+      // If squared distance to the screen rect is <= squared radius, it's visible
+      if (dx * dx + dy * dy <= r2) {
+        out_visibleBuffer[visibleCount++] = i;
+      }
+    }
+
+    return visibleCount;
+  }
+
   // Filters out everything that's outside of screen
-  function screenSpaceCulling(
+  function preciseCulling(
     out_visibilityBuffer,
+    firstPassVisibleObjectsBufferLen,
     gameObjects,
     worldToScreen,
     vw,
@@ -50,13 +132,12 @@ define([
       b8 = worldToScreen[8],
       b9 = worldToScreen[9],
       b12 = worldToScreen[12],
-      b13 = worldToScreen[13],
-      count = gameObjects.length;
+      b13 = worldToScreen[13];
 
     let visibleCount = 0;
 
-    for (let i = 0; i < count; i++) {
-      const go = gameObjects[i];
+    for (let i = 0; i < firstPassVisibleObjectsBufferLen; i++) {
+      const go = gameObjects[out_visibilityBuffer[i]];
       const transform = go.transform;
       // Direct access to the internal Float32Array without copying
       const a = transform.dirtyL
@@ -105,11 +186,11 @@ define([
         }
 
         if (sMaxX >= 0 && sMinX <= vw && sMaxY >= 0 && sMinY <= vh) {
-          out_visibilityBuffer[visibleCount++] = i;
+          out_visibilityBuffer[visibleCount++] = out_visibilityBuffer[i];
         }
       } else {
         if (m12 >= 0 && m12 <= vw && m13 >= 0 && m13 <= vh) {
-          out_visibilityBuffer[visibleCount++] = i;
+          out_visibilityBuffer[visibleCount++] = out_visibilityBuffer[i];
         }
       }
     }
@@ -383,33 +464,7 @@ define([
     return batchCount;
   }
 
-  const PALETTE_16BIT = createPalette16Bit();
-
-  var vec3TransformMat4to2D = math.vec3TransformMat4to2D;
-  var vec3TransformMat4 = math.vec3TransformMat4;
-  var mat4Mul = math.mat4Mul;
-  let visibleObjectsBuffer = new Uint32Array(100);
-  var layerBuffers = [];
-  var layerBufferLengths = new Uint32Array(1);
-  var depthSort = function (a, b) {
-    return depthBuffer[b] - depthBuffer[a];
-  };
-
-  var lightDirection = new Float32Array([0, 0, 0]);
-
-  var vec3Cache1 = new Float32Array([0, 0, 0]);
-  var vec3Cache2 = new Float32Array([0, 0, 0]);
-
-  var depthBuffer = new Float32Array(0);
-  var indexBuffer = new Uint32Array(0);
-  // Geometry buffer stores the 2D screen coordinates of vertices,
-  // when face is partially on the screen, some of vertices may be negative,
-  // so Int16Array is used, allowing -32768 to 32767 values.
-  var geometryBuffer = new Int16Array(0);
-  var colorBuffer = new Uint16Array(0);
-  var typeBuffer = new Uint8Array(0);
-
-  function renderAxis(gameObject, ctx, worldToScreenMatrix) {
+  function renderAxis(gameObject, ctx, worldToScreenMatrix, vec3Cache1) {
     var W = gameObject.transform.getLocalToWorld();
 
     // 1. Get the World Position of the object
@@ -483,11 +538,31 @@ define([
     for (var i = 0; i < config.layersCount; i++) this.layerBuffers[i] = [];
     this.M = [];
 
-    this.vec3Pool = vec3Cache1;
     this.drawCalls = 0;
     this.faces = 0;
 
     this.batchBuffer = new Int32Array(1024 * 3);
+
+    this.lightDirection = new Float32Array([0, 0, 0]);
+
+    this.vec3Cache1 = new Float32Array([0, 0, 0]);
+    this.vec3Cache2 = new Float32Array([0, 0, 0]);
+
+    this.depthBuffer = new Float32Array(0);
+    this.indexBuffer = new Uint32Array(0);
+    // Geometry buffer stores the 2D screen coordinates of vertices,
+    // when face is partially on the screen, some of vertices may be negative,
+    // so Int16Array is used, allowing -32768 to 32767 values.
+    this.geometryBuffer = new Int16Array(0);
+    this.colorBuffer = new Uint16Array(0);
+    this.typeBuffer = new Uint8Array(0);
+
+    this.vec3TransformMat4to2D = math.vec3TransformMat4to2D;
+    this.vec3TransformMat4 = math.vec3TransformMat4;
+    this.mat4Mul = math.mat4Mul;
+    this.visibleObjectsBuffer = new Uint32Array(100);
+    this.layerBuffers = [];
+    this.layerBufferLengths = new Uint32Array(1);
   }
 
   var p = Canvas2dRenderer.prototype,
@@ -498,7 +573,7 @@ define([
   p.render = function (camera, viewport, stats) {
     let t0 = Date.now();
 
-    this.vec3Pool = vec3Cache1;
+    this.vec3Pool = this.vec3Cache1;
 
     var gameObjects = camera.scene.retrieve(camera),
       light = camera.scene.light,
@@ -510,8 +585,18 @@ define([
       renderersCount,
       i,
       j,
-      l,
-      ctx;
+      ctx,
+      lightDirection = this.lightDirection,
+      vec3Cache1 = this.vec3Cache1,
+      vec3Cache2 = this.vec3Cache2,
+      depthBuffer = this.depthBuffer,
+      indexBuffer = this.indexBuffer,
+      geometryBuffer = this.geometryBuffer,
+      colorBuffer = this.colorBuffer,
+      typeBuffer = this.typeBuffer,
+      visibleObjectsBuffer = this.visibleObjectsBuffer,
+      layerBuffers = this.layerBuffers,
+      layerBufferLengths = this.layerBufferLengths;
 
     var worldToScreenMatrix = viewport.getWorldToScreen();
     var cameraLocal = camera.transform.getWorldToLocal();
@@ -559,8 +644,17 @@ define([
       visibleObjectsBuffer.set(_visibleObjectsBuffer);
     }
 
-    const visibleObjectsBufferLen = screenSpaceCulling(
+    const firstPassVisibleObjectsBufferLen = roughCulling(
       visibleObjectsBuffer,
+      gameObjects,
+      worldToScreenMatrix,
+      vw,
+      vh,
+    );
+
+    const visibleObjectsBufferLen = preciseCulling(
+      visibleObjectsBuffer,
+      firstPassVisibleObjectsBufferLen,
       gameObjects,
       worldToScreenMatrix,
       vw,
@@ -659,7 +753,9 @@ define([
 
       // renderers.length = 0;
       if ((config.depthSortingMask & (i + 1)) === i + 1) {
-        indexBuffer.subarray(0, l).sort(depthSort);
+        indexBuffer.subarray(0, l).sort(function (a, b) {
+          return depthBuffer[b] - depthBuffer[a];
+        });
       }
 
       let batchBuffer = this.batchBuffer;
@@ -748,7 +844,12 @@ define([
           renderer = renderers[j];
           // Only draw axes for objects with a transform (usually MeshComponents)
           if (renderer.gameObject && renderer.gameObject.debug) {
-            renderAxis(renderer.gameObject, ctx, worldToScreenMatrix);
+            renderAxis(
+              renderer.gameObject,
+              ctx,
+              worldToScreenMatrix,
+              vec3Cache1,
+            );
           }
         }
       }
