@@ -163,7 +163,6 @@ require(["./engine/main"], function (scaliaEngine) {
   var drawCallsEl = document.getElementById("drawCalls");
   var objectsEl = document.getElementById("objects");
   var visibleObjectsEl = document.getElementById("visibleObjects");
-  var vec3PoolSizeEl = document.getElementById("vec3PoolSize");
   var facesCountEl = document.getElementById("facesCount");
 
   const debugBtn = document.getElementById("debug-btn");
@@ -184,10 +183,9 @@ require(["./engine/main"], function (scaliaEngine) {
     maxFps = Math.max(maxFps, fps);
     fpsEl.innerText = fps;
     maxFpsEl.innerText = maxFps;
-    drawCallsEl.innerText = renderer.drawCalls;
+    drawCallsEl.innerText = viewport.lastRenderStats.drawCalls;
     objectsEl.innerText = myGame.world.scene.gameObjects.length;
-    visibleObjectsEl.innerText = renderer.visibleObjects;
-    vec3PoolSizeEl.innerText = renderer.vec3Pool.length;
-    facesCountEl.innerText = renderer.faces;
+    visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
+    facesCountEl.innerText = viewport.lastRenderStats.faces;
   }, 100);
 });
