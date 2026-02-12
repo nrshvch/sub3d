@@ -46,7 +46,7 @@ define(["../GameObject", "../components/MeshComponent"], function (
   const planeMesh = generatePlaneMesh(1, 1, 1);
 
   var bounds = MeshComponent.computeBoundsFlatArray(
-    new Float32Array(24),
+    new Float32Array(32),
     planeMesh.vertices,
   );
 
