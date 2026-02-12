@@ -16,7 +16,7 @@ define([
   math,
 ) {
   function createPalette16Bit() {
-    var palette = new Array(65536);
+    const palette = new Array(65536);
     for (let i = 0; i < 65536; i++) {
       // Extract the 5-6-5 bits
       // RRRRR GGGGGG BBBBB
@@ -34,266 +34,6 @@ define([
     }
     return palette;
   }
-  const PALETTE_16BIT = createPalette16Bit();
-
-  var vec3TransformMat4to2D = math.vec3TransformMat4to2D;
-  var vec3TransformMat4 = math.vec3TransformMat4;
-  var mat4Mul = math.mat4Mul;
-  let visibleObjectsBuffer = new Uint32Array(100);
-  var layerBuffers = [];
-  var layerBufferLengths = new Uint32Array(1);
-  var depthSort = function (a, b) {
-    return depthBuffer[b] - depthBuffer[a];
-  };
-
-  var lightDirection = new Float32Array([0, 0, 0]);
-
-  var vec3Cache1 = new Float32Array([0, 0, 0]);
-  var vec3Cache2 = new Float32Array([0, 0, 0]);
-
-  var depthBuffer = new Float32Array(0);
-  var indexBuffer = new Uint32Array(0);
-  // Geometry buffer stores the 2D screen coordinates of vertices,
-  // when face is partially on the screen, some of vertices may be negative,
-  // so Int16Array is used, allowing -32768 to 32767 values.
-  var geometryBuffer = new Int16Array(0);
-  var colorBuffer = new Uint16Array(0);
-  var typeBuffer = new Uint8Array(0);
-
-  var t0 = undefined;
-
-  function meshToRenderCommands(i, camera, mesh, w, h, ViewportM, cameraLocal) {
-    const gameObject = mesh.gameObject;
-    const transform = gameObject.transform;
-    var W = transform.dirtyL
-      ? transform.getLocalToWorld()
-      : transform.localToWorld;
-
-    var faces = mesh.faces,
-      verts = mesh.vertices,
-      depth;
-
-    mat4Mul(bufferMat4, cameraLocal, W);
-    mat4Mul(mat4Buffer1, ViewportM, W);
-
-    if (vec3Cache1.length < verts.length) {
-      var cache = new Float32Array(verts.length);
-      cache.set(vec3Cache1);
-      vec3Cache1 = cache;
-
-      cache = new Float32Array(verts.length);
-      cache.set(vec3Cache2);
-      vec3Cache2 = cache;
-    }
-
-    // transform all vertices at once and put them in temporary buffer
-    for (var l = 0; l < verts.length; l += 3) {
-      vec3TransformMat4to2D(
-        vec3Cache1,
-        l,
-        verts[l],
-        verts[l + 1],
-        verts[l + 2],
-        mat4Buffer1,
-      );
-      vec3TransformMat4(
-        vec3Cache2,
-        l,
-        verts[l],
-        verts[l + 1],
-        verts[l + 2],
-        bufferMat4,
-      );
-    }
-
-    for (let f = 0; f < faces.length; f += 3) {
-      var faceV0 = faces[f] * 3;
-      var faceV1 = faces[f + 1] * 3;
-      var faceV2 = faces[f + 2] * 3;
-
-      var v0x = vec3Cache1[faceV0];
-      var v0y = vec3Cache1[faceV0 + 1];
-
-      var v1x = vec3Cache1[faceV1];
-      var v1y = vec3Cache1[faceV1 + 1];
-
-      var v2x = vec3Cache1[faceV2];
-      var v2y = vec3Cache1[faceV2 + 1];
-
-      // calculates the "winding" of the triangle in 2D.
-      const area = (v1x - v0x) * (v2y - v0y) - (v1y - v0y) * (v2x - v0x);
-
-      // Skip if the triangle is wound counter-clockwise (facing away)
-      if (area < 0) continue;
-
-      // screenspace culling
-      // 1. Calculate the bounding box of the triangle (AABB)
-      var minX = v0x < v1x ? (v0x < v2x ? v0x : v2x) : v1x < v2x ? v1x : v2x;
-      var maxX = v0x > v1x ? (v0x > v2x ? v0x : v2x) : v1x > v2x ? v1x : v2x;
-      var minY = v0y < v1y ? (v0y < v2y ? v0y : v2y) : v1y < v2y ? v1y : v2y;
-      var maxY = v0y > v1y ? (v0y > v2y ? v0y : v2y) : v1y > v2y ? v1y : v2y;
-
-      // 2. Intersection check: Screen AABB vs Triangle AABB
-      // This ensures triangles larger than the screen stay visible.
-      if (maxX >= 0 && minX <= w && maxY >= 0 && minY <= h) {
-        var w0z = vec3Cache2[faceV0 + 2];
-        var w1z = vec3Cache2[faceV1 + 2];
-        var w2z = vec3Cache2[faceV2 + 2];
-        var cam = camera.camera;
-
-        depth = (w0z + w1z + w2z) * 0.33333;
-
-        if (depth >= cam.nearClippingPane && depth <= cam.farClippingPane) {
-          var w0x = vec3Cache2[faceV0];
-          var w0y = vec3Cache2[faceV0 + 1];
-          var w1x = vec3Cache2[faceV1];
-          var w1y = vec3Cache2[faceV1 + 1];
-          var w2x = vec3Cache2[faceV2];
-          var w2y = vec3Cache2[faceV2 + 1];
-
-          // --- LIGHTING CALCULATION ---
-          // 1. Calculate Normal (using world/camera-local positions)
-          var e1x = w1x - w0x,
-            e1y = w1y - w0y,
-            e1z = w1z - w0z;
-          var e2x = w2x - w0x,
-            e2y = w2y - w0y,
-            e2z = w2z - w0z;
-
-          var nx = e1y * e2z - e1z * e2y;
-          var ny = e1z * e2x - e1x * e2z;
-          var nz = e1x * e2y - e1y * e2x;
-
-          var nLen = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
-          nx *= nLen;
-          ny *= nLen;
-          nz *= nLen;
-
-          // 2. Light Intensity (Dot product + Ambient)
-          var dot =
-            nx * -lightDirection[0] +
-            ny * -lightDirection[1] +
-            nz * -lightDirection[2];
-          var intensity = Math.max(camera.camera.ambientLight, dot);
-
-          // 3. Apply Intensity to RGB
-          var r = (mesh.color[0] * intensity) | 0;
-          var g = (mesh.color[1] * intensity) | 0;
-          var b = (mesh.color[2] * intensity) | 0;
-
-          //FOG
-
-          if (cam.fogType !== CameraComponent.FogType.NONE) {
-            var fogAmount = 0;
-            if (
-              cam.fogType === CameraComponent.FogType.RADIAL_FAST ||
-              cam.fogType === CameraComponent.FogType.RADIAL
-            ) {
-              // 1. Get the local camera-space coordinates from your cache
-              // We use the average of the 3 vertices for the face
-              var lx =
-                (vec3Cache2[faceV0] + vec3Cache2[faceV1] + vec3Cache2[faceV2]) *
-                0.33333;
-              var ly =
-                (vec3Cache2[faceV0 + 1] +
-                  vec3Cache2[faceV1 + 1] +
-                  vec3Cache2[faceV2 + 1]) *
-                0.33333;
-              var lz =
-                (vec3Cache2[faceV0 + 2] +
-                  vec3Cache2[faceV1 + 2] +
-                  vec3Cache2[faceV2 + 2]) *
-                0.33333;
-
-              if (cam.fogType === CameraComponent.FogType.RADIAL_FAST) {
-                // We need the squares of your panes for the comparison
-                const nearSq = cam.fogNearPane * cam.fogNearPane;
-                const farSq = cam.fogFarPane * cam.fogFarPane;
-                const invFogRangeSq = 1.0 / (farSq - nearSq);
-
-                // Calculate Squared Distance (No Math.sqrt!)
-                const distSq = lx * lx + ly * ly + lz * lz;
-
-                // Calculate fogAmount based on the squared distribution
-                fogAmount = (distSq - nearSq) * invFogRangeSq;
-              } else {
-                // 2. Calculate Radial Distance
-                // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
-                var distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
-
-                // 3. Calculate fogAmount using distance instead of depth
-                fogAmount =
-                  (distance - cam.fogNearPane) /
-                  (cam.fogFarPane - cam.fogNearPane);
-              }
-            } else if (cam.fogType === CameraComponent.FogType.LINEAR) {
-              fogAmount =
-                (depth - cam.fogNearPane) / (cam.fogFarPane - cam.fogNearPane);
-            }
-
-            if (fogAmount > 1) fogAmount = 1;
-
-            // Blend the mesh color with the fog color
-            if (fogAmount > 0) {
-              r = (r * (1 - fogAmount) + cam.fogColor[0] * fogAmount) | 0;
-              g = (g * (1 - fogAmount) + cam.fogColor[1] * fogAmount) | 0;
-              b = (b * (1 - fogAmount) + cam.fogColor[2] * fogAmount) | 0;
-            }
-          }
-
-          // 1. Quantize 8-bit color channels to 5-6-5 bits
-          const qr = r & 0xf8; // Keep 5 bits
-          const qg = g & 0xfc; // Keep 6 bits
-          const qb = b & 0xf8; // Keep 5 bits
-
-          // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-          const key = (qr << 8) | (qg << 3) | (qb >> 3);
-
-          // Extend buffers size if necessary
-          if (depthBuffer.length <= i) {
-            var newLen = (i + 1) * 2;
-
-            var newArr = new Float32Array(newLen);
-            newArr.set(depthBuffer);
-            depthBuffer = newArr;
-
-            newArr = new Uint32Array(newLen);
-            newArr.set(indexBuffer);
-            indexBuffer = newArr;
-
-            newArr = new Uint8Array(newLen);
-            newArr.set(typeBuffer);
-            typeBuffer = newArr;
-
-            newArr = new Uint16Array(newLen);
-            newArr.set(colorBuffer);
-            colorBuffer = newArr;
-
-            newArr = new Int16Array(newLen * 6);
-            newArr.set(geometryBuffer);
-            geometryBuffer = newArr;
-          }
-
-          indexBuffer[i] = i;
-          depthBuffer[i] = depth;
-          colorBuffer[i] = key;
-          typeBuffer[i] = 0; // 0 = FACE
-
-          geometryBuffer[i * 6] = v0x;
-          geometryBuffer[i * 6 + 1] = v0y;
-          geometryBuffer[i * 6 + 2] = v1x;
-          geometryBuffer[i * 6 + 3] = v1y;
-          geometryBuffer[i * 6 + 4] = v2x;
-          geometryBuffer[i * 6 + 5] = v2y;
-
-          i++;
-        }
-      }
-    }
-
-    return i;
-  }
-
 
   // Filters out everything that's outside of screen
   function screenSpaceCulling(
@@ -377,33 +117,252 @@ define([
     return visibleCount;
   }
 
-  var batchCount = 0;
+  function meshToRenderCommands(
+    renderers,
+    renderersCount,
+    vec3Cache1,
+    vec3Cache2,
+    indexBuffer,
+    depthBuffer,
+    colorBuffer,
+    typeBuffer,
+    geometryBuffer,
+    lightDirection,
+    camera,
+    w,
+    h,
+    ViewportM,
+    cameraLocal,
+  ) {
+    let i = 0;
+    for (let j = 0; j < renderersCount; j++) {
+      const mesh = renderers[j];
+      if (mesh.constructor === MeshComponent) {
+        const gameObject = mesh.gameObject;
+        const transform = gameObject.transform;
+        const W = transform.dirtyL
+          ? transform.getLocalToWorld()
+          : transform.localToWorld;
 
-  var batchBuffer = new Int32Array(1024 * 3); // Start with 1k batches
+        const faces = mesh.faces,
+          verts = mesh.vertices;
 
-  function generateBatches(activeIndices, count) {
-    batchCount = 0;
-    if (count === 0) return;
+        mat4Mul(bufferMat4, cameraLocal, W);
+        mat4Mul(mat4Buffer1, ViewportM, W);
 
-    var firstIdx = activeIndices[0];
-    var currentStart = 0;
-    var lastColorKey = colorBuffer[firstIdx];
-    var lastType = typeBuffer[firstIdx];
-
-    for (var i = 1; i < count; i++) {
-      var index = activeIndices[i];
-      var colorKey = colorBuffer[index];
-      var type = typeBuffer[index];
-
-      if (colorKey !== lastColorKey || type !== lastType) {
-        // --- RESIZE CHECK ---
-        if ((batchCount + 1) * 3 >= batchBuffer.length) {
-          var newBatchBuffer = new Int32Array(batchBuffer.length * 2);
-          newBatchBuffer.set(batchBuffer);
-          batchBuffer = newBatchBuffer;
+        // transform all vertices at once and put them in temporary buffer
+        for (let l = 0; l < verts.length; l += 3) {
+          vec3TransformMat4to2D(
+            vec3Cache1,
+            l,
+            verts[l],
+            verts[l + 1],
+            verts[l + 2],
+            mat4Buffer1,
+          );
+          vec3TransformMat4(
+            vec3Cache2,
+            l,
+            verts[l],
+            verts[l + 1],
+            verts[l + 2],
+            bufferMat4,
+          );
         }
 
-        var bIdx = batchCount * 3;
+        for (let f = 0; f < faces.length; f += 3) {
+          const faceV0 = faces[f] * 3;
+          const faceV1 = faces[f + 1] * 3;
+          const faceV2 = faces[f + 2] * 3;
+
+          const v0x = vec3Cache1[faceV0];
+          const v0y = vec3Cache1[faceV0 + 1];
+
+          const v1x = vec3Cache1[faceV1];
+          const v1y = vec3Cache1[faceV1 + 1];
+
+          const v2x = vec3Cache1[faceV2];
+          const v2y = vec3Cache1[faceV2 + 1];
+
+          // calculates the "winding" of the triangle in 2D.
+          const area = (v1x - v0x) * (v2y - v0y) - (v1y - v0y) * (v2x - v0x);
+
+          // Skip if the triangle is wound counter-clockwise (facing away)
+          if (area < 0) continue;
+
+          // screenspace culling
+          // 1. Calculate the bounding box of the triangle (AABB)
+          const minX =
+            v0x < v1x ? (v0x < v2x ? v0x : v2x) : v1x < v2x ? v1x : v2x;
+          const maxX =
+            v0x > v1x ? (v0x > v2x ? v0x : v2x) : v1x > v2x ? v1x : v2x;
+          const minY =
+            v0y < v1y ? (v0y < v2y ? v0y : v2y) : v1y < v2y ? v1y : v2y;
+          const maxY =
+            v0y > v1y ? (v0y > v2y ? v0y : v2y) : v1y > v2y ? v1y : v2y;
+
+          // 2. Intersection check: Screen AABB vs Triangle AABB
+          // This ensures triangles larger than the screen stay visible.
+          if (maxX >= 0 && minX <= w && maxY >= 0 && minY <= h) {
+            const w0z = vec3Cache2[faceV0 + 2];
+            const w1z = vec3Cache2[faceV1 + 2];
+            const w2z = vec3Cache2[faceV2 + 2];
+            const cam = camera.camera;
+
+            const depth = (w0z + w1z + w2z) * 0.33333;
+
+            if (depth >= cam.nearClippingPane && depth <= cam.farClippingPane) {
+              const w0x = vec3Cache2[faceV0];
+              const w0y = vec3Cache2[faceV0 + 1];
+              const w1x = vec3Cache2[faceV1];
+              const w1y = vec3Cache2[faceV1 + 1];
+              const w2x = vec3Cache2[faceV2];
+              const w2y = vec3Cache2[faceV2 + 1];
+
+              // --- LIGHTING CALCULATION ---
+              // 1. Calculate Normal (using world/camera-local positions)
+              const e1x = w1x - w0x,
+                e1y = w1y - w0y,
+                e1z = w1z - w0z;
+              const e2x = w2x - w0x,
+                e2y = w2y - w0y,
+                e2z = w2z - w0z;
+
+              let nx = e1y * e2z - e1z * e2y;
+              let ny = e1z * e2x - e1x * e2z;
+              let nz = e1x * e2y - e1y * e2x;
+
+              const nLen = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+              nx *= nLen;
+              ny *= nLen;
+              nz *= nLen;
+
+              // 2. Light Intensity (Dot product + Ambient)
+              const dot =
+                nx * -lightDirection[0] +
+                ny * -lightDirection[1] +
+                nz * -lightDirection[2];
+              const intensity = Math.max(camera.camera.ambientLight, dot);
+
+              // 3. Apply Intensity to RGB
+              let r = (mesh.color[0] * intensity) | 0;
+              let g = (mesh.color[1] * intensity) | 0;
+              let b = (mesh.color[2] * intensity) | 0;
+
+              //FOG
+
+              if (cam.fogType !== CameraComponent.FogType.NONE) {
+                let fogAmount = 0;
+                if (
+                  cam.fogType === CameraComponent.FogType.RADIAL_FAST ||
+                  cam.fogType === CameraComponent.FogType.RADIAL
+                ) {
+                  // 1. Get the local camera-space coordinates from your cache
+                  // We use the average of the 3 vertices for the face
+                  const lx =
+                    (vec3Cache2[faceV0] +
+                      vec3Cache2[faceV1] +
+                      vec3Cache2[faceV2]) *
+                    0.33333;
+                  const ly =
+                    (vec3Cache2[faceV0 + 1] +
+                      vec3Cache2[faceV1 + 1] +
+                      vec3Cache2[faceV2 + 1]) *
+                    0.33333;
+                  const lz =
+                    (vec3Cache2[faceV0 + 2] +
+                      vec3Cache2[faceV1 + 2] +
+                      vec3Cache2[faceV2 + 2]) *
+                    0.33333;
+
+                  if (cam.fogType === CameraComponent.FogType.RADIAL_FAST) {
+                    // We need the squares of your panes for the comparison
+                    const nearSq = cam.fogNearPane * cam.fogNearPane;
+                    const farSq = cam.fogFarPane * cam.fogFarPane;
+                    const invFogRangeSq = 1.0 / (farSq - nearSq);
+
+                    // Calculate Squared Distance (No Math.sqrt!)
+                    const distSq = lx * lx + ly * ly + lz * lz;
+
+                    // Calculate fogAmount based on the squared distribution
+                    fogAmount = (distSq - nearSq) * invFogRangeSq;
+                  } else {
+                    // 2. Calculate Radial Distance
+                    // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
+                    const distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
+
+                    // 3. Calculate fogAmount using distance instead of depth
+                    fogAmount =
+                      (distance - cam.fogNearPane) /
+                      (cam.fogFarPane - cam.fogNearPane);
+                  }
+                } else if (cam.fogType === CameraComponent.FogType.LINEAR) {
+                  fogAmount =
+                    (depth - cam.fogNearPane) /
+                    (cam.fogFarPane - cam.fogNearPane);
+                }
+
+                if (fogAmount > 1) fogAmount = 1;
+
+                // Blend the mesh color with the fog color
+                if (fogAmount > 0) {
+                  r = (r * (1 - fogAmount) + cam.fogColor[0] * fogAmount) | 0;
+                  g = (g * (1 - fogAmount) + cam.fogColor[1] * fogAmount) | 0;
+                  b = (b * (1 - fogAmount) + cam.fogColor[2] * fogAmount) | 0;
+                }
+              }
+
+              // 1. Quantize 8-bit color channels to 5-6-5 bits
+              const qr = r & 0xf8; // Keep 5 bits
+              const qg = g & 0xfc; // Keep 6 bits
+              const qb = b & 0xf8; // Keep 5 bits
+
+              // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+              const key = (qr << 8) | (qg << 3) | (qb >> 3);
+
+              indexBuffer[i] = i;
+              depthBuffer[i] = depth;
+              colorBuffer[i] = key;
+              typeBuffer[i] = 0; // 0 = FACE
+
+              geometryBuffer[i * 6] = v0x;
+              geometryBuffer[i * 6 + 1] = v0y;
+              geometryBuffer[i * 6 + 2] = v1x;
+              geometryBuffer[i * 6 + 3] = v1y;
+              geometryBuffer[i * 6 + 4] = v2x;
+              geometryBuffer[i * 6 + 5] = v2y;
+
+              i++;
+            }
+          }
+        }
+      }
+    }
+    return i;
+  }
+
+  function generateBatches(
+    batchBuffer,
+    activeIndices,
+    count,
+    colorBuffer,
+    typeBuffer,
+  ) {
+    let batchCount = 0;
+    if (count === 0) return 0;
+
+    const firstIdx = activeIndices[0];
+    let currentStart = 0;
+    let lastColorKey = colorBuffer[firstIdx];
+    let lastType = typeBuffer[firstIdx];
+
+    for (let i = 1; i < count; i++) {
+      const index = activeIndices[i];
+      const colorKey = colorBuffer[index];
+      const type = typeBuffer[index];
+
+      if (colorKey !== lastColorKey || type !== lastType) {
+        const bIdx = batchCount * 3;
         batchBuffer[bIdx] = currentStart;
         batchBuffer[bIdx + 1] = i - currentStart;
         batchBuffer[bIdx + 2] = lastColorKey;
@@ -415,19 +374,40 @@ define([
       }
     }
 
-    // Final batch resize check
-    if ((batchCount + 1) * 3 >= batchBuffer.length) {
-      var newBatchBuffer = new Int32Array(batchBuffer.length + 3);
-      newBatchBuffer.set(batchBuffer);
-      batchBuffer = newBatchBuffer;
-    }
-
-    var bIdx = batchCount * 3;
+    const bIdx = batchCount * 3;
     batchBuffer[bIdx] = currentStart;
     batchBuffer[bIdx + 1] = count - currentStart;
     batchBuffer[bIdx + 2] = lastColorKey;
     batchCount++;
+
+    return batchCount;
   }
+
+  const PALETTE_16BIT = createPalette16Bit();
+
+  var vec3TransformMat4to2D = math.vec3TransformMat4to2D;
+  var vec3TransformMat4 = math.vec3TransformMat4;
+  var mat4Mul = math.mat4Mul;
+  let visibleObjectsBuffer = new Uint32Array(100);
+  var layerBuffers = [];
+  var layerBufferLengths = new Uint32Array(1);
+  var depthSort = function (a, b) {
+    return depthBuffer[b] - depthBuffer[a];
+  };
+
+  var lightDirection = new Float32Array([0, 0, 0]);
+
+  var vec3Cache1 = new Float32Array([0, 0, 0]);
+  var vec3Cache2 = new Float32Array([0, 0, 0]);
+
+  var depthBuffer = new Float32Array(0);
+  var indexBuffer = new Uint32Array(0);
+  // Geometry buffer stores the 2D screen coordinates of vertices,
+  // when face is partially on the screen, some of vertices may be negative,
+  // so Int16Array is used, allowing -32768 to 32767 values.
+  var geometryBuffer = new Int16Array(0);
+  var colorBuffer = new Uint16Array(0);
+  var typeBuffer = new Uint8Array(0);
 
   function renderAxis(gameObject, ctx, worldToScreenMatrix) {
     var W = gameObject.transform.getLocalToWorld();
@@ -506,6 +486,8 @@ define([
     this.vec3Pool = vec3Cache1;
     this.drawCalls = 0;
     this.faces = 0;
+
+    this.batchBuffer = new Int32Array(1024 * 3);
   }
 
   var p = Canvas2dRenderer.prototype,
@@ -514,7 +496,7 @@ define([
     bufferMat4 = new Float32Array(16);
 
   p.render = function (camera, viewport, stats) {
-    t0 = Date.now();
+    let t0 = Date.now();
 
     this.vec3Pool = vec3Cache1;
 
@@ -598,7 +580,7 @@ define([
     // group visible object to layer buffers
     for (i = 0; i < visibleObjectsBufferLen; i++) {
       const go = gameObjects[visibleObjectsBuffer[i]];
-      if (go.meshRenderer){
+      if (go.meshRenderer) {
         const renderer = go.meshRenderer;
         const layer = renderer.layer;
         layerBuffers[layer][layerBufferLengths[layer]++] = renderer;
@@ -617,38 +599,84 @@ define([
       renderers = layerBuffers[i];
       renderersCount = layerBufferLengths[i];
 
-      l = 0;
-      for (j = 0; j < renderersCount; j++) {
-        renderer = renderers[j];
-
-        // if (renderer.constructor === SpriteRenderer)
-        //     this.enqueueSprite(renderQueue, ctx, camera);
-        // else if (renderer.constructor === PathRenderer)
-        //     this.renderPath(renderer, ctx);
-        if (renderer.constructor === MeshComponent) {
-          l = meshToRenderCommands(
-            l,
-            camera,
-            renderer,
-            vw,
-            vh,
-            worldToScreenMatrix,
-            cameraLocal,
-          );
-        }
-        // else
-        //     this.renderText(renderer, ctx);
-
-        // this.renderAxis(renderer.gameObject, ctx);
+      let maxFacesCount = 0;
+      let maxVertsCount = 0;
+      for (let o = 0; o < renderersCount; o++) {
+        maxFacesCount += renderers[o].faces.length;
+        maxVertsCount = Math.max(maxVertsCount, renderers[o].vertices.length);
       }
+      maxFacesCount = (maxFacesCount / 3) | 0;
+
+      if (vec3Cache1.length < maxVertsCount) {
+        var cache = new Float32Array(maxVertsCount);
+        cache.set(vec3Cache1);
+        vec3Cache1 = cache;
+
+        cache = new Float32Array(maxVertsCount);
+        cache.set(vec3Cache2);
+        vec3Cache2 = cache;
+      }
+
+      if (depthBuffer.length < maxFacesCount) {
+        var newArr = new Float32Array(maxFacesCount);
+        newArr.set(depthBuffer);
+        depthBuffer = newArr;
+
+        newArr = new Uint32Array(maxFacesCount);
+        newArr.set(indexBuffer);
+        indexBuffer = newArr;
+
+        newArr = new Uint8Array(maxFacesCount);
+        newArr.set(typeBuffer);
+        typeBuffer = newArr;
+
+        newArr = new Uint16Array(maxFacesCount);
+        newArr.set(colorBuffer);
+        colorBuffer = newArr;
+
+        newArr = new Int16Array(maxFacesCount * 6);
+        newArr.set(geometryBuffer);
+        geometryBuffer = newArr;
+      }
+
+      const l = meshToRenderCommands(
+        renderers,
+        renderersCount,
+        vec3Cache1,
+        vec3Cache2,
+        indexBuffer,
+        depthBuffer,
+        colorBuffer,
+        typeBuffer,
+        geometryBuffer,
+        lightDirection,
+        camera,
+        vw,
+        vh,
+        worldToScreenMatrix,
+        cameraLocal,
+      );
+
       // renderers.length = 0;
       if ((config.depthSortingMask & (i + 1)) === i + 1) {
         indexBuffer.subarray(0, l).sort(depthSort);
       }
 
-      var stroke = (config.layerStrokeMask & (i + 1)) === i + 1;
+      let batchBuffer = this.batchBuffer;
+      if (batchBuffer.length < indexBuffer.length * 3) {
+        var newBatchBuffer = new Int32Array(indexBuffer.length * 3);
+        newBatchBuffer.set(batchBuffer);
+        this.batchBuffer = batchBuffer = newBatchBuffer;
+      }
+      const batchCount = generateBatches(
+        batchBuffer,
+        indexBuffer,
+        l,
+        colorBuffer,
+        typeBuffer,
+      );
 
-      generateBatches(indexBuffer, l);
+      const stroke = (config.layerStrokeMask & (i + 1)) === i + 1;
 
       for (var b = 0; b < batchCount; b++) {
         var bPtr = b * 3;
