@@ -1,69 +1,76 @@
-define(["../GameObject", "../components/MeshComponent"], function (GameObject, MeshComponent) {
+define(["../GameObject", "../components/MeshComponent"], function (
+  GameObject,
+  MeshComponent,
+) {
+  function generateConeMesh(segments, radius, height) {
+    const verts = [];
+    const faces = [];
 
-    function generateConeMesh(segments, radius, height) {
-        const verts = [];
-        const faces = [];
+    // 1. Generate Vertices
+    // Index 0: Apex (Top)
+    verts.push(0, height, 0);
+    // Index 1: Base Center (Bottom)
+    verts.push(0, 0, 0);
 
-        // 1. Generate Vertices
-        // Index 0: Apex (Top)
-        verts.push(0, height, 0);
-        // Index 1: Base Center (Bottom)
-        verts.push(0, 0, 0);
-
-        // Indices 2 to (segments + 1): The Ring
-        for (let i = 0; i < segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const x = Math.cos(angle) * radius;
-            const z = Math.sin(angle) * radius;
-            verts.push(x, 0, z);
-        }
-
-        // 2. Generate Faces
-        for (let i = 0; i < segments; i++) {
-            const current = i + 2;
-            const next = (i === segments - 1) ? 2 : i + 3;
-
-            // Sides
-            faces.push(0, next, current);
-
-            // Base
-            faces.push(1, current, next);
-        }
-
-        return {
-            vertices: new Float32Array(verts),
-            faces: new Uint16Array(faces)
-        };
+    // Indices 2 to (segments + 1): The Ring
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      verts.push(x, 0, z);
     }
 
-    var coneMesh = generateConeMesh(7, 0.5, 1);
-    const bounds = MeshComponent.computeBoundsFlatArray(new Float32Array(24), coneMesh.vertices);
+    // 2. Generate Faces
+    for (let i = 0; i < segments; i++) {
+      const current = i + 2;
+      const next = i === segments - 1 ? 2 : i + 3;
 
-    function Cone() {
-        GameObject.call(this);
+      // Sides
+      faces.push(0, next, current);
 
-        var mesh = new MeshComponent(this);
-        mesh.vertices = coneMesh.vertices;
-        mesh.faces = coneMesh.faces;
-        mesh.bounds = bounds;
-        mesh.color = [0, 200, 255]; // Bright Blue
-
-        this.addComponent(mesh);
+      // Base
+      faces.push(1, current, next);
     }
 
-    var p = Cone.prototype = Object.create(GameObject.prototype);
+    return {
+      vertices: new Float32Array(verts),
+      faces: new Uint16Array(faces),
+    };
+  }
 
-    // p.tick = function(time) {
-    //     GameObject.prototype.tick.call(this);
-    //     this.transform.rotate(0, 1, 0, 'world');
-    // };
+  var coneMesh = generateConeMesh(7, 0.5, 1);
+  const bounds = MeshComponent.computeBoundsFlatArray(
+    new Float32Array(32),
+    coneMesh.vertices,
+  );
 
-    // p.tick = function(time){
-    //     GameObject.prototype.tick.call(this);
-    //     // console.log(Math.sin(time.time/1000) * 100);
-    //     // this.transform.translate(0,Math.sin(time.time/500) * 10,0, 'world')
-    //     this.transform.rotate(0,10,0, 'locat');
-    // }
+  MeshComponent.computeBoundingSphere(bounds, 28, coneMesh.vertices);
 
-    return Cone;
+  function Cone() {
+    GameObject.call(this);
+
+    var mesh = new MeshComponent(this);
+    mesh.vertices = coneMesh.vertices;
+    mesh.faces = coneMesh.faces;
+    mesh.bounds = bounds;
+    mesh.color = [0, 200, 255]; // Bright Blue
+
+    this.addComponent(mesh);
+  }
+
+  var p = (Cone.prototype = Object.create(GameObject.prototype));
+
+  // p.tick = function(time) {
+  //     GameObject.prototype.tick.call(this);
+  //     this.transform.rotate(0, 1, 0, 'world');
+  // };
+
+  // p.tick = function(time){
+  //     GameObject.prototype.tick.call(this);
+  //     // console.log(Math.sin(time.time/1000) * 100);
+  //     // this.transform.translate(0,Math.sin(time.time/500) * 10,0, 'world')
+  //     this.transform.rotate(0,10,0, 'locat');
+  // }
+
+  return Cone;
 });
