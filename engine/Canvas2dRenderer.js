@@ -15,9 +15,9 @@ define([
   CameraComponent,
   math,
 ) {
-  var vec3TransformMat4to2D = math.vec3TransformMat4to2D;
-  var vec3TransformMat4 = math.vec3TransformMat4;
-  var mat4Mul = math.mat4Mul;
+  const vec3TransformMat4to2D = math.vec3TransformMat4to2D;
+  const vec3TransformMat4 = math.vec3TransformMat4;
+  const mat4Mul = math.mat4Mul;
 
   function createPalette16Bit() {
     const palette = new Array(65536);
@@ -214,6 +214,8 @@ define([
     h,
     ViewportM,
     cameraLocal,
+    mat4Scratchpad2,
+    mat4Scratchpad1,
   ) {
     let i = 0;
     for (let j = 0; j < renderersCount; j++) {
@@ -228,8 +230,8 @@ define([
         const faces = mesh.faces,
           verts = mesh.vertices;
 
-        mat4Mul(bufferMat4, cameraLocal, W);
-        mat4Mul(mat4Buffer1, ViewportM, W);
+        mat4Mul(mat4Scratchpad2, cameraLocal, W);
+        mat4Mul(mat4Scratchpad1, ViewportM, W);
 
         // transform all vertices at once and put them in temporary buffer
         for (let l = 0; l < verts.length; l += 3) {
@@ -239,7 +241,7 @@ define([
             verts[l],
             verts[l + 1],
             verts[l + 2],
-            mat4Buffer1,
+            mat4Scratchpad1,
           );
           vec3TransformMat4(
             vec3Cache2,
@@ -247,7 +249,7 @@ define([
             verts[l],
             verts[l + 1],
             verts[l + 2],
-            bufferMat4,
+            mat4Scratchpad2,
           );
         }
 
@@ -535,8 +537,6 @@ define([
 
   function Canvas2dRenderer() {
     this.layerBuffers = [];
-    for (var i = 0; i < config.layersCount; i++) this.layerBuffers[i] = [];
-    this.M = [];
 
     this.drawCalls = 0;
     this.faces = 0;
@@ -544,9 +544,6 @@ define([
     this.batchBuffer = new Int32Array(1024 * 3);
 
     this.lightDirection = new Float32Array([0, 0, 0]);
-
-    this.vec3Cache1 = new Float32Array([0, 0, 0]);
-    this.vec3Cache2 = new Float32Array([0, 0, 0]);
 
     this.depthBuffer = new Float32Array(0);
     this.indexBuffer = new Uint32Array(0);
@@ -556,24 +553,26 @@ define([
     this.geometryBuffer = new Int16Array(0);
     this.colorBuffer = new Uint16Array(0);
     this.typeBuffer = new Uint8Array(0);
-
-    this.vec3TransformMat4to2D = math.vec3TransformMat4to2D;
-    this.vec3TransformMat4 = math.vec3TransformMat4;
-    this.mat4Mul = math.mat4Mul;
     this.visibleObjectsBuffer = new Uint32Array(100);
     this.layerBuffers = [];
     this.layerBufferLengths = new Uint32Array(1);
+
+    // move outside render
+    // initialize layer buffers
+    for (let i = 0; i < config.layersCount; i++) {
+      this.layerBuffers[i] = this.layerBuffers[i] || [];
+    }
   }
 
-  var p = Canvas2dRenderer.prototype,
-    bufferVec3 = new Float32Array([0, 0, 0]),
-    mat4Buffer1 = new Float32Array(16),
-    bufferMat4 = new Float32Array(16);
+  var p = Canvas2dRenderer.prototype;
+
+  p.vec3Cache1 = new Float32Array([0, 0, 0]);
+  p.vec3Cache2 = new Float32Array([0, 0, 0]);
+  p.mat4Scratchpad1 = new Float32Array(16);
+  p.mat4Scratchpad2 = new Float32Array(16);
 
   p.render = function (camera, viewport, stats) {
     let t0 = Date.now();
-
-    this.vec3Pool = this.vec3Cache1;
 
     var gameObjects = camera.scene.retrieve(camera),
       light = camera.scene.light,
@@ -596,10 +595,11 @@ define([
       typeBuffer = this.typeBuffer,
       visibleObjectsBuffer = this.visibleObjectsBuffer,
       layerBuffers = this.layerBuffers,
-      layerBufferLengths = this.layerBufferLengths;
-
-    var worldToScreenMatrix = viewport.getWorldToScreen();
-    var cameraLocal = camera.transform.getWorldToLocal();
+      layerBufferLengths = this.layerBufferLengths,
+      mat4Scratchpad1 = this.mat4Scratchpad1,
+      mat4Scratchpad2 = this.mat4Scratchpad2,
+      worldToScreenMatrix = viewport.getWorldToScreen(),
+      cameraLocal = camera.transform.getWorldToLocal();
 
     if (light) {
       // 1. Get the world forward vector of the light
@@ -620,8 +620,8 @@ define([
         lx * cameraLocal[2] + ly * cameraLocal[6] + lz * cameraLocal[10];
     }
 
-    this.drawCalls = 0;
-    this.faces = 0;
+    let drawCalls = 0;
+    let faces = 0;
 
     if (camera.camera.fogType !== CameraComponent.FogType.NONE) {
       const cam = camera.camera;
@@ -661,16 +661,12 @@ define([
       vh,
     );
 
-    // move outside render
-    // initialize layer buffers
-    for (i = 0; i < layersCount; i++) {
-      layerBuffers[i] = layerBuffers[i] || [];
-    }
     if (layerBufferLengths.length < layersCount) {
       var _layerBufferLengths = layerBufferLengths;
       layerBufferLengths = new Uint32Array(layersCount);
       layerBufferLengths.set(_layerBufferLengths);
     }
+
     // group visible object to layer buffers
     for (i = 0; i < visibleObjectsBufferLen; i++) {
       const go = gameObjects[visibleObjectsBuffer[i]];
@@ -702,35 +698,35 @@ define([
       maxFacesCount = (maxFacesCount / 3) | 0;
 
       if (vec3Cache1.length < maxVertsCount) {
-        var cache = new Float32Array(maxVertsCount);
-        cache.set(vec3Cache1);
-        vec3Cache1 = cache;
+        const _vec3Cache1 = new Float32Array(maxVertsCount);
+        _vec3Cache1.set(vec3Cache1);
+        this.vec3Cache1 = vec3Cache1 = _vec3Cache1;
 
-        cache = new Float32Array(maxVertsCount);
-        cache.set(vec3Cache2);
-        vec3Cache2 = cache;
+        const _vec3Cache2 = new Float32Array(maxVertsCount);
+        _vec3Cache2.set(vec3Cache2);
+        this.vec3Cache2 = vec3Cache2 = _vec3Cache2;
       }
 
       if (depthBuffer.length < maxFacesCount) {
-        var newArr = new Float32Array(maxFacesCount);
+        let newArr = new Float32Array(maxFacesCount);
         newArr.set(depthBuffer);
-        depthBuffer = newArr;
+        this.depthBuffer = depthBuffer = newArr;
 
         newArr = new Uint32Array(maxFacesCount);
         newArr.set(indexBuffer);
-        indexBuffer = newArr;
+        this.indexBuffer = indexBuffer = newArr;
 
         newArr = new Uint8Array(maxFacesCount);
         newArr.set(typeBuffer);
-        typeBuffer = newArr;
+        this.typeBuffer = typeBuffer = newArr;
 
         newArr = new Uint16Array(maxFacesCount);
         newArr.set(colorBuffer);
-        colorBuffer = newArr;
+        this.colorBuffer = colorBuffer = newArr;
 
         newArr = new Int16Array(maxFacesCount * 6);
         newArr.set(geometryBuffer);
-        geometryBuffer = newArr;
+        this.geometryBuffer = geometryBuffer = newArr;
       }
 
       const l = meshToRenderCommands(
@@ -749,6 +745,8 @@ define([
         vh,
         worldToScreenMatrix,
         cameraLocal,
+        mat4Scratchpad2,
+        mat4Scratchpad1,
       );
 
       // renderers.length = 0;
@@ -856,39 +854,43 @@ define([
 
       viewport.context.drawImage(ctx.canvas, 0, 0);
 
-      this.drawCalls += batchCount;
-      this.faces += l;
+      drawCalls += batchCount;
+      faces += l;
       layerBufferLengths[i] = 0;
     }
 
-    this.visibleObjects = visibleObjectsBufferLen;
 
+
+
+    stats.visibleObjects = visibleObjectsBufferLen;
+    stats.drawCalls = drawCalls;
+    stats.faces = faces;
     stats.dt = Date.now() - t0;
   };
 
   //Rounding coordinates with Math.round is slow, but looks better
   //Rounding to lowest with pipe operator is faster, but looks worse
-  p.renderSprite = function (renderer, layer) {
-    vec3TransformMat4(
-      bufferVec3,
-      renderer.gameObject.transform.getPosition(bufferVec3),
-      this.M,
-    );
-    var sprite = renderer.sprite;
-
-    //layer.drawImage(sprite.sourceImage, sprite.offsetX, sprite.offsetY, sprite.width, sprite.height, Math.round(bufferVec3[0] - renderer.pivotX), Math.round(bufferVec3[1] - renderer.pivotY), sprite.width, sprite.height);
-    layer.drawImage(
-      sprite.sourceImage,
-      sprite.offsetX,
-      sprite.offsetY,
-      sprite.width,
-      sprite.height,
-      (bufferVec3[0] - renderer.pivotX) | 0,
-      (bufferVec3[1] - renderer.pivotY) | 0,
-      sprite.width,
-      sprite.height,
-    );
-  };
+  // p.renderSprite = function (renderer, layer) {
+  //   vec3TransformMat4(
+  //     bufferVec3,
+  //     renderer.gameObject.transform.getPosition(bufferVec3),
+  //     this.M,
+  //   );
+  //   var sprite = renderer.sprite;
+  //
+  //   //layer.drawImage(sprite.sourceImage, sprite.offsetX, sprite.offsetY, sprite.width, sprite.height, Math.round(bufferVec3[0] - renderer.pivotX), Math.round(bufferVec3[1] - renderer.pivotY), sprite.width, sprite.height);
+  //   layer.drawImage(
+  //     sprite.sourceImage,
+  //     sprite.offsetX,
+  //     sprite.offsetY,
+  //     sprite.width,
+  //     sprite.height,
+  //     (bufferVec3[0] - renderer.pivotX) | 0,
+  //     (bufferVec3[1] - renderer.pivotY) | 0,
+  //     sprite.width,
+  //     sprite.height,
+  //   );
+  // };
 
   return Canvas2dRenderer;
 });
