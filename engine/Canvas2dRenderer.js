@@ -23,76 +23,136 @@ define([
 
   const PALETTE_16BIT = palette.createPalette16Bit();
 
-  function roughCulling(out_visibleBuffer, gameObjects, worldToScreen, vw, vh) {
-    const b0 = worldToScreen[0],
-      b1 = worldToScreen[1],
-      b4 = worldToScreen[4],
-      b5 = worldToScreen[5],
-      b8 = worldToScreen[8],
-      b9 = worldToScreen[9],
-      b12 = worldToScreen[12],
-      b13 = worldToScreen[13];
-
+  /**
+   * GC-Friendly universal 1st-pass culling (Gribb-Hartmann method).
+   * Works for Perspective and Orthographic.
+   * @param {Array} gameobjects - Your array of objects
+   * @param {Float32Array} m - Clip-space (View-Projection) Matrix
+   * @param {Uint32Array} out_visibleBuffer - Buffer to store indices
+   * @returns {number} visibleCount
+   */
+  function roughCull(gameobjects, m, out_visibleBuffer) {
     let visibleCount = 0;
-    const count = gameObjects.length;
 
-    for (let i = 0; i < count; i++) {
-      const go = gameObjects[i];
-      const renderer = go.meshRenderer;
+    // 1. Matrix Registers (Extract once)
+    const m0 = m[0],
+      m1 = m[1],
+      m2 = m[2],
+      m3 = m[3];
+    const m4 = m[4],
+      m5 = m[5],
+      m6 = m[6],
+      m7 = m[7];
+    const m8 = m[8],
+      m9 = m[9],
+      m10 = m[10],
+      m11 = m[11];
+    const m12 = m[12],
+      m13 = m[13],
+      m14 = m[14],
+      m15 = m[15];
 
-      if (!renderer || !renderer.enabled) continue;
+    // 2. Plane Registers (Extract & Normalize once)
+    // Formula: Plane = Row4 +/- Row[n]
 
-      const transform = go.transform;
-      const a = transform.dirtyL
-        ? transform.getLocalToWorld()
-        : transform.localToWorld;
+    // Left
+    let lX = m3 + m0,
+      lY = m7 + m4,
+      lZ = m11 + m8,
+      lW = m15 + m12;
+    let invMag = 1.0 / Math.sqrt(lX * lX + lY * lY + lZ * lZ);
+    lX *= invMag;
+    lY *= invMag;
+    lZ *= invMag;
+    lW *= invMag;
 
-      // 1. Combined Matrix Row Calculation (Model -> Screen)
-      // We only compute the X and Y projection rows (Rows 0 and 1)
-      const m0 = b0 * a[0] + b4 * a[1] + b8 * a[2],
-        m4 = b0 * a[4] + b4 * a[5] + b8 * a[6],
-        m8 = b0 * a[8] + b4 * a[9] + b8 * a[10],
-        m12 = b0 * a[12] + b4 * a[13] + b8 * a[14] + b12;
+    // Right
+    let rX = m3 - m0,
+      rY = m7 - m4,
+      rZ = m11 - m8,
+      rW = m15 - m12;
+    invMag = 1.0 / Math.sqrt(rX * rX + rY * rY + rZ * rZ);
+    rX *= invMag;
+    rY *= invMag;
+    rZ *= invMag;
+    rW *= invMag;
 
-      const m1 = b1 * a[0] + b5 * a[1] + b9 * a[2],
-        m5 = b1 * a[4] + b5 * a[5] + b9 * a[6],
-        m9 = b1 * a[8] + b5 * a[9] + b9 * a[10],
-        m13 = b1 * a[12] + b5 * a[13] + b9 * a[14] + b13;
+    // Bottom
+    let bX = m3 + m1,
+      bY = m7 + m5,
+      bZ = m11 + m9,
+      bW = m15 + m13;
+    invMag = 1.0 / Math.sqrt(bX * bX + bY * bY + bZ * bZ);
+    bX *= invMag;
+    bY *= invMag;
+    bZ *= invMag;
+    bW *= invMag;
 
-      // 2. Extract Center and calculate Screen Position
-      const bounds = renderer.bounds;
-      const cx = bounds[28],
-        cy = bounds[29],
-        cz = bounds[30];
+    // Top
+    let tX = m3 - m1,
+      tY = m7 - m5,
+      tZ = m11 - m9,
+      tW = m15 - m13;
+    invMag = 1.0 / Math.sqrt(tX * tX + tY * tY + tZ * tZ);
+    tX *= invMag;
+    tY *= invMag;
+    tZ *= invMag;
+    tW *= invMag;
 
-      const sx = m0 * cx + m4 * cy + m8 * cz + m12;
-      const sy = m1 * cx + m5 * cy + m9 * cz + m13;
+    // Near
+    let nX = m3 + m2,
+      nY = m7 + m6,
+      nZ = m11 + m10,
+      nW = m15 + m14;
+    invMag = 1.0 / Math.sqrt(nX * nX + nY * nY + nZ * nZ);
+    nX *= invMag;
+    nY *= invMag;
+    nZ *= invMag;
+    nW *= invMag;
 
-      // 3. Radius handling without Math.sqrt
-      // We calculate the squared radius in screen space.
-      // We find the max squared scale of the combined basis vectors.
-      const rModel = bounds[31];
-      const sX = m0 * m0 + m1 * m1;
-      const sY = m4 * m4 + m5 * m5;
-      const sZ = m8 * m8 + m9 * m9;
-      // Screen-space radius squared
-      const r2 =
-        rModel * rModel * (sX > sY ? (sX > sZ ? sX : sZ) : sY > sZ ? sY : sZ);
+    // Far
+    let fX = m3 - m2,
+      fY = m7 - m6,
+      fZ = m11 - m10,
+      fW = m15 - m14;
+    invMag = 1.0 / Math.sqrt(fX * fX + fY * fY + fZ * fZ);
+    fX *= invMag;
+    fY *= invMag;
+    fZ *= invMag;
+    fW *= invMag;
 
-      // 4. Robust Circle-AABB Intersection (No sqrt)
-      // Find the closest point on the screen-rect to the sphere center
-      let dx = 0;
-      if (sx < 0) dx = sx;
-      else if (sx > vw) dx = sx - vw;
+    // 3. Hot Loop
+    const len = gameobjects.length;
+    for (let i = 0; i < len; i++) {
+      const obj = gameobjects[i];
+      if (!obj.meshRenderer || !obj.meshRenderer.enabled) continue;
 
-      let dy = 0;
-      if (sy < 0) dy = sy;
-      else if (sy > vh) dy = sy - vh;
+      const t = obj.transform.localToWorld;
+      const b = obj.meshRenderer.bounds;
 
-      // If squared distance to the screen rect is <= squared radius, it's visible
-      if (dx * dx + dy * dy <= r2) {
-        out_visibleBuffer[visibleCount++] = i;
-      }
+      // Transform Sphere Center to World
+      const lx = b[28],
+        ly = b[29],
+        lz = b[30];
+      const wx = t[0] * lx + t[4] * ly + t[8] * lz + t[12];
+      const wy = t[1] * lx + t[5] * ly + t[9] * lz + t[13];
+      const wz = t[2] * lx + t[6] * ly + t[10] * lz + t[14];
+
+      // Max World Scale for Radius
+      const sX = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
+      const sY = t[4] * t[4] + t[5] * t[5] + t[6] * t[6];
+      const sZ = t[8] * t[8] + t[9] * t[9] + t[10] * t[10];
+      const rWorld = b[31] * Math.sqrt(Math.max(sX, sY, sZ));
+
+      // Sphere-Plane Dot Products (Direct Register Access)
+      if (lX * wx + lY * wy + lZ * wz + lW < -rWorld) continue;
+      if (rX * wx + rY * wy + rZ * wz + rW < -rWorld) continue;
+      if (bX * wx + bY * wy + bZ * wz + bW < -rWorld) continue;
+      if (tX * wx + tY * wy + tZ * wz + tW < -rWorld) continue;
+      if (nX * wx + nY * wy + nZ * wz + nW < -rWorld) continue;
+      if (fX * wx + fY * wy + fZ * wz + fW < -rWorld) continue;
+
+      out_visibleBuffer[visibleCount++] = i;
     }
 
     return visibleCount;
@@ -581,7 +641,8 @@ define([
       mat4Scratchpad1 = this.mat4Scratchpad1,
       mat4Scratchpad2 = this.mat4Scratchpad2,
       worldToScreenMatrix = viewport.getWorldToScreen(),
-      cameraLocal = camera.transform.getWorldToLocal();
+      cameraLocal = camera.transform.getWorldToLocal(),
+      clipSpaceMatrix = camera.camera.getClipSpaceMatrix();
 
     if (light) {
       // 1. Get the world forward vector of the light
@@ -626,12 +687,10 @@ define([
       visibleObjectsBuffer.set(_visibleObjectsBuffer);
     }
 
-    const firstPassVisibleObjectsBufferLen = roughCulling(
-      visibleObjectsBuffer,
+    const firstPassVisibleObjectsBufferLen = roughCull(
       gameObjects,
-      worldToScreenMatrix,
-      vw,
-      vh,
+      clipSpaceMatrix,
+      visibleObjectsBuffer,
     );
 
     const visibleObjectsBufferLen = preciseCulling(
