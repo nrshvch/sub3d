@@ -15,7 +15,7 @@ define([
   MeshComponent,
   CameraComponent,
   math,
-  palette
+  palette,
 ) {
   const vec3TransformMat4to2D = math.vec3TransformMat4to2D;
   const vec3TransformMat4 = math.vec3TransformMat4;
@@ -127,7 +127,9 @@ define([
       const obj = gameobjects[i];
       if (!obj.meshRenderer || !obj.meshRenderer.enabled) continue;
 
-      const t = obj.transform.localToWorld;
+      const t = obj.transform.dirtyL
+        ? obj.transform.getLocalToWorld()
+        : obj.transform.localToWorld;
       const b = obj.meshRenderer.bounds;
 
       // Transform Sphere Center to World
@@ -158,81 +160,116 @@ define([
     return visibleCount;
   }
 
-  // Filters out everything that's outside of screen
-  function preciseCulling(
+  /**
+   * @function exactCull
+   * @description Performs a second-pass AABB-Frustum intersection test using the Cohen-Sutherland
+   * style Outcode algorithm. It projects the 8 corners of an object's bounding box into
+   * Clip Space and culls objects where the entire volume resides outside any single frustum plane.
+   * * @name Cohen-Sutherland_AABB_Culling
+   * @param {Uint32Array} out_visibilityBuffer - Indices of objects surviving the first pass.
+   * @param {number} firstPassCount - The number of indices currently in the buffer.
+   * @param {Array<GameObject>} gameObjects - The source array of game objects.
+   * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
+   * @returns {number} The new count of visible objects in out_visibilityBuffer.
+   */
+  function exactCull(
     out_visibilityBuffer,
-    firstPassVisibleObjectsBufferLen,
+    firstPassCount,
     gameObjects,
-    worldToScreen,
-    vw,
-    vh,
+    clipSpaceMatrix,
   ) {
-    const b0 = worldToScreen[0],
-      b1 = worldToScreen[1],
-      b4 = worldToScreen[4],
-      b5 = worldToScreen[5],
-      b8 = worldToScreen[8],
-      b9 = worldToScreen[9],
-      b12 = worldToScreen[12],
-      b13 = worldToScreen[13];
+    const m = clipSpaceMatrix;
+    const m0 = m[0],
+      m1 = m[1],
+      m2 = m[2],
+      m3 = m[3],
+      m4 = m[4],
+      m5 = m[5],
+      m6 = m[6],
+      m7 = m[7],
+      m8 = m[8],
+      m9 = m[9],
+      m10 = m[10],
+      m11 = m[11],
+      m12 = m[12],
+      m13 = m[13],
+      m14 = m[14],
+      m15 = m[15];
 
     let visibleCount = 0;
 
-    for (let i = 0; i < firstPassVisibleObjectsBufferLen; i++) {
-      const go = gameObjects[out_visibilityBuffer[i]];
-      const transform = go.transform;
-      // Direct access to the internal Float32Array without copying
-      const a = transform.dirtyL
-        ? transform.getLocalToWorld()
-        : transform.localToWorld;
+    for (let i = 0; i < firstPassCount; i++) {
+      const objIdx = out_visibilityBuffer[i];
+      const go = gameObjects[objIdx];
 
-      const m12 = b0 * a[12] + b4 * a[13] + b8 * a[14] + b12 * a[15];
-      const m13 = b1 * a[12] + b5 * a[13] + b9 * a[14] + b13 * a[15];
-
-      // 3. Logic-Only / Empty Object Check
-      // If there is no renderer or no bounds, just check the center point
+      // Matrix access (assumes World Matrix is already updated by 1st pass or hierarchy loop)
+      const t = go.transform.localToWorld;
       const renderer = go.meshRenderer;
+
       if (renderer && renderer.enabled && renderer.bounds) {
-        const bounds = renderer.bounds;
+        const b = renderer.bounds; // 8 corners [x0,y0,z0, x1,y1,z1... x7,y7,z7]
 
-        // inline vec3transform
-        const m0 = b0 * a[0] + b4 * a[1] + b8 * a[2] + b12 * a[3];
-        const m4 = b0 * a[4] + b4 * a[5] + b8 * a[6] + b12 * a[7];
-        const m8 = b0 * a[8] + b4 * a[9] + b8 * a[10] + b12 * a[11];
+        // We start with all bits set (111111 in binary = 63)
+        // If a corner is NOT outside a plane, we flip that plane's bit to 0.
+        // If after 8 corners a bit is still 1, it means ALL corners were outside that plane.
+        let trivialRejectMask = 63;
 
-        const m1 = b1 * a[0] + b5 * a[1] + b9 * a[2] + b13 * a[3];
-        const m5 = b1 * a[4] + b5 * a[5] + b9 * a[6] + b13 * a[7];
-        const m9 = b1 * a[8] + b5 * a[9] + b9 * a[10] + b13 * a[11];
+        for (let j = 0; j < 24; j += 3) {
+          const bx = b[j],
+            by = b[j + 1],
+            bz = b[j + 2];
 
-        // Project first corner
-        const bx = bounds[0],
-          by = bounds[1],
-          bz = bounds[2];
-        let sMinX = m0 * bx + m4 * by + m8 * bz + m12;
-        let sMaxX = sMinX;
-        let sMinY = m1 * bx + m5 * by + m9 * bz + m13;
-        let sMaxY = sMinY;
+          // 1. World Space Transformation
+          const wx = t[0] * bx + t[4] * by + t[8] * bz + t[12];
+          const wy = t[1] * bx + t[5] * by + t[9] * bz + t[13];
+          const wz = t[2] * bx + t[6] * by + t[10] * bz + t[14];
 
-        // Project remaining 7 corners - SIMD/Vectorization target
-        for (let j = 3; j < 24; j += 3) {
-          const px = bounds[j],
-            py = bounds[j + 1],
-            pz = bounds[j + 2];
-          const vx = m0 * px + m4 * py + m8 * pz + m12;
-          const vy = m1 * px + m5 * py + m9 * pz + m13;
+          // 2. Clip Space Transformation (Projected)
+          const cx = m0 * wx + m4 * wy + m8 * wz + m12;
+          const cy = m1 * wx + m5 * wy + m9 * wz + m13;
+          const cz = m2 * wx + m6 * wy + m10 * wz + m14;
+          const cw = m3 * wx + m7 * wy + m11 * wz + m15;
 
-          sMinX = Math.min(sMinX, vx);
-          sMaxX = Math.max(sMaxX, vx);
-          sMinY = Math.min(sMinY, vy);
-          sMaxY = Math.max(sMaxY, vy);
+          // 3. Test corner against the -w < coord < w boundary
+          let outcode = 0;
+          if (cx < -cw) outcode |= 1; // Left
+          if (cx > cw) outcode |= 2; // Right
+          if (cy < -cw) outcode |= 4; // Bottom
+          if (cy > cw) outcode |= 8; // Top
+          if (cz < -cw) outcode |= 16; // Near
+          if (cz > cw) outcode |= 32; // Far
+
+          // Bitwise AND: only bits that are '1' in BOTH remain '1'
+          trivialRejectMask &= outcode;
+
+          // Optimization: if mask becomes 0, the AABB spans across planes
+          // and cannot be trivially rejected by this method.
+          // We could 'break' here, but usually, the 8-corner loop is too small for a break to help.
         }
 
-        if (sMaxX >= 0 && sMinX <= vw && sMaxY >= 0 && sMinY <= vh) {
-          out_visibilityBuffer[visibleCount++] = out_visibilityBuffer[i];
+        // If any bit survived, the whole box is outside that specific plane.
+        if (trivialRejectMask === 0) {
+          out_visibilityBuffer[visibleCount++] = objIdx;
         }
       } else {
-        if (m12 >= 0 && m12 <= vw && m13 >= 0 && m13 <= vh) {
-          out_visibilityBuffer[visibleCount++] = out_visibilityBuffer[i];
+        // Logic-only/Point fallback
+        const wx = t[12],
+          wy = t[13],
+          wz = t[14];
+        const cx = m0 * wx + m4 * wy + m8 * wz + m12;
+        const cy = m1 * wx + m5 * wy + m9 * wz + m13;
+        const cz = m2 * wx + m6 * wy + m10 * wz + m14;
+        const cw = m3 * wx + m7 * wy + m11 * wz + m15;
+
+        if (
+          cx >= -cw &&
+          cx <= cw &&
+          cy >= -cw &&
+          cy <= cw &&
+          cz >= -cw &&
+          cz <= cw
+        ) {
+          out_visibilityBuffer[visibleCount++] = objIdx;
         }
       }
     }
@@ -683,7 +720,9 @@ define([
 
     if (visibleObjectsBuffer.length < gameObjects.length) {
       const _visibleObjectsBuffer = visibleObjectsBuffer;
-      visibleObjectsBuffer = new Uint32Array(gameObjects.length);
+      this.visibleObjectsBuffer = visibleObjectsBuffer = new Uint32Array(
+        gameObjects.length,
+      );
       visibleObjectsBuffer.set(_visibleObjectsBuffer);
     }
 
@@ -693,18 +732,18 @@ define([
       visibleObjectsBuffer,
     );
 
-    const visibleObjectsBufferLen = preciseCulling(
+    const visibleObjectsBufferLen = exactCull(
       visibleObjectsBuffer,
       firstPassVisibleObjectsBufferLen,
       gameObjects,
-      worldToScreenMatrix,
-      vw,
-      vh,
+      clipSpaceMatrix,
     );
 
     if (layerBufferLengths.length < layersCount) {
       var _layerBufferLengths = layerBufferLengths;
-      layerBufferLengths = new Uint32Array(layersCount);
+      this.layerBufferLengths = layerBufferLengths = new Uint32Array(
+        layersCount,
+      );
       layerBufferLengths.set(_layerBufferLengths);
     }
 
