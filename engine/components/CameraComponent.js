@@ -1,4 +1,4 @@
-define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glMatrix, Component, BoundingBox) {
+define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox", "../math"], function (glMatrix, Component, BoundingBox, math) {
     const FogType = {
         'NONE': 'NONE',
         'RADIAL': 'RADIAL',
@@ -10,10 +10,12 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glM
     /**
      * @constructor
      */
-    function CameraComponent() {
+    function CameraComponent(transform) {
         Component.call(this);
 
+        this.transform = transform;
         this.projectionMatrix = new Float32Array(16);
+        this.clipSpaceMatrix = new Float32Array(16);
         this.frustumSize = [
             [0, 0, 0],
             [0, 0, 0]
@@ -44,6 +46,7 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glM
     CameraComponent.prototype.frustumSize = null;
     CameraComponent.prototype.frustumBox = null;
     CameraComponent.prototype.projectionMatrix = null;
+    CameraComponent.prototype.clipSpaceMatrix = null;
 
     CameraComponent.prototype.nearClippingPane = 0;
     CameraComponent.prototype.farClippingPane = 1000;
@@ -85,6 +88,12 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox"], function (glM
         this.gameObject.camera = undefined;
         this.gameObject.transform.removeEventListener(this.gameObject.transform.events.update, this.transformUpdateEventHandler);
         Component.prototype.unsetGameObject.call(this);
+    }
+
+    CameraComponent.prototype.getClipSpaceMatrix = function() {
+      const viewMatrix = this.transform.getWorldToLocal();
+      math.mat4Mul(this.clipSpaceMatrix, this.projectionMatrix, viewMatrix);
+      return this.clipSpaceMatrix;
     }
 
     CameraComponent.FogType = FogType;
