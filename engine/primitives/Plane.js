@@ -11,29 +11,40 @@ define(["../GameObject", "../components/MeshComponent"], function (
     const segW = width / segments;
     const segH = height / segments;
 
-    // 1. Generate Vertices (row by row)
+    // 1. Generate GRID Vertices (The corners)
     for (let iy = 0; iy <= segments; iy++) {
-      const z = iy * segH - hH; // Mapping Y segment to Z axis for a flat plane
+      const z = iy * segH - hH;
       for (let ix = 0; ix <= segments; ix++) {
         const x = ix * segW - wH;
         verts.push(x, 0, z);
       }
     }
 
-    // 2. Generate Faces
     const row = segments + 1;
+    const gridVertsCount = row * row;
+    let centerVertIdx = gridVertsCount;
+
+    // 2. Generate CENTER Vertices and Faces
     for (let iy = 0; iy < segments; iy++) {
       for (let ix = 0; ix < segments; ix++) {
-        // Calculate indices for the current quad
-        const a = iy * row + ix; // Top-left
-        const b = iy * row + (ix + 1); // Top-right
-        const c = (iy + 1) * row + ix; // Bottom-left
-        const d = (iy + 1) * row + (ix + 1); // Bottom-right
+        const tl = iy * row + ix;
+        const tr = iy * row + (ix + 1);
+        const bl = (iy + 1) * row + ix;
+        const br = (iy + 1) * row + (ix + 1);
 
-        // Triangle 1: Top-left, Top-right, Bottom-left
-        faces.push(a, c, b);
-        // Triangle 2: Bottom-right, Bottom-left, Top-right
-        faces.push(d, b, c);
+        // Center Position
+        const cx = (verts[tl * 3] + verts[tr * 3]) * 0.5;
+        const cz = (verts[tl * 3 + 2] + verts[bl * 3 + 2]) * 0.5;
+        verts.push(cx, 0, cz);
+
+        // 4 Triangles with reversed winding (Clockwise -> Counter-Clockwise or vice versa)
+        // Swapping the 2nd and 3rd arguments:
+        faces.push(tl, centerVertIdx, tr); // Top
+        faces.push(tr, centerVertIdx, br); // Right
+        faces.push(br, centerVertIdx, bl); // Bottom
+        faces.push(bl, centerVertIdx, tl); // Left
+
+        centerVertIdx++;
       }
     }
 
@@ -43,7 +54,7 @@ define(["../GameObject", "../components/MeshComponent"], function (
     };
   }
 
-  const planeMesh = generatePlaneMesh(1, 1, 1);
+  const planeMesh = generatePlaneMesh(1, 1, 100);
 
   var bounds = MeshComponent.computeBoundsFlatArray(
     new Float32Array(32),
@@ -55,12 +66,6 @@ define(["../GameObject", "../components/MeshComponent"], function (
   function Plane() {
     GameObject.call(this);
 
-    var r = (Math.random() * 255) | 0,
-      g = (Math.random() * 255) | 0,
-      b = (Math.random() * 255) | 0;
-
-    this.color = "rgb(" + (r % 100) + "," + (105 + (g % 55)) + ",0)";
-
     var mesh = new MeshComponent(this);
 
     mesh.faces = planeMesh.faces;
@@ -68,19 +73,13 @@ define(["../GameObject", "../components/MeshComponent"], function (
     mesh.vertices = planeMesh.vertices;
 
     mesh.bounds = bounds;
-    // mesh.computeBounds();
 
-    // mesh.ComputeNormals();
+    mesh.updateNormals();
 
     this.addComponent(mesh);
   }
 
-  var p = (Plane.prototype = Object.create(GameObject.prototype));
-
-  // p.tick = function () {
-  //     GameObject.prototype.tick.call(this);
-  //     this.transform.rotate(10,10,0);
-  // }
+  Plane.prototype = Object.create(GameObject.prototype);
 
   return Plane;
 });
