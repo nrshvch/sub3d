@@ -406,10 +406,13 @@ define([
                 nz * -lightDirection[2];
               const intensity = Math.max(camera.camera.ambientLight, dot);
 
+              // console.log(mesh.colors);
+              const colorIdx = mesh.faceColors[(f / 3) | 0];
+
               // 3. Apply Intensity to RGB
-              let r = (mesh.color[0] * intensity) | 0;
-              let g = (mesh.color[1] * intensity) | 0;
-              let b = (mesh.color[2] * intensity) | 0;
+              let r = (mesh.colors[colorIdx] * intensity) | 0;
+              let g = (mesh.colors[colorIdx + 1] * intensity) | 0;
+              let b = (mesh.colors[colorIdx + 2] * intensity) | 0;
 
               //FOG
 
@@ -884,8 +887,11 @@ define([
           ctx.strokeStyle = "rgb(0,0,255)";
           ctx.stroke();
         } else {
-          ctx.fillStyle = ctx.strokeStyle = PALETTE_16BIT[colorKey];
-          if (stroke) ctx.stroke();
+          ctx.fillStyle = PALETTE_16BIT[colorKey];
+          if (stroke) {
+            ctx.strokeStyle = PALETTE_16BIT[colorKey];
+            ctx.stroke();
+          }
           ctx.fill();
         }
 
@@ -912,7 +918,8 @@ define([
               3;
 
             // 'k' is the actual sequence index in the final render array
-            ctx.fillText(k.toString() + "," + b, centerX, centerY);
+            // ctx.fillText(k.toString() + "," + b, centerX, centerY);
+            ctx.fillText(b, centerX, centerY);
           }
         }
       }

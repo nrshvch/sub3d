@@ -1,10 +1,9 @@
-define(["../Component", "../lib/BoundingBox"], function (
-  Component,
-  BoundingBox,
-) {
-  //TODO: review path of bbox
+define(["../Component"], function (Component) {
   function Mesh(gameObject) {
     Component.call(this, gameObject);
+
+    this.colors = new Uint8Array([]);
+    this.faceColors = new Uint32Array([]);
   }
 
   var p = (Mesh.prototype = Object.create(Component.prototype));
@@ -21,46 +20,50 @@ define(["../Component", "../lib/BoundingBox"], function (
 
   p.color = null;
 
+  p.colors = null;
+
+  p.faceColors = null;
+
   p.faceNormals = null;
 
   p.vertexNormals = null;
 
   p.bounds = null;
 
-  p.ComputeNormals = function () {
-    // this.bounds.Calculate(this.vertices);
+  p.updateNormals = function () {
+    const faces = this.faces;
+    const verts = this.vertices;
+    const count = faces.length;
 
-    this.ComputeFaceNormals();
-  };
-
-  p.ComputeFaceNormals = function () {
-    var vA,
-      vB,
-      vC,
-      face,
-      cb = [],
-      ab = [];
-
-    if (this.faceNormals === null) this.faceNormals = [];
-
-    for (var f = 0, fl = this.faces.length; f < fl; f++) {
-      face = this.faces[f];
-
-      vA = this.vertices[face[0]];
-      vB = this.vertices[face[1]];
-      vC = this.vertices[face[2]];
-
-      scaliaEngine.glMatrix.vec3.subtract(cb, vC, vB);
-      scaliaEngine.glMatrix.vec3.subtract(ab, vA, vB);
-      scaliaEngine.glMatrix.vec3.cross(cb, cb, ab);
-      scaliaEngine.glMatrix.vec3.normalize(cb, cb);
-
-      this.faceNormals[f] = cb;
+    // Initialize or reuse buffer
+    if (!this.faceNormals || this.faceNormals.length !== count) {
+      this.faceNormals = new Float32Array(count);
     }
-  };
 
-  p.ComputeVertexNormals = function () {
-    //TODO implement when needed
+    for (let f = 0; f < count; f += 3) {
+      const v0 = faces[f] * 3,
+        v1 = faces[f + 1] * 3,
+        v2 = faces[f + 2] * 3;
+
+      // Edge vectors
+      const ax = verts[v1] - verts[v0],
+        ay = verts[v1 + 1] - verts[v0 + 1],
+        az = verts[v1 + 2] - verts[v0 + 2];
+      const bx = verts[v2] - verts[v0],
+        by = verts[v2 + 1] - verts[v0 + 1],
+        bz = verts[v2 + 2] - verts[v0 + 2];
+
+      // Cross product
+      let nx = ay * bz - az * by;
+      let ny = az * ax - ax * bz;
+      let nz = ax * by - ay * bx;
+
+      // Normalization
+      const len = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+      this.faceNormals[f] = nx * len;
+      this.faceNormals[f + 1] = ny * len;
+      this.faceNormals[f + 2] = nz * len;
+    }
   };
 
   p.setGameObject = function (gameObject) {
