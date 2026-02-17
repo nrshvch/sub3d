@@ -287,7 +287,7 @@ define([
     colorBuffer,
     typeBuffer,
     geometryBuffer,
-    lightDirection,
+    clipGeometryBuffer,
     camera,
     w,
     h,
@@ -381,113 +381,17 @@ define([
               const w2x = vec3Cache2[faceV2];
               const w2y = vec3Cache2[faceV2 + 1];
 
-              // --- LIGHTING CALCULATION ---
-              // 1. Calculate Normal (using world/camera-local positions)
-              const e1x = w1x - w0x,
-                e1y = w1y - w0y,
-                e1z = w1z - w0z;
-              const e2x = w2x - w0x,
-                e2y = w2y - w0y,
-                e2z = w2z - w0z;
-
-              let nx = e1y * e2z - e1z * e2y;
-              let ny = e1z * e2x - e1x * e2z;
-              let nz = e1x * e2y - e1y * e2x;
-
-              const nLen = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
-              nx *= nLen;
-              ny *= nLen;
-              nz *= nLen;
-
-              // 2. Light Intensity (Dot product + Ambient)
-              const dot =
-                nx * -lightDirection[0] +
-                ny * -lightDirection[1] +
-                nz * -lightDirection[2];
-              const intensity = Math.max(camera.camera.ambientLight, dot);
-
-              // console.log(mesh.colors);
               const colorIdx = mesh.faceColors[(f / 3) | 0];
-
-              // 3. Apply Intensity to RGB
-              let r = (mesh.colors[colorIdx] * intensity) | 0;
-              let g = (mesh.colors[colorIdx + 1] * intensity) | 0;
-              let b = (mesh.colors[colorIdx + 2] * intensity) | 0;
-
-              //FOG
-
-              if (cam.fogType !== CameraComponent.FogType.NONE) {
-                let fogAmount = 0;
-                if (
-                  cam.fogType === CameraComponent.FogType.RADIAL_FAST ||
-                  cam.fogType === CameraComponent.FogType.RADIAL
-                ) {
-                  // 1. Get the local camera-space coordinates from your cache
-                  // We use the average of the 3 vertices for the face
-                  const lx =
-                    (vec3Cache2[faceV0] +
-                      vec3Cache2[faceV1] +
-                      vec3Cache2[faceV2]) *
-                    0.33333;
-                  const ly =
-                    (vec3Cache2[faceV0 + 1] +
-                      vec3Cache2[faceV1 + 1] +
-                      vec3Cache2[faceV2 + 1]) *
-                    0.33333;
-                  const lz =
-                    (vec3Cache2[faceV0 + 2] +
-                      vec3Cache2[faceV1 + 2] +
-                      vec3Cache2[faceV2 + 2]) *
-                    0.33333;
-
-                  if (cam.fogType === CameraComponent.FogType.RADIAL_FAST) {
-                    // We need the squares of your panes for the comparison
-                    const nearSq = cam.fogNearPane * cam.fogNearPane;
-                    const farSq = cam.fogFarPane * cam.fogFarPane;
-                    const invFogRangeSq = 1.0 / (farSq - nearSq);
-
-                    // Calculate Squared Distance (No Math.sqrt!)
-                    const distSq = lx * lx + ly * ly + lz * lz;
-
-                    // Calculate fogAmount based on the squared distribution
-                    fogAmount = (distSq - nearSq) * invFogRangeSq;
-                  } else {
-                    // 2. Calculate Radial Distance
-                    // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
-                    const distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
-
-                    // 3. Calculate fogAmount using distance instead of depth
-                    fogAmount =
-                      (distance - cam.fogNearPane) /
-                      (cam.fogFarPane - cam.fogNearPane);
-                  }
-                } else if (cam.fogType === CameraComponent.FogType.LINEAR) {
-                  fogAmount =
-                    (depth - cam.fogNearPane) /
-                    (cam.fogFarPane - cam.fogNearPane);
-                }
-
-                if (fogAmount > 1) fogAmount = 1;
-
-                // Blend the mesh color with the fog color
-                if (fogAmount > 0) {
-                  r = (r * (1 - fogAmount) + cam.fogColor[0] * fogAmount) | 0;
-                  g = (g * (1 - fogAmount) + cam.fogColor[1] * fogAmount) | 0;
-                  b = (b * (1 - fogAmount) + cam.fogColor[2] * fogAmount) | 0;
-                }
-              }
-
-              // 1. Quantize 8-bit color channels to 5-6-5 bits
-              const qr = r & 0xf8; // Keep 5 bits
-              const qg = g & 0xfc; // Keep 6 bits
-              const qb = b & 0xf8; // Keep 5 bits
-
-              // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-              const key = (qr << 8) | (qg << 3) | (qb >> 3);
+              let r = mesh.colors[colorIdx] | 0;
+              let g = mesh.colors[colorIdx + 1] | 0;
+              let b = mesh.colors[colorIdx + 2] | 0;
 
               indexBuffer[i] = i;
+
               depthBuffer[i] = depth;
-              colorBuffer[i] = key;
+
+              colorBuffer[i] = (r << 24) | (g << 16) | (b << 8) | 255;
+
               typeBuffer[i] = 0; // 0 = FACE
 
               geometryBuffer[i * 6] = v0x;
@@ -497,6 +401,16 @@ define([
               geometryBuffer[i * 6 + 4] = v2x;
               geometryBuffer[i * 6 + 5] = v2y;
 
+              clipGeometryBuffer[i * 9] = w0x;
+              clipGeometryBuffer[i * 9 + 1] = w0y;
+              clipGeometryBuffer[i * 9 + 2] = w0z;
+              clipGeometryBuffer[i * 9 + 3] = w1x;
+              clipGeometryBuffer[i * 9 + 4] = w1y;
+              clipGeometryBuffer[i * 9 + 5] = w1z;
+              clipGeometryBuffer[i * 9 + 6] = w2x;
+              clipGeometryBuffer[i * 9 + 7] = w2y;
+              clipGeometryBuffer[i * 9 + 8] = w2z;
+
               i++;
             }
           }
@@ -504,6 +418,164 @@ define([
       }
     }
     return i;
+  }
+
+  function calcLight(
+    indexLen,
+    geoBuffer,
+    colorBuffer,
+    lightDirection,
+    ambientLightIntensity,
+  ) {
+    for (let i = 0; i < indexLen; i++) {
+      const w0x = geoBuffer[i * 9];
+      const w0y = geoBuffer[i * 9 + 1];
+      const w0z = geoBuffer[i * 9 + 2];
+      const w1x = geoBuffer[i * 9 + 3];
+      const w1y = geoBuffer[i * 9 + 4];
+      const w1z = geoBuffer[i * 9 + 5];
+      const w2x = geoBuffer[i * 9 + 6];
+      const w2y = geoBuffer[i * 9 + 7];
+      const w2z = geoBuffer[i * 9 + 8];
+
+      const color = colorBuffer[i];
+
+      let r = (color >>> 24) & 255;
+      let g = (color >>> 16) & 255;
+      let b = (color >>> 8) & 255;
+
+      // 1. Calculate Normal (using world/camera-local positions)
+      const e1x = w1x - w0x,
+        e1y = w1y - w0y,
+        e1z = w1z - w0z;
+      const e2x = w2x - w0x,
+        e2y = w2y - w0y,
+        e2z = w2z - w0z;
+
+      let nx = e1y * e2z - e1z * e2y;
+      let ny = e1z * e2x - e1x * e2z;
+      let nz = e1x * e2y - e1y * e2x;
+
+      const nLen = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+      nx *= nLen;
+      ny *= nLen;
+      nz *= nLen;
+
+      // 2. Light Intensity (Dot product + Ambient)
+      const dot =
+        nx * -lightDirection[0] +
+        ny * -lightDirection[1] +
+        nz * -lightDirection[2];
+      const intensity = Math.max(ambientLightIntensity, dot);
+
+      // 3. Apply Intensity to RGB
+      r = (r * intensity) | 0;
+      g = (g * intensity) | 0;
+      b = (b * intensity) | 0;
+
+      colorBuffer[i] = (r << 24) | (g << 16) | (b << 8) | 255;
+    }
+  }
+
+  function calcFog(
+    indexLen,
+    geometryBuffer,
+    colorBuffer,
+    depthBuffer,
+    fogType,
+    fogColor,
+    fogNearPane,
+    fogFarPane,
+  ) {
+    if (fogType === CameraComponent.FogType.NONE) return;
+
+    for (let i = 0; i < indexLen; i++) {
+      const w0x = geometryBuffer[i * 9];
+      const w0y = geometryBuffer[i * 9 + 1];
+      const w0z = geometryBuffer[i * 9 + 2];
+      const w1x = geometryBuffer[i * 9 + 3];
+      const w1y = geometryBuffer[i * 9 + 4];
+      const w1z = geometryBuffer[i * 9 + 5];
+      const w2x = geometryBuffer[i * 9 + 6];
+      const w2y = geometryBuffer[i * 9 + 7];
+      const w2z = geometryBuffer[i * 9 + 8];
+
+      const color = colorBuffer[i];
+
+      const depth = depthBuffer[i];
+
+      let r = (color >>> 24) & 255;
+      let g = (color >>> 16) & 255;
+      let b = (color >>> 8) & 255;
+
+      let fogAmount = 0;
+      if (
+        fogType === CameraComponent.FogType.RADIAL_FAST ||
+        fogType === CameraComponent.FogType.RADIAL
+      ) {
+        // 1. Get the local camera-space coordinates from your cache
+        // We use the average of the 3 vertices for the face
+        const lx = (w0x + w1x + w2x) * 0.33333;
+        const ly = (w0y + w1y + w2y) * 0.33333;
+        const lz = (w0z + w1z + w2z) * 0.33333;
+
+        if (fogType === CameraComponent.FogType.RADIAL_FAST) {
+          // We need the squares of your panes for the comparison
+          const nearSq = fogNearPane * fogNearPane;
+          const farSq = fogFarPane * fogFarPane;
+          const invFogRangeSq = 1.0 / (farSq - nearSq);
+
+          // Calculate Squared Distance (No Math.sqrt!)
+          const distSq = lx * lx + ly * ly + lz * lz;
+
+          // Calculate fogAmount based on the squared distribution
+          fogAmount = (distSq - nearSq) * invFogRangeSq;
+        } else {
+          // 2. Calculate Radial Distance
+          // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
+          const distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
+
+          // 3. Calculate fogAmount using distance instead of depth
+          fogAmount = (distance - fogNearPane) / (fogFarPane - fogNearPane);
+        }
+      } else if (fogType === CameraComponent.FogType.LINEAR) {
+        fogAmount = (depth - fogNearPane) / (fogFarPane - fogNearPane);
+      }
+
+      if (fogAmount > 1) fogAmount = 1;
+
+      // Blend the mesh color with the fog color
+      if (fogAmount > 0) {
+        r = (r * (1 - fogAmount) + fogColor[0] * fogAmount) | 0;
+        g = (g * (1 - fogAmount) + fogColor[1] * fogAmount) | 0;
+        b = (b * (1 - fogAmount) + fogColor[2] * fogAmount) | 0;
+
+        colorBuffer[i] = (r << 24) | (g << 16) | (b << 8) | 255;
+      }
+    }
+  }
+
+  function quantizeFaceColors(
+    indexBuffer,
+    indexLen,
+    colorBuffer,
+    color16KeyBuffer,
+  ) {
+    for (let i = 0; i < indexLen; i++) {
+      const color = colorBuffer[i];
+
+      let r = (color >>> 24) & 255;
+      let g = (color >>> 16) & 255;
+      let b = (color >>> 8) & 255;
+
+      // 1. Quantize 8-bit color channels to 5-6-5 bits
+      const qr = r & 0xf8; // Keep 5 bits
+      const qg = g & 0xfc; // Keep 6 bits
+      const qb = b & 0xf8; // Keep 5 bits
+
+      // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+      color16KeyBuffer[i] = (qr << 8) | (qg << 3) | (qb >> 3);
+    }
   }
 
   function generateBatches(
@@ -633,7 +705,9 @@ define([
     // when face is partially on the screen, some of vertices may be negative,
     // so Int16Array is used, allowing -32768 to 32767 values.
     this.geometryBuffer = new Int16Array(0);
-    this.colorBuffer = new Uint16Array(0);
+    this.clipGeometryBuffer = new Float32Array(0);
+    this.color16Buffer = new Uint16Array(0);
+    this.colorBuffer = new Uint32Array(0);
     this.typeBuffer = new Uint8Array(0);
     this.visibleObjectsBuffer = new Uint32Array(100);
     this.layerBuffers = [];
@@ -673,6 +747,8 @@ define([
       depthBuffer = this.depthBuffer,
       indexBuffer = this.indexBuffer,
       geometryBuffer = this.geometryBuffer,
+      clipGeometryBuffer = this.clipGeometryBuffer,
+      color16Buffer = this.color16Buffer,
       colorBuffer = this.colorBuffer,
       typeBuffer = this.typeBuffer,
       visibleObjectsBuffer = this.visibleObjectsBuffer,
@@ -803,13 +879,21 @@ define([
         newArr.set(typeBuffer);
         this.typeBuffer = typeBuffer = newArr;
 
-        newArr = new Uint16Array(maxFacesCount);
+        newArr = new Uint32Array(maxFacesCount);
         newArr.set(colorBuffer);
         this.colorBuffer = colorBuffer = newArr;
+
+        newArr = new Uint16Array(maxFacesCount);
+        newArr.set(color16Buffer);
+        this.color16Buffer = color16Buffer = newArr;
 
         newArr = new Int16Array(maxFacesCount * 6);
         newArr.set(geometryBuffer);
         this.geometryBuffer = geometryBuffer = newArr;
+
+        newArr = new Float32Array(maxFacesCount * 9);
+        newArr.set(clipGeometryBuffer);
+        this.clipGeometryBuffer = clipGeometryBuffer = newArr;
       }
 
       const l = meshToRenderCommands(
@@ -822,7 +906,7 @@ define([
         colorBuffer,
         typeBuffer,
         geometryBuffer,
-        lightDirection,
+        clipGeometryBuffer,
         camera,
         vw,
         vh,
@@ -831,6 +915,27 @@ define([
         mat4Scratchpad2,
         mat4Scratchpad1,
       );
+
+      calcLight(
+        l,
+        clipGeometryBuffer,
+        colorBuffer,
+        lightDirection,
+        camera.camera.ambientLight,
+      );
+
+      calcFog(
+        l,
+        clipGeometryBuffer,
+        colorBuffer,
+        depthBuffer,
+        camera.camera.fogType,
+        camera.camera.fogColor,
+        camera.camera.fogNearPane,
+        camera.camera.fogFarPane,
+      );
+
+      quantizeFaceColors(indexBuffer, l, colorBuffer, color16Buffer);
 
       // renderers.length = 0;
       if ((config.depthSortingMask & (i + 1)) === i + 1) {
@@ -849,7 +954,7 @@ define([
         batchBuffer,
         indexBuffer,
         l,
-        colorBuffer,
+        color16Buffer,
         typeBuffer,
       );
 
@@ -887,9 +992,9 @@ define([
           ctx.strokeStyle = "rgb(0,0,255)";
           ctx.stroke();
         } else {
-          ctx.fillStyle = PALETTE_16BIT[colorKey];
+          const color = ctx.fillStyle = PALETTE_16BIT[colorKey];
           if (stroke) {
-            ctx.strokeStyle = PALETTE_16BIT[colorKey];
+            ctx.strokeStyle = color;
             ctx.stroke();
           }
           ctx.fill();
