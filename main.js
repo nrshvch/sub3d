@@ -152,7 +152,7 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
         faceColors.push(colorIdx, colorIdx, colorIdx, colorIdx);
       }else if (Math.min(h_ay, h_by, h_cy, h_dy) <= 0){
         const coastColorIdx = colors.length;
-        colors.push(255, 255, 0);
+        colors.push(Math.random() * 20 + 200, Math.random() * 20 + 200, 0);
 
         //coast
         const h_ey = verts[ey] = getTTDMidpoint(verts[ay], verts[by], verts[cy], verts[dy]);
