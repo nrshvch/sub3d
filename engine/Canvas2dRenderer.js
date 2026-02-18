@@ -725,21 +725,20 @@ define([
   ) {
     let i = 0;
     const cam = camera.camera;
-    const near = cam.nearClippingPane;
-    const far = cam.farClippingPane;
-    const halfW = w * 0.5;
-    const halfH = h * 0.5;
+    const near = cam.nearClippingPane,
+      far = cam.farClippingPane;
+    const halfW = w * 0.5,
+      halfH = h * 0.5;
 
     for (let j = 0; j < renderersCount; j++) {
       const mesh = renderers[j];
       if (mesh.constructor !== MeshComponent) continue;
 
-      const transform = mesh.gameObject.transform;
-      const W = transform.dirtyL
-        ? transform.getLocalToWorld()
-        : transform.localToWorld;
+      const W = mesh.gameObject.transform.dirtyL
+        ? mesh.gameObject.transform.getLocalToWorld()
+        : mesh.gameObject.transform.localToWorld;
 
-      // MVP = clipSpaceMatrix * W
+      // MVP (Clip Space) and MV (Camera Space) - Calculated once per mesh
       mat4Mul(mat4Scratchpad2, clipSpaceMatrix, W);
       // MV = cameraLocalMatrix * W
       mat4Mul(mat4Scratchpad1, cameraLocalMatrix, W);
@@ -753,7 +752,11 @@ define([
         const vx = verts[l],
           vy = verts[l + 1],
           vz = verts[l + 2];
+
+        // Transform to Camera Space (Stride 3)
         vec3TransformMat4(vec3Cache2, l, vx, vy, vz, mat4Scratchpad1);
+
+        // Transform to Clip Space (Stride 4) - Standard MVP
         vec4TransformMat4(vec4Cache, v4idx, vx, vy, vz, 1.0, mat4Scratchpad2);
         v4idx += 4;
       }
@@ -763,33 +766,28 @@ define([
         const idx0 = faces[f],
           idx1 = faces[f + 1],
           idx2 = faces[f + 2];
-        const v0 = idx0 * 4,
-          v1 = idx1 * 4,
-          v2 = idx2 * 4;
+        const v0 = idx0 << 2,
+          v1 = idx1 << 2,
+          v2 = idx2 << 2; // Fast multiply by 4
 
         const x0 = vec4Cache[v0],
           y0 = vec4Cache[v0 + 1],
-          z0 = vec4Cache[v0 + 2],
           w0 = vec4Cache[v0 + 3];
         const x1 = vec4Cache[v1],
           y1 = vec4Cache[v1 + 1],
-          z1 = vec4Cache[v1 + 2],
           w1 = vec4Cache[v1 + 3];
         const x2 = vec4Cache[v2],
           y2 = vec4Cache[v2 + 1],
-          z2 = vec4Cache[v2 + 2],
           w2 = vec4Cache[v2 + 3];
 
         // --- CLIP-SPACE TRIVIAL REJECTION ---
-        // Standard W-test: a triangle is only discarded if ALL vertices are outside a plane.
+        // Skip divisions for off-screen faces
         let outcode = 0;
-        if (x0 < -w0 && x1 < -w1 && x2 < -w2) outcode |= 1; // All Left
-        if (x0 > w0 && x1 > w1 && x2 > w2) outcode |= 2; // All Right
-        if (y0 < -w0 && y1 < -w1 && y2 < -w2) outcode |= 4; // All Bottom
-        if (y0 > w0 && y1 > w1 && y2 > w2) outcode |= 8; // All Top
-        if (w0 < near && w1 < near && w2 < near) outcode |= 16; // All Near
-        if (w0 > far && w1 > far && w2 > far) outcode |= 32; // All Far
-
+        if (x0 < -w0 && x1 < -w1 && x2 < -w2) outcode |= 1;
+        if (x0 > w0 && x1 > w1 && x2 > w2) outcode |= 2;
+        if (y0 < -w0 && y1 < -w1 && y2 < -w2) outcode |= 4;
+        if (y0 > w0 && y1 > w1 && y2 > w2) outcode |= 8;
+        if (w0 < near && w1 < near && w2 < near) outcode |= 16;
         if (outcode !== 0) continue;
 
         // --- PERSPECTIVE DIVIDE ---
@@ -804,18 +802,8 @@ define([
           n2y = y2 * invW2;
 
         // --- BACKFACE CULLING ---
-        const area = (n1x - n0x) * (n2y - n0y) - (n1y - n0y) * (n2x - n0x);
-        if (area > 0) continue;
+        if ((n1x - n0x) * (n2y - n0y) - (n1y - n0y) * (n2x - n0x) > 0) continue;
 
-        // STAGE 6: VIEWPORT TRANSFORM
-        const p0x = n0x * halfW + halfW,
-          p0y = -n0y * halfH + halfH;
-        const p1x = n1x * halfW + halfW,
-          p1y = -n1y * halfH + halfH;
-        const p2x = n2x * halfW + halfW,
-          p2y = -n2y * halfH + halfH;
-
-        // STAGE 7: RASTERIZER PREP
         const v0c = idx0 * 3,
           v1c = idx1 * 3,
           v2c = idx2 * 3;
@@ -825,35 +813,35 @@ define([
 
         // FILL BUFFERS
         if (depth >= near && depth <= far) {
-          const fIdx = (f / 3) | 0;
-          const colorIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
-
           indexBuffer[i] = i;
           depthBuffer[i] = depth;
+
+          const fIdx = (f / 3) | 0;
+          const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
           colorBuffer[i] =
-            (mesh.colors[colorIdx] << 24) |
-            (mesh.colors[colorIdx + 1] << 16) |
-            (mesh.colors[colorIdx + 2] << 8) |
+            (mesh.colors[cIdx] << 24) |
+            (mesh.colors[cIdx + 1] << 16) |
+            (mesh.colors[cIdx + 2] << 8) |
             255;
 
           const gIdx = i * 6;
-          geometryBuffer[gIdx] = p0x;
-          geometryBuffer[gIdx + 1] = p0y;
-          geometryBuffer[gIdx + 2] = p1x;
-          geometryBuffer[gIdx + 3] = p1y;
-          geometryBuffer[gIdx + 4] = p2x;
-          geometryBuffer[gIdx + 5] = p2y;
+          geometryBuffer[gIdx] = n0x * halfW + halfW;
+          geometryBuffer[gIdx + 1] = -n0y * halfH + halfH;
+          geometryBuffer[gIdx + 2] = n1x * halfW + halfW;
+          geometryBuffer[gIdx + 3] = -n1y * halfH + halfH;
+          geometryBuffer[gIdx + 4] = n2x * halfW + halfW;
+          geometryBuffer[gIdx + 5] = -n2y * halfH + halfH;
 
-          const cIdx = i * 9;
-          clipGeometryBuffer[cIdx] = vec3Cache2[v0c];
-          clipGeometryBuffer[cIdx + 1] = vec3Cache2[v0c + 1];
-          clipGeometryBuffer[cIdx + 2] = vec3Cache2[v0c + 2];
-          clipGeometryBuffer[cIdx + 3] = vec3Cache2[v1c];
-          clipGeometryBuffer[cIdx + 4] = vec3Cache2[v1c + 1];
-          clipGeometryBuffer[cIdx + 5] = vec3Cache2[v1c + 2];
-          clipGeometryBuffer[cIdx + 6] = vec3Cache2[v2c];
-          clipGeometryBuffer[cIdx + 7] = vec3Cache2[v2c + 1];
-          clipGeometryBuffer[cIdx + 8] = vec3Cache2[v2c + 2];
+          const cgIdx = i * 9;
+          clipGeometryBuffer[cgIdx] = vec3Cache2[v0c];
+          clipGeometryBuffer[cgIdx + 1] = vec3Cache2[v0c + 1];
+          clipGeometryBuffer[cgIdx + 2] = vec3Cache2[v0c + 2];
+          clipGeometryBuffer[cgIdx + 3] = vec3Cache2[v1c];
+          clipGeometryBuffer[cgIdx + 4] = vec3Cache2[v1c + 1];
+          clipGeometryBuffer[cgIdx + 5] = vec3Cache2[v1c + 2];
+          clipGeometryBuffer[cgIdx + 6] = vec3Cache2[v2c];
+          clipGeometryBuffer[cgIdx + 7] = vec3Cache2[v2c + 1];
+          clipGeometryBuffer[cgIdx + 8] = vec3Cache2[v2c + 2];
           i++;
         }
       }
