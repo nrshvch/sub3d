@@ -61,7 +61,7 @@ define(["../GameObject", "../components/MeshComponent"], function (
     };
   }
 
-  const ballMesh = generateBallMesh(16, 16, 2);
+  const ballMesh = generateBallMesh(16, 16, 1);
 
   const bounds = MeshComponent.computeBoundsFlatArray(
     new Float32Array(32),

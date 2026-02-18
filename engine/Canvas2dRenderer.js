@@ -23,6 +23,409 @@ define([
 
   const PALETTE_16BIT = palette.createPalette16Bit();
 
+  function Canvas2dRenderer() {
+    this.layerBuffers = [];
+
+    this.drawCalls = 0;
+    this.faces = 0;
+
+    this.batchBuffer = new Int32Array(1024 * 3);
+
+    this.lightDirection = new Float32Array([0, 0, 0]);
+
+    this.depthBuffer = new Float32Array(0);
+    this.indexBuffer = new Uint32Array(0);
+    // Geometry buffer stores the 2D screen coordinates of vertices,
+    // when face is partially on the screen, some of vertices may be negative,
+    // so Int16Array is used, allowing -32768 to 32767 values.
+    this.geometryBuffer = new Int16Array(0);
+    this.clipGeometryBuffer = new Float32Array(0);
+    this.color16Buffer = new Uint16Array(0);
+    this.colorBuffer = new Uint32Array(0);
+    this.typeBuffer = new Uint8Array(0);
+    this.visibleObjectsBuffer = new Uint32Array(100);
+    this.layerBuffers = [];
+    this.layerBufferLengths = new Uint32Array(1);
+
+    // move outside render
+    // initialize layer buffers
+    for (let i = 0; i < config.layersCount; i++) {
+      this.layerBuffers[i] = this.layerBuffers[i] || [];
+    }
+  }
+
+  var p = Canvas2dRenderer.prototype;
+
+  p.vec3Cache1 = new Float32Array([0, 0, 0]);
+  p.vec3Cache2 = new Float32Array([0, 0, 0]);
+  p.mat4Scratchpad1 = new Float32Array(16);
+  p.mat4Scratchpad2 = new Float32Array(16);
+
+  p.render = function (camera, viewport, stats) {
+    let t0 = Date.now();
+
+    var gameObjects = camera.scene.retrieve(camera),
+      light = camera.scene.light,
+      layersCount = config.layersCount,
+      vw = viewport.width,
+      vh = viewport.height,
+      renderer,
+      renderers,
+      renderersCount,
+      i,
+      j,
+      ctx,
+      lightDirection = this.lightDirection,
+      vec3Cache1 = this.vec3Cache1,
+      vec3Cache2 = this.vec3Cache2,
+      depthBuffer = this.depthBuffer,
+      indexBuffer = this.indexBuffer,
+      geometryBuffer = this.geometryBuffer,
+      clipGeometryBuffer = this.clipGeometryBuffer,
+      color16Buffer = this.color16Buffer,
+      colorBuffer = this.colorBuffer,
+      typeBuffer = this.typeBuffer,
+      visibleObjectsBuffer = this.visibleObjectsBuffer,
+      layerBuffers = this.layerBuffers,
+      layerBufferLengths = this.layerBufferLengths,
+      mat4Scratchpad1 = this.mat4Scratchpad1,
+      mat4Scratchpad2 = this.mat4Scratchpad2,
+      worldToScreenMatrix = viewport.getWorldToScreen(),
+      cameraLocalMatrix = camera.transform.getWorldToLocal(),
+      clipSpaceMatrix = camera.camera.getClipSpaceMatrix();
+
+    if (light) {
+      // 1. Get the world forward vector of the light
+      light.transform.forward(lightDirection);
+
+      // 2. TRANSFORM LIGHT INTO CAMERA SPACE
+      // We only want the rotation, so we use the top-left 3x3 of the cameraLocalMatrix matrix
+      var lx = lightDirection[0],
+        ly = lightDirection[1],
+        lz = lightDirection[2];
+
+      // In-place transformation (multiplying by the rotation part of cameraLocalMatrix)
+      lightDirection[0] =
+        lx * cameraLocalMatrix[0] +
+        ly * cameraLocalMatrix[4] +
+        lz * cameraLocalMatrix[8];
+      lightDirection[1] =
+        lx * cameraLocalMatrix[1] +
+        ly * cameraLocalMatrix[5] +
+        lz * cameraLocalMatrix[9];
+      lightDirection[2] =
+        lx * cameraLocalMatrix[2] +
+        ly * cameraLocalMatrix[6] +
+        lz * cameraLocalMatrix[10];
+    }
+
+    let drawCalls = 0;
+    let faces = 0;
+
+    if (camera.camera.fogType !== CameraComponent.FogType.NONE) {
+      const cam = camera.camera;
+
+      // 1. Quantize 8-bit to 5-6-5 bits
+      const qr = cam.fogColor[0] & 0xf8; // Keep 5 bits
+      const qg = cam.fogColor[1] & 0xfc; // Keep 6 bits
+      const qb = cam.fogColor[2] & 0xf8; // Keep 5 bits
+
+      // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+      const key = (qr << 8) | (qg << 3) | (qb >> 3);
+
+      viewport.context.fillStyle = PALETTE_16BIT[key];
+      viewport.context.fillRect(0, 0, viewport.width, viewport.height);
+    }
+
+    if (visibleObjectsBuffer.length < gameObjects.length) {
+      const _visibleObjectsBuffer = visibleObjectsBuffer;
+      this.visibleObjectsBuffer = visibleObjectsBuffer = new Uint32Array(
+        gameObjects.length,
+      );
+      visibleObjectsBuffer.set(_visibleObjectsBuffer);
+    }
+
+    const firstPassVisibleObjectsBufferLen = roughCull(
+      gameObjects,
+      clipSpaceMatrix,
+      visibleObjectsBuffer,
+    );
+
+    const visibleObjectsBufferLen = exactCull(
+      visibleObjectsBuffer,
+      firstPassVisibleObjectsBufferLen,
+      gameObjects,
+      clipSpaceMatrix,
+    );
+
+    if (layerBufferLengths.length < layersCount) {
+      var _layerBufferLengths = layerBufferLengths;
+      this.layerBufferLengths = layerBufferLengths = new Uint32Array(
+        layersCount,
+      );
+      layerBufferLengths.set(_layerBufferLengths);
+    }
+
+    // group visible object to layer buffers
+    for (i = 0; i < visibleObjectsBufferLen; i++) {
+      const go = gameObjects[visibleObjectsBuffer[i]];
+      if (go.meshRenderer) {
+        const renderer = go.meshRenderer;
+        const layer = renderer.layer;
+        layerBuffers[layer][layerBufferLengths[layer]++] = renderer;
+      }
+    }
+
+    // render layer one-by-one
+    for (i = 0; i < layersCount; i++) {
+      ctx = viewport.layers[i];
+      // ctx.lineWidth = 1;
+      ctx.lineJoin = "round";
+
+      if ((config.layerClearMask & (i + 1)) === i + 1)
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+      renderers = layerBuffers[i];
+      renderersCount = layerBufferLengths[i];
+
+      let maxFacesCount = 0;
+      let maxVertsCount = 0;
+      for (let o = 0; o < renderersCount; o++) {
+        maxFacesCount += renderers[o].faces.length;
+        maxVertsCount = Math.max(maxVertsCount, renderers[o].vertices.length);
+      }
+      maxFacesCount = (maxFacesCount / 3) | 0;
+
+      if (vec3Cache1.length < maxVertsCount) {
+        const _vec3Cache1 = new Float32Array(maxVertsCount);
+        _vec3Cache1.set(vec3Cache1);
+        this.vec3Cache1 = vec3Cache1 = _vec3Cache1;
+
+        const _vec3Cache2 = new Float32Array(maxVertsCount);
+        _vec3Cache2.set(vec3Cache2);
+        this.vec3Cache2 = vec3Cache2 = _vec3Cache2;
+      }
+
+      if (depthBuffer.length < maxFacesCount) {
+        let newArr = new Float32Array(maxFacesCount);
+        newArr.set(depthBuffer);
+        this.depthBuffer = depthBuffer = newArr;
+
+        newArr = new Uint32Array(maxFacesCount);
+        newArr.set(indexBuffer);
+        this.indexBuffer = indexBuffer = newArr;
+
+        newArr = new Uint8Array(maxFacesCount);
+        newArr.set(typeBuffer);
+        this.typeBuffer = typeBuffer = newArr;
+
+        newArr = new Uint32Array(maxFacesCount);
+        newArr.set(colorBuffer);
+        this.colorBuffer = colorBuffer = newArr;
+
+        newArr = new Uint16Array(maxFacesCount);
+        newArr.set(color16Buffer);
+        this.color16Buffer = color16Buffer = newArr;
+
+        newArr = new Int16Array(maxFacesCount * 6);
+        newArr.set(geometryBuffer);
+        this.geometryBuffer = geometryBuffer = newArr;
+
+        newArr = new Float32Array(maxFacesCount * 9);
+        newArr.set(clipGeometryBuffer);
+        this.clipGeometryBuffer = clipGeometryBuffer = newArr;
+      }
+
+      const l = destructMesh(
+        renderers,
+        renderersCount,
+        vec3Cache1,
+        vec3Cache2,
+        indexBuffer,
+        depthBuffer,
+        colorBuffer,
+        typeBuffer,
+        geometryBuffer,
+        clipGeometryBuffer,
+        camera,
+        vw,
+        vh,
+        worldToScreenMatrix,
+        cameraLocalMatrix,
+        clipSpaceMatrix,
+        mat4Scratchpad2,
+        mat4Scratchpad1,
+      );
+
+      calcLight(
+        l,
+        clipGeometryBuffer,
+        colorBuffer,
+        lightDirection,
+        camera.camera.ambientLight,
+      );
+
+      calcFog(
+        l,
+        clipGeometryBuffer,
+        colorBuffer,
+        depthBuffer,
+        camera.camera.fogType,
+        camera.camera.fogColor,
+        camera.camera.fogNearPane,
+        camera.camera.fogFarPane,
+      );
+
+      quantizeFaceColors(indexBuffer, l, colorBuffer, color16Buffer);
+
+      // renderers.length = 0;
+      if ((config.depthSortingMask & (i + 1)) === i + 1) {
+        indexBuffer.subarray(0, l).sort(function (a, b) {
+          return depthBuffer[b] - depthBuffer[a];
+        });
+      } else {
+        indexBuffer.subarray(0, l).sort(function (a, b) {
+          return (colorBuffer[b] >>> 0) - (colorBuffer[a] >>> 0);
+        });
+      }
+
+      let batchBuffer = this.batchBuffer;
+      if (batchBuffer.length < indexBuffer.length * 3) {
+        var newBatchBuffer = new Int32Array(indexBuffer.length * 3);
+        newBatchBuffer.set(batchBuffer);
+        this.batchBuffer = batchBuffer = newBatchBuffer;
+      }
+      const batchCount = generateBatches(
+        batchBuffer,
+        indexBuffer,
+        l,
+        color16Buffer,
+        typeBuffer,
+      );
+
+      const stroke = (config.layerStrokeMask & (i + 1)) === i + 1;
+
+      for (var b = 0; b < batchCount; b++) {
+        var bPtr = b * 3;
+        var start = batchBuffer[bPtr];
+        var count = batchBuffer[bPtr + 1];
+        var colorKey = batchBuffer[bPtr + 2];
+
+        // Set State ONCE per batch
+        ctx.beginPath();
+
+        for (var k = start; k < start + count; k++) {
+          var index = indexBuffer[k]; // The sorted index
+          var geoIdx = index * 6;
+
+          ctx.moveTo(geometryBuffer[geoIdx], geometryBuffer[geoIdx + 1]);
+          ctx.lineTo(geometryBuffer[geoIdx + 2], geometryBuffer[geoIdx + 3]);
+          ctx.lineTo(geometryBuffer[geoIdx + 4], geometryBuffer[geoIdx + 5]);
+          ctx.closePath();
+        }
+
+        if (this.debug) {
+          if (count > 1) {
+            ctx.fillStyle = `rgb(0,0,${b % 255})`;
+            ctx.fill();
+          } else {
+            ctx.fillStyle = ctx.strokeStyle = PALETTE_16BIT[colorKey];
+            ctx.fill();
+          }
+        } else if (this.wireframe) {
+          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = "rgb(0,0,255)";
+          ctx.stroke();
+        } else {
+          const color = (ctx.fillStyle = PALETTE_16BIT[colorKey]);
+          if (stroke) {
+            ctx.strokeStyle = color;
+            ctx.stroke();
+          }
+          ctx.fill();
+        }
+
+        if (this.debug) {
+          // --- DEBUG: DRAW ORDER NUMBERS ---
+          ctx.fillStyle = "white"; // Make numbers visible
+          ctx.font = "10px monospace";
+          ctx.textAlign = "center";
+
+          for (var k = start; k < start + count; k++) {
+            var index = indexBuffer[k];
+            var g = index * 6;
+
+            // Calculate the center of the triangle for text placement
+            var centerX =
+              (geometryBuffer[g] +
+                geometryBuffer[g + 2] +
+                geometryBuffer[g + 4]) /
+              3;
+            var centerY =
+              (geometryBuffer[g + 1] +
+                geometryBuffer[g + 3] +
+                geometryBuffer[g + 5]) /
+              3;
+
+            // 'k' is the actual sequence index in the final render array
+            // ctx.fillText(k.toString() + "," + b, centerX, centerY);
+            ctx.fillText(b, centerX, centerY);
+          }
+        }
+      }
+
+      if (this.debug) {
+        for (j = 0; j < renderersCount; j++) {
+          renderer = renderers[j];
+          // Only draw axes for objects with a transform (usually MeshComponents)
+          if (renderer.gameObject && renderer.gameObject.debug) {
+            renderAxis(
+              renderer.gameObject,
+              ctx,
+              worldToScreenMatrix,
+              vec3Cache1,
+            );
+          }
+        }
+      }
+
+      viewport.context.drawImage(ctx.canvas, 0, 0);
+
+      drawCalls += batchCount;
+      faces += l;
+      layerBufferLengths[i] = 0;
+    }
+
+    stats.visibleObjects = visibleObjectsBufferLen;
+    stats.drawCalls = drawCalls;
+    stats.faces = faces;
+    stats.dt = Date.now() - t0;
+  };
+
+  //Rounding coordinates with Math.round is slow, but looks better
+  //Rounding to lowest with pipe operator is faster, but looks worse
+  // p.renderSprite = function (renderer, layer) {
+  //   vec3TransformMat4(
+  //     bufferVec3,
+  //     renderer.gameObject.transform.getPosition(bufferVec3),
+  //     this.M,
+  //   );
+  //   var sprite = renderer.sprite;
+  //
+  //   //layer.drawImage(sprite.sourceImage, sprite.offsetX, sprite.offsetY, sprite.width, sprite.height, Math.round(bufferVec3[0] - renderer.pivotX), Math.round(bufferVec3[1] - renderer.pivotY), sprite.width, sprite.height);
+  //   layer.drawImage(
+  //     sprite.sourceImage,
+  //     sprite.offsetX,
+  //     sprite.offsetY,
+  //     sprite.width,
+  //     sprite.height,
+  //     (bufferVec3[0] - renderer.pivotX) | 0,
+  //     (bufferVec3[1] - renderer.pivotY) | 0,
+  //     sprite.width,
+  //     sprite.height,
+  //   );
+  // };
+
   /**
    * GC-Friendly universal 1st-pass culling (Gribb-Hartmann method).
    * Works for Perspective and Orthographic.
@@ -277,7 +680,29 @@ define([
     return visibleCount;
   }
 
-  function meshToRenderCommands(
+  /**
+   *
+   * @param renderers
+   * @param renderersCount
+   * @param vec3Cache1
+   * @param vec3Cache2
+   * @param indexBuffer
+   * @param depthBuffer
+   * @param colorBuffer
+   * @param typeBuffer
+   * @param geometryBuffer
+   * @param clipGeometryBuffer
+   * @param camera
+   * @param w
+   * @param h
+   * @param worldToScreenMatrix {Float32Array} - The 4x4 viewport.getWorldToScreen() matrix, from camera local space to screen pixels.
+   * @param {Float32Array} cameraLocalMatrix - The 4x4 camera.transform.getWorldToLocal() matrix.
+   * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
+   * @param mat4Scratchpad2
+   * @param mat4Scratchpad1
+   * @returns {number}
+   */
+  function destructMesh(
     renderers,
     renderersCount,
     vec3Cache1,
@@ -291,8 +716,9 @@ define([
     camera,
     w,
     h,
-    ViewportM,
-    cameraLocal,
+    worldToScreenMatrix,
+    cameraLocalMatrix,
+    clipSpaceMatrix,
     mat4Scratchpad2,
     mat4Scratchpad1,
   ) {
@@ -309,8 +735,8 @@ define([
         const faces = mesh.faces,
           verts = mesh.vertices;
 
-        mat4Mul(mat4Scratchpad2, cameraLocal, W);
-        mat4Mul(mat4Scratchpad1, ViewportM, W);
+        mat4Mul(mat4Scratchpad2, cameraLocalMatrix, W);
+        mat4Mul(mat4Scratchpad1, worldToScreenMatrix, W);
 
         // transform all vertices at once and put them in temporary buffer
         for (let l = 0; l < verts.length; l += 3) {
@@ -381,7 +807,9 @@ define([
               const w2x = vec3Cache2[faceV2];
               const w2y = vec3Cache2[faceV2 + 1];
 
-              const colorIdx = mesh.faceColors[(f / 3) | 0];
+              //If mesh has only one color, reuse it for all.
+              const colorIdx =
+                mesh.faceColors[((f / 3) | 0) % mesh.faceColors.length];
               let r = mesh.colors[colorIdx] | 0;
               let g = mesh.colors[colorIdx + 1] | 0;
               let b = mesh.colors[colorIdx + 2] | 0;
@@ -688,398 +1116,6 @@ define([
       ctx.stroke();
     }
   }
-
-  function Canvas2dRenderer() {
-    this.layerBuffers = [];
-
-    this.drawCalls = 0;
-    this.faces = 0;
-
-    this.batchBuffer = new Int32Array(1024 * 3);
-
-    this.lightDirection = new Float32Array([0, 0, 0]);
-
-    this.depthBuffer = new Float32Array(0);
-    this.indexBuffer = new Uint32Array(0);
-    // Geometry buffer stores the 2D screen coordinates of vertices,
-    // when face is partially on the screen, some of vertices may be negative,
-    // so Int16Array is used, allowing -32768 to 32767 values.
-    this.geometryBuffer = new Int16Array(0);
-    this.clipGeometryBuffer = new Float32Array(0);
-    this.color16Buffer = new Uint16Array(0);
-    this.colorBuffer = new Uint32Array(0);
-    this.typeBuffer = new Uint8Array(0);
-    this.visibleObjectsBuffer = new Uint32Array(100);
-    this.layerBuffers = [];
-    this.layerBufferLengths = new Uint32Array(1);
-
-    // move outside render
-    // initialize layer buffers
-    for (let i = 0; i < config.layersCount; i++) {
-      this.layerBuffers[i] = this.layerBuffers[i] || [];
-    }
-  }
-
-  var p = Canvas2dRenderer.prototype;
-
-  p.vec3Cache1 = new Float32Array([0, 0, 0]);
-  p.vec3Cache2 = new Float32Array([0, 0, 0]);
-  p.mat4Scratchpad1 = new Float32Array(16);
-  p.mat4Scratchpad2 = new Float32Array(16);
-
-  p.render = function (camera, viewport, stats) {
-    let t0 = Date.now();
-
-    var gameObjects = camera.scene.retrieve(camera),
-      light = camera.scene.light,
-      layersCount = config.layersCount,
-      vw = viewport.width,
-      vh = viewport.height,
-      renderer,
-      renderers,
-      renderersCount,
-      i,
-      j,
-      ctx,
-      lightDirection = this.lightDirection,
-      vec3Cache1 = this.vec3Cache1,
-      vec3Cache2 = this.vec3Cache2,
-      depthBuffer = this.depthBuffer,
-      indexBuffer = this.indexBuffer,
-      geometryBuffer = this.geometryBuffer,
-      clipGeometryBuffer = this.clipGeometryBuffer,
-      color16Buffer = this.color16Buffer,
-      colorBuffer = this.colorBuffer,
-      typeBuffer = this.typeBuffer,
-      visibleObjectsBuffer = this.visibleObjectsBuffer,
-      layerBuffers = this.layerBuffers,
-      layerBufferLengths = this.layerBufferLengths,
-      mat4Scratchpad1 = this.mat4Scratchpad1,
-      mat4Scratchpad2 = this.mat4Scratchpad2,
-      worldToScreenMatrix = viewport.getWorldToScreen(),
-      cameraLocal = camera.transform.getWorldToLocal(),
-      clipSpaceMatrix = camera.camera.getClipSpaceMatrix();
-
-    if (light) {
-      // 1. Get the world forward vector of the light
-      light.transform.forward(lightDirection);
-
-      // 2. TRANSFORM LIGHT INTO CAMERA SPACE
-      // We only want the rotation, so we use the top-left 3x3 of the cameraLocal matrix
-      var lx = lightDirection[0],
-        ly = lightDirection[1],
-        lz = lightDirection[2];
-
-      // In-place transformation (multiplying by the rotation part of cameraLocal)
-      lightDirection[0] =
-        lx * cameraLocal[0] + ly * cameraLocal[4] + lz * cameraLocal[8];
-      lightDirection[1] =
-        lx * cameraLocal[1] + ly * cameraLocal[5] + lz * cameraLocal[9];
-      lightDirection[2] =
-        lx * cameraLocal[2] + ly * cameraLocal[6] + lz * cameraLocal[10];
-    }
-
-    let drawCalls = 0;
-    let faces = 0;
-
-    if (camera.camera.fogType !== CameraComponent.FogType.NONE) {
-      const cam = camera.camera;
-
-      // 1. Quantize 8-bit to 5-6-5 bits
-      const qr = cam.fogColor[0] & 0xf8; // Keep 5 bits
-      const qg = cam.fogColor[1] & 0xfc; // Keep 6 bits
-      const qb = cam.fogColor[2] & 0xf8; // Keep 5 bits
-
-      // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-      const key = (qr << 8) | (qg << 3) | (qb >> 3);
-
-      viewport.context.fillStyle = PALETTE_16BIT[key];
-      viewport.context.fillRect(0, 0, viewport.width, viewport.height);
-    }
-
-    if (visibleObjectsBuffer.length < gameObjects.length) {
-      const _visibleObjectsBuffer = visibleObjectsBuffer;
-      this.visibleObjectsBuffer = visibleObjectsBuffer = new Uint32Array(
-        gameObjects.length,
-      );
-      visibleObjectsBuffer.set(_visibleObjectsBuffer);
-    }
-
-    const firstPassVisibleObjectsBufferLen = roughCull(
-      gameObjects,
-      clipSpaceMatrix,
-      visibleObjectsBuffer,
-    );
-
-    const visibleObjectsBufferLen = exactCull(
-      visibleObjectsBuffer,
-      firstPassVisibleObjectsBufferLen,
-      gameObjects,
-      clipSpaceMatrix,
-    );
-
-    if (layerBufferLengths.length < layersCount) {
-      var _layerBufferLengths = layerBufferLengths;
-      this.layerBufferLengths = layerBufferLengths = new Uint32Array(
-        layersCount,
-      );
-      layerBufferLengths.set(_layerBufferLengths);
-    }
-
-    // group visible object to layer buffers
-    for (i = 0; i < visibleObjectsBufferLen; i++) {
-      const go = gameObjects[visibleObjectsBuffer[i]];
-      if (go.meshRenderer) {
-        const renderer = go.meshRenderer;
-        const layer = renderer.layer;
-        layerBuffers[layer][layerBufferLengths[layer]++] = renderer;
-      }
-    }
-
-    // render layer one-by-one
-    for (i = 0; i < layersCount; i++) {
-      ctx = viewport.layers[i];
-      // ctx.lineWidth = 1;
-      ctx.lineJoin = "round";
-
-      if ((config.layerClearMask & (i + 1)) === i + 1)
-        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-      renderers = layerBuffers[i];
-      renderersCount = layerBufferLengths[i];
-
-      let maxFacesCount = 0;
-      let maxVertsCount = 0;
-      for (let o = 0; o < renderersCount; o++) {
-        maxFacesCount += renderers[o].faces.length;
-        maxVertsCount = Math.max(maxVertsCount, renderers[o].vertices.length);
-      }
-      maxFacesCount = (maxFacesCount / 3) | 0;
-
-      if (vec3Cache1.length < maxVertsCount) {
-        const _vec3Cache1 = new Float32Array(maxVertsCount);
-        _vec3Cache1.set(vec3Cache1);
-        this.vec3Cache1 = vec3Cache1 = _vec3Cache1;
-
-        const _vec3Cache2 = new Float32Array(maxVertsCount);
-        _vec3Cache2.set(vec3Cache2);
-        this.vec3Cache2 = vec3Cache2 = _vec3Cache2;
-      }
-
-      if (depthBuffer.length < maxFacesCount) {
-        let newArr = new Float32Array(maxFacesCount);
-        newArr.set(depthBuffer);
-        this.depthBuffer = depthBuffer = newArr;
-
-        newArr = new Uint32Array(maxFacesCount);
-        newArr.set(indexBuffer);
-        this.indexBuffer = indexBuffer = newArr;
-
-        newArr = new Uint8Array(maxFacesCount);
-        newArr.set(typeBuffer);
-        this.typeBuffer = typeBuffer = newArr;
-
-        newArr = new Uint32Array(maxFacesCount);
-        newArr.set(colorBuffer);
-        this.colorBuffer = colorBuffer = newArr;
-
-        newArr = new Uint16Array(maxFacesCount);
-        newArr.set(color16Buffer);
-        this.color16Buffer = color16Buffer = newArr;
-
-        newArr = new Int16Array(maxFacesCount * 6);
-        newArr.set(geometryBuffer);
-        this.geometryBuffer = geometryBuffer = newArr;
-
-        newArr = new Float32Array(maxFacesCount * 9);
-        newArr.set(clipGeometryBuffer);
-        this.clipGeometryBuffer = clipGeometryBuffer = newArr;
-      }
-
-      const l = meshToRenderCommands(
-        renderers,
-        renderersCount,
-        vec3Cache1,
-        vec3Cache2,
-        indexBuffer,
-        depthBuffer,
-        colorBuffer,
-        typeBuffer,
-        geometryBuffer,
-        clipGeometryBuffer,
-        camera,
-        vw,
-        vh,
-        worldToScreenMatrix,
-        cameraLocal,
-        mat4Scratchpad2,
-        mat4Scratchpad1,
-      );
-
-      calcLight(
-        l,
-        clipGeometryBuffer,
-        colorBuffer,
-        lightDirection,
-        camera.camera.ambientLight,
-      );
-
-      calcFog(
-        l,
-        clipGeometryBuffer,
-        colorBuffer,
-        depthBuffer,
-        camera.camera.fogType,
-        camera.camera.fogColor,
-        camera.camera.fogNearPane,
-        camera.camera.fogFarPane,
-      );
-
-      quantizeFaceColors(indexBuffer, l, colorBuffer, color16Buffer);
-
-      // renderers.length = 0;
-      if ((config.depthSortingMask & (i + 1)) === i + 1) {
-        indexBuffer.subarray(0, l).sort(function (a, b) {
-          return depthBuffer[b] - depthBuffer[a];
-        });
-      }
-
-      let batchBuffer = this.batchBuffer;
-      if (batchBuffer.length < indexBuffer.length * 3) {
-        var newBatchBuffer = new Int32Array(indexBuffer.length * 3);
-        newBatchBuffer.set(batchBuffer);
-        this.batchBuffer = batchBuffer = newBatchBuffer;
-      }
-      const batchCount = generateBatches(
-        batchBuffer,
-        indexBuffer,
-        l,
-        color16Buffer,
-        typeBuffer,
-      );
-
-      const stroke = (config.layerStrokeMask & (i + 1)) === i + 1;
-
-      for (var b = 0; b < batchCount; b++) {
-        var bPtr = b * 3;
-        var start = batchBuffer[bPtr];
-        var count = batchBuffer[bPtr + 1];
-        var colorKey = batchBuffer[bPtr + 2];
-
-        // Set State ONCE per batch
-        ctx.beginPath();
-
-        for (var k = start; k < start + count; k++) {
-          var index = indexBuffer[k]; // The sorted index
-          var geoIdx = index * 6;
-
-          ctx.moveTo(geometryBuffer[geoIdx], geometryBuffer[geoIdx + 1]);
-          ctx.lineTo(geometryBuffer[geoIdx + 2], geometryBuffer[geoIdx + 3]);
-          ctx.lineTo(geometryBuffer[geoIdx + 4], geometryBuffer[geoIdx + 5]);
-          ctx.closePath();
-        }
-
-        if (this.debug) {
-          if (count > 1) {
-            ctx.fillStyle = `rgb(0,0,${b % 255})`;
-            ctx.fill();
-          } else {
-            ctx.fillStyle = ctx.strokeStyle = PALETTE_16BIT[colorKey];
-            ctx.fill();
-          }
-        } else if (this.wireframe) {
-          ctx.lineWidth = 0.5;
-          ctx.strokeStyle = "rgb(0,0,255)";
-          ctx.stroke();
-        } else {
-          const color = ctx.fillStyle = PALETTE_16BIT[colorKey];
-          if (stroke) {
-            ctx.strokeStyle = color;
-            ctx.stroke();
-          }
-          ctx.fill();
-        }
-
-        if (this.debug) {
-          // --- DEBUG: DRAW ORDER NUMBERS ---
-          ctx.fillStyle = "white"; // Make numbers visible
-          ctx.font = "10px monospace";
-          ctx.textAlign = "center";
-
-          for (var k = start; k < start + count; k++) {
-            var index = indexBuffer[k];
-            var g = index * 6;
-
-            // Calculate the center of the triangle for text placement
-            var centerX =
-              (geometryBuffer[g] +
-                geometryBuffer[g + 2] +
-                geometryBuffer[g + 4]) /
-              3;
-            var centerY =
-              (geometryBuffer[g + 1] +
-                geometryBuffer[g + 3] +
-                geometryBuffer[g + 5]) /
-              3;
-
-            // 'k' is the actual sequence index in the final render array
-            // ctx.fillText(k.toString() + "," + b, centerX, centerY);
-            ctx.fillText(b, centerX, centerY);
-          }
-        }
-      }
-
-      if (this.debug) {
-        for (j = 0; j < renderersCount; j++) {
-          renderer = renderers[j];
-          // Only draw axes for objects with a transform (usually MeshComponents)
-          if (renderer.gameObject && renderer.gameObject.debug) {
-            renderAxis(
-              renderer.gameObject,
-              ctx,
-              worldToScreenMatrix,
-              vec3Cache1,
-            );
-          }
-        }
-      }
-
-      viewport.context.drawImage(ctx.canvas, 0, 0);
-
-      drawCalls += batchCount;
-      faces += l;
-      layerBufferLengths[i] = 0;
-    }
-
-    stats.visibleObjects = visibleObjectsBufferLen;
-    stats.drawCalls = drawCalls;
-    stats.faces = faces;
-    stats.dt = Date.now() - t0;
-  };
-
-  //Rounding coordinates with Math.round is slow, but looks better
-  //Rounding to lowest with pipe operator is faster, but looks worse
-  // p.renderSprite = function (renderer, layer) {
-  //   vec3TransformMat4(
-  //     bufferVec3,
-  //     renderer.gameObject.transform.getPosition(bufferVec3),
-  //     this.M,
-  //   );
-  //   var sprite = renderer.sprite;
-  //
-  //   //layer.drawImage(sprite.sourceImage, sprite.offsetX, sprite.offsetY, sprite.width, sprite.height, Math.round(bufferVec3[0] - renderer.pivotX), Math.round(bufferVec3[1] - renderer.pivotY), sprite.width, sprite.height);
-  //   layer.drawImage(
-  //     sprite.sourceImage,
-  //     sprite.offsetX,
-  //     sprite.offsetY,
-  //     sprite.width,
-  //     sprite.height,
-  //     (bufferVec3[0] - renderer.pivotX) | 0,
-  //     (bufferVec3[1] - renderer.pivotY) | 0,
-  //     sprite.width,
-  //     sprite.height,
-  //   );
-  // };
 
   return Canvas2dRenderer;
 });
