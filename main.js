@@ -3,10 +3,10 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
 
   const TILE_SIZE = 45.255;
   var N = 100;
-  var SCALE = 2;
+  var SCALE = 1;
 
   var plane = new scaliaEngine.Plane();
-  plane.meshRenderer.layer = 0;
+  plane.meshRenderer.layer = 1;
   plane.transform.translate(0, 0, 0);
   plane.transform.scale(TILE_SIZE * N * SCALE, 1, TILE_SIZE * N * SCALE);
   myGame.world.scene.addGameObject(plane);
@@ -136,87 +136,61 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
       const h_cy = verts[cy];
       const h_dy = verts[dy];
 
-
-
-      if(Math.max(h_ay, h_by, h_cy, h_dy) <= 0){
+      if (Math.max(h_ay, h_by, h_cy, h_dy) <= 0) {
         //water
 
         verts[ay] = 0;
         verts[by] = 0;
         verts[cy] = 0;
         verts[dy] = 0;
-        verts[ey] = (Math.random()*2-1) * 2;
+        verts[ey] = (Math.random() * 2 - 1) * 2;
 
         const colorIdx = colors.length;
         colors.push(0, 0, 200);
         faceColors.push(colorIdx, colorIdx, colorIdx, colorIdx);
-      }else if (Math.min(h_ay, h_by, h_cy, h_dy) <= 0){
+      } else if (Math.min(h_ay, h_by, h_cy, h_dy) <= 0) {
         const coastColorIdx = colors.length;
         colors.push(Math.random() * 20 + 200, Math.random() * 20 + 200, 0);
 
         //coast
-        const h_ey = verts[ey] = getTTDMidpoint(verts[ay], verts[by], verts[cy], verts[dy]);
+        const h_ey = (verts[ey] = getTTDMidpoint(
+          verts[ay],
+          verts[by],
+          verts[cy],
+          verts[dy],
+        ));
 
         //if is partially water (has water faces)
         if (h_ey === 0) {
           const waterColorIdx = colors.length;
-            colors.push(0, 0, 200);
+          colors.push(0, 0, 200);
 
           //test every face for being a water
-          if (h_ay === h_by) {
-            faceColors.push(waterColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
+          faceColors.push(h_ay === h_by ? waterColorIdx : coastColorIdx);
+          faceColors.push(h_by === h_cy ? waterColorIdx : coastColorIdx);
+          faceColors.push(h_cy === h_dy ? waterColorIdx : coastColorIdx);
+          faceColors.push(h_dy === h_ay ? waterColorIdx : coastColorIdx);
 
-          if (h_by === h_cy) {
-            faceColors.push(waterColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
-
-          if (h_cy === h_dy) {
-            faceColors.push(waterColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
-
-          if (h_dy === h_ay) {
-            faceColors.push(waterColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
           //if is partially grass (has grass faces)
         } else {
           const grassColorIdx = colors.length;
           colors.push(0, Math.random() * 20 + 200, 0);
 
           //test every face for being a grass
-          if (h_ay === h_by && h_ay === h_ey) {
-            faceColors.push(grassColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
-
-          if (h_by === h_cy && h_by === h_ey) {
-            faceColors.push(grassColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
-
-          if (h_cy === h_dy && h_cy === h_ey) {
-            faceColors.push(grassColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
-
-          if (h_dy === h_ay && h_dy === h_ey) {
-            faceColors.push(grassColorIdx);
-          } else {
-            faceColors.push(coastColorIdx);
-          }
+          faceColors.push(
+            h_ay === h_ey && h_by === h_ey ? grassColorIdx : coastColorIdx,
+          );
+          faceColors.push(
+            h_by === h_ey && h_cy === h_ey ? grassColorIdx : coastColorIdx,
+          );
+          faceColors.push(
+            h_cy === h_ey && h_dy === h_ey ? grassColorIdx : coastColorIdx,
+          );
+          faceColors.push(
+            h_dy === h_ey && h_ay === h_ey ? grassColorIdx : coastColorIdx,
+          );
         }
-      }else{
+      } else {
         //ground
         verts[ey] = getTTDMidpoint(verts[ay], verts[by], verts[cy], verts[dy]);
         const colorIdx = colors.length;
@@ -227,6 +201,20 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
   }
   plane.meshRenderer.colors = new Uint8Array(colors);
   plane.meshRenderer.faceColors = new Uint32Array(faceColors);
+
+  const simplifiedMesh = scaliaEngine.Plane.simplifyExistingGridMesh(
+    plane.meshRenderer.vertices,
+    plane.meshRenderer.faces,
+    plane.meshRenderer.faceColors,
+    N,
+  );
+
+  plane.meshRenderer.faces = simplifiedMesh.faces;
+  plane.meshRenderer.vertices = simplifiedMesh.vertices;
+  plane.meshRenderer.faceColors = simplifiedMesh.faceColors;
+  plane.meshRenderer.vertices = simplifiedMesh.vertices;
+
+  plane.meshRenderer.updateNormals();
 
   // for (var i = 0; i < N; i++) {
   //   for (var j = 0; j < N; j++) {
@@ -272,13 +260,14 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
   // box.transform.rotate(35.264, 0, 0, 'world');
   // box.debug = true;
 
-  // const ball = new scaliaEngine.Ball();
-  // ball.transform.scale(100,100,100);
-  // ball.meshRenderer.color = new Uint8Array([0,0,255]);
-  // ball.meshRenderer.layer = 1;
-  // myGame.world.scene.addGameObject(ball);
-  // myGame.world.tickRegister(ball);
-  // ball.debug = true;
+  const ball = new scaliaEngine.Ball();
+  ball.transform.scale(100, 100, 100);
+  ball.meshRenderer.colors = new Uint8Array([0, 0, 255]);
+  ball.meshRenderer.faceColors = new Uint32Array([0]);
+  ball.meshRenderer.layer = 1;
+  myGame.world.scene.addGameObject(ball);
+  myGame.world.tickRegister(ball);
+  ball.debug = true;
 
   var cameraObject = (window.camera = new scaliaEngine.Camera());
   cameraObject.camera.farClippingPane = 2000;
