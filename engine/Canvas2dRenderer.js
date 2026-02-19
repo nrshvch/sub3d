@@ -285,9 +285,29 @@ define([
 
       // renderers.length = 0;
       if ((config.depthSortingMask & (i + 1)) === i + 1) {
+        const bucketCount = 256; // Set your bucket count here
+        const near = camera.camera.nearClippingPane;
+        const far = camera.camera.farClippingPane;
+        const invRange = bucketCount / (far - near);
+
         indexBuffer.subarray(0, l).sort(function (a, b) {
-          return depthBuffer[b] - depthBuffer[a];
+          // 1. Calculate Bucket for A and B (higher depth = further away)
+          // We use | 0 for fast truncation to integer
+          const bucketA = ((depthBuffer[a] - near) * invRange) | 0;
+          const bucketB = ((depthBuffer[b] - near) * invRange) | 0;
+
+          // 2. Primary Sort: Depth Buckets (Descending for Painter's Algorithm)
+          if (bucketA !== bucketB) {
+            return bucketB - bucketA;
+          }
+
+          // 3. Secondary Sort: Color (This groups same-colored faces within the same depth slice)
+          return colorBuffer[b] - colorBuffer[a];
         });
+
+        // indexBuffer.subarray(0, l).sort(function (a, b) {
+        //   return depthBuffer[b] - depthBuffer[a];
+        // });
       } else {
         indexBuffer.subarray(0, l).sort(function (a, b) {
           return (colorBuffer[b] >>> 0) - (colorBuffer[a] >>> 0);
