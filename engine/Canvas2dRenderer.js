@@ -43,6 +43,7 @@ define([
     this.clipGeometryBuffer = new Float32Array(0);
     this.color16Buffer = new Uint16Array(0);
     this.colorBuffer = new Uint32Array(0);
+    this.faceNormalsBuffer = new Float32Array(0);
     this.typeBuffer = new Uint8Array(0);
     this.visibleObjectsBuffer = new Uint32Array(100);
     this.layerBuffers = [];
@@ -62,6 +63,7 @@ define([
   p.vec4Cache = new Float32Array([0, 0, 0]);
   p.mat4Scratchpad1 = new Float32Array(16);
   p.mat4Scratchpad2 = new Float32Array(16);
+  p.mat3Scratchpad1 = new Float32Array(9);
 
   p.render = function (camera, viewport, stats) {
     let t0 = Date.now();
@@ -85,6 +87,7 @@ define([
       clipGeometryBuffer = this.clipGeometryBuffer,
       color16Buffer = this.color16Buffer,
       colorBuffer = this.colorBuffer,
+      faceNormalsBuffer = this.faceNormalsBuffer,
       typeBuffer = this.typeBuffer,
       visibleObjectsBuffer = this.visibleObjectsBuffer,
       layerBuffers = this.layerBuffers,
@@ -214,6 +217,10 @@ define([
         newArr = new Float32Array(maxFacesCount * 9);
         newArr.set(clipGeometryBuffer);
         this.clipGeometryBuffer = clipGeometryBuffer = newArr;
+
+        newArr = new Float32Array(maxFacesCount * 3);
+        newArr.set(faceNormalsBuffer);
+        this.faceNormalsBuffer = faceNormalsBuffer = newArr;
       }
 
       const l = destructMesh(
@@ -233,16 +240,17 @@ define([
         clipSpaceMatrix,
         mat4Scratchpad2,
         mat4Scratchpad1,
+        this.mat3Scratchpad1,
+        faceNormalsBuffer,
       );
 
       calcLight(
         l,
-        clipGeometryBuffer,
         colorBuffer,
         camera.scene,
         this.lightDirection,
         camera.camera.ambientLight,
-        cameraLocalMatrix,
+        faceNormalsBuffer,
       );
 
       calcFog(
@@ -689,6 +697,8 @@ define([
    * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
    * @param {Float32Array} mat4Scratchpad1 - Reusable matrix for Model-View calculations.
    * @param {Float32Array} mat4Scratchpad2 - Reusable matrix for Model-View-Projection (MVP).
+   * @param {Float32Array} mat3Scratchpad1 - Reusable matrix 9-element (3x3)
+   * @param {Float32Array} faceNormalsBuffer
    * @returns {number} The total count of processed (visible) faces.
    */
   function destructMesh(
@@ -708,6 +718,8 @@ define([
     clipSpaceMatrix,
     mat4Scratchpad1,
     mat4Scratchpad2,
+    mat3Scratchpad1,
+    faceNormalsBuffer,
   ) {
     let i = 0;
     const cam = camera.camera;
@@ -730,7 +742,8 @@ define([
       mat4Mul(mat4Scratchpad1, cameraLocalMatrix, W);
 
       const faces = mesh.faces,
-        verts = mesh.vertices;
+        verts = mesh.vertices,
+        faceNormals = mesh.faceNormals;
       let v4idx = 0;
 
       // VERTEX TRANSFORMATION (One pass)
@@ -746,6 +759,21 @@ define([
         vec4TransformMat4(vec4Cache, v4idx, vx, vy, vz, 1.0, mat4Scratchpad2);
         v4idx += 4;
       }
+
+      // NM Normal Matrix calculation per mesh
+      MeshComponent.computeNormalMatrix(mat3Scratchpad1, W);
+
+      const nm = mat3Scratchpad1;
+      // Unpack Normal Matrix for speed
+      const nm0 = nm[0],
+        nm1 = nm[1],
+        nm2 = nm[2];
+      const nm3 = nm[3],
+        nm4 = nm[4],
+        nm5 = nm[5];
+      const nm6 = nm[6],
+        nm7 = nm[7],
+        nm8 = nm[8];
 
       // FACE PROCESSING
       for (let f = 0; f < faces.length; f += 3) {
@@ -802,6 +830,19 @@ define([
           indexBuffer[i] = i;
           depthBuffer[i] = depth;
 
+          // --- PASS 3: WORLD-SPACE LIGHTING ---
+          const fnx = faceNormals[f],
+            fny = faceNormals[f + 1],
+            fnz = faceNormals[f + 2];
+
+          // Transform normal: Model -> World via Normal Matrix
+          let wnx = fnx * nm0 + fny * nm3 + fnz * nm6;
+          let wny = fnx * nm1 + fny * nm4 + fnz * nm7;
+          let wnz = fnx * nm2 + fny * nm5 + fnz * nm8;
+          // Re-normalize for uniform/non-uniform scaling
+          const mag = Math.sqrt(wnx * wnx + wny * wny + wnz * wnz);
+          const invMag = mag > 0 ? 1 / mag : 0;
+
           const fIdx = (f / 3) | 0;
           const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
           colorBuffer[i] =
@@ -828,6 +869,11 @@ define([
           clipGeometryBuffer[cgIdx + 6] = vec3Cache2[v2c];
           clipGeometryBuffer[cgIdx + 7] = vec3Cache2[v2c + 1];
           clipGeometryBuffer[cgIdx + 8] = vec3Cache2[v2c + 2];
+
+          const fnIdx = i * 3;
+          faceNormalsBuffer[fnIdx] = wnx * invMag;
+          faceNormalsBuffer[fnIdx + 1] = wny * invMag;
+          faceNormalsBuffer[fnIdx + 2] = wnz * invMag;
           i++;
         }
       }
@@ -837,85 +883,34 @@ define([
 
   function calcLight(
     indexLen,
-    geoBuffer,
     colorBuffer,
     scene,
-    lightDirection,
+    lightDirBuffer,
     ambientLightIntensity,
-    cameraLocalMatrix,
+    faceNormalsBuffer,
   ) {
     const light = scene.light;
+    if (!light) return;
 
-    if (light) {
-      // 1. Get the world forward vector of the light
-      light.transform.forward(lightDirection);
+    // 1. Get the world forward vector of the light
+    light.transform.forward(lightDirBuffer);
 
-      // 2. TRANSFORM LIGHT INTO CAMERA SPACE
-      // We only want the rotation, so we use the top-left 3x3 of the cameraLocalMatrix matrix
-      var lx = lightDirection[0],
-        ly = lightDirection[1],
-        lz = lightDirection[2];
-
-      // In-place transformation (multiplying by the rotation part of cameraLocalMatrix)
-      lightDirection[0] =
-        lx * cameraLocalMatrix[0] +
-        ly * cameraLocalMatrix[4] +
-        lz * cameraLocalMatrix[8];
-      lightDirection[1] =
-        lx * cameraLocalMatrix[1] +
-        ly * cameraLocalMatrix[5] +
-        lz * cameraLocalMatrix[9];
-      lightDirection[2] =
-        lx * cameraLocalMatrix[2] +
-        ly * cameraLocalMatrix[6] +
-        lz * cameraLocalMatrix[10];
-    }
+    const lx = -lightDirBuffer[0];
+    const ly = -lightDirBuffer[1];
+    const lz = -lightDirBuffer[2];
 
     for (let i = 0; i < indexLen; i++) {
-      const w0x = geoBuffer[i * 9];
-      const w0y = geoBuffer[i * 9 + 1];
-      const w0z = geoBuffer[i * 9 + 2];
-      const w1x = geoBuffer[i * 9 + 3];
-      const w1y = geoBuffer[i * 9 + 4];
-      const w1z = geoBuffer[i * 9 + 5];
-      const w2x = geoBuffer[i * 9 + 6];
-      const w2y = geoBuffer[i * 9 + 7];
-      const w2z = geoBuffer[i * 9 + 8];
+      const wnx = faceNormalsBuffer[i * 3];
+      const wny = faceNormalsBuffer[i * 3 + 1];
+      const wnz = faceNormalsBuffer[i * 3 + 2];
 
-      const color = colorBuffer[i];
-
-      let r = (color >>> 24) & 255;
-      let g = (color >>> 16) & 255;
-      let b = (color >>> 8) & 255;
-
-      // 1. Calculate Normal (using world/camera-local positions)
-      const e1x = w1x - w0x,
-        e1y = w1y - w0y,
-        e1z = w1z - w0z;
-      const e2x = w2x - w0x,
-        e2y = w2y - w0y,
-        e2z = w2z - w0z;
-
-      let nx = e1y * e2z - e1z * e2y;
-      let ny = e1z * e2x - e1x * e2z;
-      let nz = e1x * e2y - e1y * e2x;
-
-      const nLen = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
-      nx *= nLen;
-      ny *= nLen;
-      nz *= nLen;
-
-      // 2. Light Intensity (Dot product + Ambient)
-      const dot =
-        nx * -lightDirection[0] +
-        ny * -lightDirection[1] +
-        nz * -lightDirection[2];
+      const dot = wnx * lx + wny * ly + wnz * lz;
       const intensity = Math.max(ambientLightIntensity, dot);
 
-      // 3. Apply Intensity to RGB
-      r = (r * intensity) | 0;
-      g = (g * intensity) | 0;
-      b = (b * intensity) | 0;
+      const color = colorBuffer[i];
+      const r = ((color >>> 24) & 255) * intensity;
+      const g = ((color >>> 16) & 255) * intensity;
+      const b = ((color >>> 8) & 255) * intensity;
 
       colorBuffer[i] = (r << 24) | (g << 16) | (b << 8) | 255;
     }
@@ -926,6 +921,7 @@ define([
     geometryBuffer,
     colorBuffer,
     depthBuffer,
+    faceNormalsBuffer,
     fogType,
     fogColor,
     fogNearPane,
