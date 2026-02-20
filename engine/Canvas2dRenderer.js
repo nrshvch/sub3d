@@ -67,7 +67,6 @@ define([
     let t0 = Date.now();
 
     var gameObjects = camera.scene.retrieve(camera),
-      light = camera.scene.light,
       layersCount = config.layersCount,
       vw = viewport.width,
       vh = viewport.height,
@@ -77,7 +76,6 @@ define([
       i,
       j,
       ctx,
-      lightDirection = this.lightDirection,
       vec3Cache1 = this.vec3Cache1,
       vec3Cache2 = this.vec3Cache2,
       vec4Cache = this.vec4Cache,
@@ -96,31 +94,6 @@ define([
       worldToScreenMatrix = viewport.getWorldToScreen(),
       cameraLocalMatrix = camera.transform.getWorldToLocal(),
       clipSpaceMatrix = camera.camera.getClipSpaceMatrix();
-
-    if (light) {
-      // 1. Get the world forward vector of the light
-      light.transform.forward(lightDirection);
-
-      // 2. TRANSFORM LIGHT INTO CAMERA SPACE
-      // We only want the rotation, so we use the top-left 3x3 of the cameraLocalMatrix matrix
-      var lx = lightDirection[0],
-        ly = lightDirection[1],
-        lz = lightDirection[2];
-
-      // In-place transformation (multiplying by the rotation part of cameraLocalMatrix)
-      lightDirection[0] =
-        lx * cameraLocalMatrix[0] +
-        ly * cameraLocalMatrix[4] +
-        lz * cameraLocalMatrix[8];
-      lightDirection[1] =
-        lx * cameraLocalMatrix[1] +
-        ly * cameraLocalMatrix[5] +
-        lz * cameraLocalMatrix[9];
-      lightDirection[2] =
-        lx * cameraLocalMatrix[2] +
-        ly * cameraLocalMatrix[6] +
-        lz * cameraLocalMatrix[10];
-    }
 
     let drawCalls = 0;
     let faces = 0;
@@ -182,7 +155,7 @@ define([
     // render layer one-by-one
     for (i = 0; i < layersCount; i++) {
       ctx = viewport.layers[i];
-      // ctx.lineWidth = 1;
+
       ctx.lineJoin = "round";
 
       if ((config.layerClearMask & (i + 1)) === i + 1)
@@ -266,8 +239,10 @@ define([
         l,
         clipGeometryBuffer,
         colorBuffer,
-        lightDirection,
+        camera.scene,
+        this.lightDirection,
         camera.camera.ambientLight,
+        cameraLocalMatrix,
       );
 
       calcFog(
@@ -283,7 +258,6 @@ define([
 
       quantizeFaceColors(indexBuffer, l, colorBuffer, color16Buffer);
 
-      // renderers.length = 0;
       if ((config.depthSortingMask & (i + 1)) === i + 1) {
         const bucketCount = 256; // Set your bucket count here
         const near = camera.camera.nearClippingPane;
@@ -426,30 +400,6 @@ define([
     stats.faces = faces;
     stats.dt = Date.now() - t0;
   };
-
-  //Rounding coordinates with Math.round is slow, but looks better
-  //Rounding to lowest with pipe operator is faster, but looks worse
-  // p.renderSprite = function (renderer, layer) {
-  //   vec3TransformMat4(
-  //     bufferVec3,
-  //     renderer.gameObject.transform.getPosition(bufferVec3),
-  //     this.M,
-  //   );
-  //   var sprite = renderer.sprite;
-  //
-  //   //layer.drawImage(sprite.sourceImage, sprite.offsetX, sprite.offsetY, sprite.width, sprite.height, Math.round(bufferVec3[0] - renderer.pivotX), Math.round(bufferVec3[1] - renderer.pivotY), sprite.width, sprite.height);
-  //   layer.drawImage(
-  //     sprite.sourceImage,
-  //     sprite.offsetX,
-  //     sprite.offsetY,
-  //     sprite.width,
-  //     sprite.height,
-  //     (bufferVec3[0] - renderer.pivotX) | 0,
-  //     (bufferVec3[1] - renderer.pivotY) | 0,
-  //     sprite.width,
-  //     sprite.height,
-  //   );
-  // };
 
   /**
    * GC-Friendly universal 1st-pass culling (Gribb-Hartmann method).
@@ -706,24 +656,38 @@ define([
   }
 
   /**
+   * Decomposes visible meshes into individual faces, performing culling and coordinate projection.
+   * This function implements a standard 3D graphics pipeline:
+   * 1.  **Vertex Transformation**: Transforms vertices into Camera Space (for lighting/depth)
+   * and Clip Space (via Model-View-Projection matrix).
+   * 2.  **Clip-Space Trivial Rejection**: Early-outs faces where all three vertices reside
+   * outside the frustum boundaries (-w < x/y < w) before performing division.
+   * 3.  **Perspective Divide**: Converts 4D Clip Space coordinates to 3D Normalized Device
+   * Coordinates (NDC) by dividing by the 'w' component.
+   * 4.  **Back-face Culling**: Uses a 2D cross-product (winding order check) in NDC space
+   * to discard faces pointing away from the camera.
+   * 5.  **Viewport Mapping**: Maps NDC coordinates (-1 to 1 range) to final screen pixel
+   * coordinates for the Canvas 2D context.
+   * 6.  **Buffer Population**: Stores processed geometry, average camera-space depth,
+   * and face colors into typed arrays for sorting and rendering.
    *
-   * @param renderers
-   * @param renderersCount
-   * @param vec3Cache2
-   * @param vec4Cache
-   * @param indexBuffer
-   * @param depthBuffer
-   * @param colorBuffer
-   * @param geometryBuffer
-   * @param clipGeometryBuffer
-   * @param camera
-   * @param w
-   * @param h
-   * @param {Float32Array} cameraLocalMatrix - The 4x4 camera.transform.getWorldToLocal() matrix.
+   * @param {Array} renderers - List of MeshComponents to process.
+   * @param {number} renderersCount - Number of active renderers in the current layer.
+   * @param {Float32Array} vec3Cache2 - Pre-allocated buffer for Camera-Space vertices [x, y, z].
+   * @param {Float32Array} vec4Cache - Pre-allocated buffer for Clip-Space vertices [x, y, z, w].
+   * @param {Uint32Array} indexBuffer - Array to store sequential face indices for sorting.
+   * @param {Float32Array} depthBuffer - Stores the average camera-space Z-depth per face.
+   * @param {Uint32Array} colorBuffer - Stores the packed RGBA face colors.
+   * @param {Int16Array} geometryBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
+   * @param {Float32Array} clipGeometryBuffer - Stores Camera-Space positions for lighting/fog.
+   * @param {Object} camera - The camera component containing near/far planes.
+   * @param {number} w - Viewport width.
+   * @param {number} h - Viewport height.
+   * @param {Float32Array} cameraLocalMatrix - The 4x4 World-to-Local (View) matrix.
    * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
-   * @param mat4Scratchpad1 {Float32Array}
-   * @param mat4Scratchpad2 {Float32Array}
-   * @returns {number}
+   * @param {Float32Array} mat4Scratchpad1 - Reusable matrix for Model-View calculations.
+   * @param {Float32Array} mat4Scratchpad2 - Reusable matrix for Model-View-Projection (MVP).
+   * @returns {number} The total count of processed (visible) faces.
    */
   function destructMesh(
     renderers,
@@ -873,9 +837,38 @@ define([
     indexLen,
     geoBuffer,
     colorBuffer,
+    scene,
     lightDirection,
     ambientLightIntensity,
+    cameraLocalMatrix,
   ) {
+    const light = scene.light;
+
+    if (light) {
+      // 1. Get the world forward vector of the light
+      light.transform.forward(lightDirection);
+
+      // 2. TRANSFORM LIGHT INTO CAMERA SPACE
+      // We only want the rotation, so we use the top-left 3x3 of the cameraLocalMatrix matrix
+      var lx = lightDirection[0],
+        ly = lightDirection[1],
+        lz = lightDirection[2];
+
+      // In-place transformation (multiplying by the rotation part of cameraLocalMatrix)
+      lightDirection[0] =
+        lx * cameraLocalMatrix[0] +
+        ly * cameraLocalMatrix[4] +
+        lz * cameraLocalMatrix[8];
+      lightDirection[1] =
+        lx * cameraLocalMatrix[1] +
+        ly * cameraLocalMatrix[5] +
+        lz * cameraLocalMatrix[9];
+      lightDirection[2] =
+        lx * cameraLocalMatrix[2] +
+        ly * cameraLocalMatrix[6] +
+        lz * cameraLocalMatrix[10];
+    }
+
     for (let i = 0; i < indexLen; i++) {
       const w0x = geoBuffer[i * 9];
       const w0y = geoBuffer[i * 9 + 1];
