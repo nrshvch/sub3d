@@ -30,7 +30,11 @@ define(["../Component"], function (Component) {
 
   p.bounds = null;
 
-  p.updateNormals = function () {
+  /**
+   * Generates face normals for any indexed triangle mesh.
+   * @param {number} winding - Set to 1 for CCW (Standard), -1 for CW.
+   */
+  p.updateNormals = function (winding = 1) {
     const faces = this.faces;
     const verts = this.vertices;
     const count = faces.length;
@@ -40,10 +44,10 @@ define(["../Component"], function (Component) {
       this.faceNormals = new Float32Array(count);
     }
 
-    for (let f = 0; f < count; f += 3) {
-      const v0 = faces[f] * 3,
-        v1 = faces[f + 1] * 3,
-        v2 = faces[f + 2] * 3;
+    for (let i = 0; i < count; i += 3) {
+      const v0 = faces[i] * 3,
+        v1 = faces[i + 1] * 3,
+        v2 = faces[i + 2] * 3;
 
       // Edge vectors
       const ax = verts[v1] - verts[v0],
@@ -53,16 +57,19 @@ define(["../Component"], function (Component) {
         by = verts[v2 + 1] - verts[v0 + 1],
         bz = verts[v2 + 2] - verts[v0 + 2];
 
-      // Cross product
-      let nx = ay * bz - az * by;
-      let ny = az * ax - ax * bz;
-      let nz = ax * by - ay * bx;
+      // Standard Cross Product (E1 x E2)
+      let nx = (ay * bz - az * by) * winding;
+      let ny = (az * bx - ax * bz) * winding;
+      let nz = (ax * by - ay * bx) * winding;
 
-      // Normalization
-      const len = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
-      this.faceNormals[f] = nx * len;
-      this.faceNormals[f + 1] = ny * len;
-      this.faceNormals[f + 2] = nz * len;
+      const mag = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      if (mag > 1e-10) {
+        // Small epsilon check
+        const invMag = 1 / mag;
+        this.faceNormals[i] = nx * invMag;
+        this.faceNormals[i + 1] = ny * invMag;
+        this.faceNormals[i + 2] = nz * invMag;
+      }
     }
   };
 
