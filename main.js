@@ -3,7 +3,7 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
 
   const TILE_SIZE = 45.255;
   var N = 100;
-  var SCALE = 1;
+  var SCALE = 1.5;
 
   var plane = new scaliaEngine.Plane();
   plane.meshRenderer.layer = 1;
@@ -12,13 +12,8 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
   myGame.world.scene.addGameObject(plane);
   const verts = plane.meshRenderer.vertices;
 
-  // verts[1] = 20*SCALE;
-  // verts[4] = 20*SCALE;
-  // verts[7] = 20 * SCALE;
-  // verts[10] = 20 * SCALE;
-  // verts[13] = 20 * SCALE;
   var len = Math.pow(N + 1, 2) * 3;
-  // console.log(len);
+
   const noise = new Noise([
     151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140,
     36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120,
@@ -260,24 +255,25 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
   // box.transform.rotate(35.264, 0, 0, 'world');
   // box.debug = true;
 
-  const ball = new scaliaEngine.Ball();
-  ball.transform.scale(100, 100, 100);
-  ball.meshRenderer.colors = new Uint8Array([0, 0, 255]);
-  ball.meshRenderer.faceColors = new Uint32Array([0]);
-  ball.meshRenderer.layer = 1;
-  myGame.world.scene.addGameObject(ball);
-  myGame.world.tickRegister(ball);
-  ball.debug = true;
+  // const ball = new scaliaEngine.Ball();
+  // ball.transform.scale(100, 100, 100);
+  // ball.meshRenderer.colors = new Uint8Array([0, 0, 255]);
+  // ball.meshRenderer.faceColors = new Uint32Array([0]);
+  // ball.meshRenderer.layer = 1;
+  // ball.meshRenderer.updateNormals();
+  // myGame.world.scene.addGameObject(ball);
+  // myGame.world.tickRegister(ball);
+  // ball.debug = true;
 
   var cameraObject = (window.camera = new scaliaEngine.Camera());
-  cameraObject.camera.farClippingPane = 2000;
-  cameraObject.camera.nearClippingPane = -2000;
+  cameraObject.camera.farClippingPane = 2500;
+  cameraObject.camera.nearClippingPane = -2500;
   cameraObject.camera.fogType =
-    scaliaEngine.CameraComponent.FogType.RADIAL_FAST;
-  cameraObject.camera.fogFarPane = 2000;
-  cameraObject.camera.fogNearPane = 500;
-  cameraObject.camera.fogColor = new Uint8Array([50, 150, 50]);
-  cameraObject.camera.bgColor = new Uint8Array([50, 150, 50]);
+    scaliaEngine.CameraComponent.FogType.RADIAL;
+  cameraObject.camera.fogFarPane = 2500;
+  cameraObject.camera.fogNearPane = 1500;
+  cameraObject.camera.fogColor = new Uint8Array([140, 180, 200]);
+  cameraObject.camera.bgColor = new Uint8Array([140, 180, 200]);
   cameraObject.camera.ambientLight = 0.5;
   cameraObject.transform.rotate(30, 45, 0);
   cameraObject.transform.translate(0, 0, 0);
