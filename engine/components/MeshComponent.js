@@ -83,6 +83,54 @@ define(["../Component"], function (Component) {
     Component.prototype.unsetGameObject.call(this);
   };
 
+  /**
+   * Computes the Normal Matrix (Inverse-Transpose of the 3x3 World Matrix).
+   * Industry standard for correct lighting on non-uniformly scaled objects.
+   * @param {Float32Array} out - Destination 3x3 matrix (Float32Array(9))
+   * @param {Float32Array} m - Source 4x4 World Matrix
+   */
+  Mesh.computeNormalMatrix = function (out, m) {
+    // 1. Extract the 3x3 part from the column-major 4x4 matrix 'm'
+    const a00 = m[0],
+      a01 = m[1],
+      a02 = m[2];
+    const a10 = m[4],
+      a11 = m[5],
+      a12 = m[6];
+    const a20 = m[8],
+      a21 = m[9],
+      a22 = m[10];
+
+    // 2. Calculate cofactors (minors with signs)
+    const c00 = a11 * a22 - a12 * a21;
+    const c01 = -(a10 * a22 - a12 * a20);
+    const c02 = a10 * a21 - a11 * a20;
+
+    // 3. Compute the determinant using the first column
+    const det = a00 * c00 + a01 * c01 + a02 * c02;
+
+    if (Math.abs(det) < 0.000001) return null; // Handle singular matrix
+    const invDet = 1.0 / det;
+
+    /**
+     * 4. Industry Standard Mapping:
+     * To get the Transpose of the Inverse, we calculate the Adjugate
+     * but we DO NOT transpose it at the end (because the transpose
+     * of the adjugate IS the inverse direction we need).
+     */
+    out[0] = c00 * invDet;
+    out[1] = c01 * invDet;
+    out[2] = c02 * invDet;
+
+    out[3] = -(a01 * a22 - a02 * a21) * invDet;
+    out[4] = (a00 * a22 - a02 * a20) * invDet;
+    out[5] = -(a00 * a21 - a01 * a20) * invDet;
+
+    out[6] = (a01 * a12 - a02 * a11) * invDet;
+    out[7] = -(a00 * a12 - a02 * a10) * invDet;
+    out[8] = (a00 * a11 - a01 * a10) * invDet;
+  };
+
   Mesh.computeBoundsFlatArray = function (out, vertices) {
     if (vertices.length === 0) return;
 
