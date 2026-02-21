@@ -63,10 +63,7 @@ require(["./engine/main", "./engine/noise", "./terrain"], function (
     const _i = (i / 3) % (len / 3);
     const x = _i % (N + 1);
     const y = (_i / (N + 1)) | 0;
-    // console.log(x, y, calcZ(x*100, y*100));
-    const random = (noise.noise2D(x, y) + 1) * 0.5;
-    // verts[i + 1] = Math.round(Math.random()) * 16*SCALE;
-    verts[i + 1] = calcZ(x * 1, y * 1) * 16 * SCALE;
+    verts[i + 1] = calcZ(x, y) * 16 * SCALE;
   }
 
   function getTTDMidpoint(hTL, hTR, hBR, hBL) {
@@ -215,39 +212,36 @@ require(["./engine/main", "./engine/noise", "./terrain"], function (
 
   terrain.meshRenderer.updateNormals();
 
-  // for (var i = 0; i < N; i++) {
-  //   for (var j = 0; j < N; j++) {
-  //     var plane = new scaliaEngine.Plane();
-  //     plane.meshRenderer.color = new Uint8Array([
-  //       0,
-  //       Math.random() * 55 + 200,
-  //       0,
-  //     ]);
-  //     plane.meshRenderer.layer = 0;
-  //     plane.transform.translate((i - N / 2) * TILE_SIZE, 0, (j - N / 2) * TILE_SIZE);
-  //     plane.transform.scale(TILE_SIZE, 1, TILE_SIZE);
-  //     myGame.world.scene.addGameObject(plane);
-  //
-  //     if (Math.random() > 0.8) {
-  //       var tree = new scaliaEngine.Cone();
-  //       tree.meshRenderer.color = new Uint8Array([0, 100, 0]);
-  //       tree.meshRenderer.layer = 1;
-  //       const offsetX = Math.random() * 24 - 12;
-  //       const offsetY = Math.random() * 24 - 12;
-  //       const size = Math.random() / 2 + 0.5;
-  //       const yRot = Math.random() * 50 - 25;
-  //       tree.transform.translate(
-  //         (i - N / 2) * TILE_SIZE + offsetX,
-  //         1,
-  //         (j - N / 2) * TILE_SIZE + offsetY,
-  //       );
-  //       tree.transform.scale(25 * size, 50 * size, 25 * size);
-  //       tree.transform.rotate(0, yRot, 0);
-  //       myGame.world.scene.addGameObject(tree);
-  //       // tree.debug = true;
-  //     }
-  //   }
-  // }
+  for (var i = 0; i < N; i++) {
+    for (var j = 0; j < N; j++) {
+      const z = calcZ(i, j);
+      if (Math.random() > 0.8 && z >= 1) {
+        var tree = new scaliaEngine.Cone();
+        tree.meshRenderer.colors = new Uint8Array([0, 100, 0]);
+        tree.meshRenderer.layer = 1;
+        const offsetX =
+          (TILE_SIZE / 2 + (Math.random() * TILE_SIZE) / 2 - TILE_SIZE / 4) *
+          SCALE;
+        const offsetY =
+          (TILE_SIZE / 2 + (Math.random() * TILE_SIZE) / 2 - TILE_SIZE / 4) *
+          SCALE;
+        const size = Math.random() / 2 + 0.5;
+        const yRot = Math.random() * 50 - 25;
+        tree.transform.translate(
+          (i - N / 2) * TILE_SIZE * SCALE + offsetX,
+          z * 16 * SCALE + 2 * SCALE,
+          (j - N / 2) * TILE_SIZE * SCALE + offsetY,
+        );
+        tree.transform.scale(
+          25 * size * SCALE,
+          50 * size * SCALE,
+          25 * size * SCALE,
+        );
+        tree.transform.rotate(0, yRot, 0);
+        myGame.world.scene.addGameObject(tree);
+      }
+    }
+  }
 
   // const box = new scaliaEngine.Box();
   // box.transform.scale(100, 100, 100);
