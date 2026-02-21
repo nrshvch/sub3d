@@ -84,8 +84,11 @@ define(["../GameObject", "../components/MeshComponent"], function (
 
   const boxMesh = generateBoxMesh(1, 1, 1, 1);
 
-  const bounds = MeshComponent.computeBoundsFlatArray(
-    new Float32Array(32),
+  const bounds = new Float32Array(32);
+
+  MeshComponent.computeBoundsFlatArray(
+    bounds,
+    0,
     boxMesh.vertices,
   );
 
@@ -94,31 +97,17 @@ define(["../GameObject", "../components/MeshComponent"], function (
   function Box() {
     GameObject.call(this);
 
-    var mesh = new MeshComponent(this);
+    const mesh = new MeshComponent();
 
     mesh.vertices = boxMesh.vertices;
-
     mesh.faces = boxMesh.faces;
-
-    // mesh.computeBounds();
-
     mesh.bounds = bounds;
-
-    // mesh.ComputeNormals();
+    mesh.updateNormals();
 
     this.addComponent(mesh);
-
-    // this.scene.world.tickRegister(this);
   }
 
-  var p = (Box.prototype = Object.create(GameObject.prototype));
-
-  p.tick = function (time) {
-    // GameObject.prototype.tick.call(this);
-    // console.log(Math.sin(time.time/1000) * 100);
-    this.transform.translate(0, Math.sin(time.time / 500) * 10, 0, "world");
-    this.transform.rotate(0, 10, 0, "world");
-  };
+  Box.prototype = Object.create(GameObject.prototype);
 
   return Box;
 });

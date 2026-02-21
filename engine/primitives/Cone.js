@@ -38,39 +38,28 @@ define(["../GameObject", "../components/MeshComponent"], function (
     };
   }
 
-  var coneMesh = generateConeMesh(7, 0.5, 1);
-  const bounds = MeshComponent.computeBoundsFlatArray(
-    new Float32Array(32),
-    coneMesh.vertices,
-  );
+  const coneMesh = generateConeMesh(7, 0.5, 1);
+
+  const bounds = new Float32Array(32);
+
+  MeshComponent.computeBoundsFlatArray(bounds, 0, coneMesh.vertices);
 
   MeshComponent.computeBoundingSphere(bounds, 28, coneMesh.vertices);
 
   function Cone() {
     GameObject.call(this);
 
-    var mesh = new MeshComponent(this);
+    const mesh = new MeshComponent(this);
+
     mesh.vertices = coneMesh.vertices;
     mesh.faces = coneMesh.faces;
     mesh.bounds = bounds;
-    mesh.color = [0, 200, 255]; // Bright Blue
+    mesh.updateNormals();
 
     this.addComponent(mesh);
   }
 
-  var p = (Cone.prototype = Object.create(GameObject.prototype));
-
-  // p.tick = function(time) {
-  //     GameObject.prototype.tick.call(this);
-  //     this.transform.rotate(0, 1, 0, 'world');
-  // };
-
-  // p.tick = function(time){
-  //     GameObject.prototype.tick.call(this);
-  //     // console.log(Math.sin(time.time/1000) * 100);
-  //     // this.transform.translate(0,Math.sin(time.time/500) * 10,0, 'world')
-  //     this.transform.rotate(0,10,0, 'locat');
-  // }
+  Cone.prototype = Object.create(GameObject.prototype);
 
   return Cone;
 });
