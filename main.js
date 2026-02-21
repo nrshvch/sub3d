@@ -1,16 +1,20 @@
-require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
+require(["./engine/main", "./engine/noise", "./terrain"], function (
+  scaliaEngine,
+  Noise,
+  Terrain,
+) {
   var myGame = new scaliaEngine.Game();
 
   const TILE_SIZE = 45.255;
   var N = 100;
-  var SCALE = 1.5;
+  var SCALE = 1;
 
-  var plane = new scaliaEngine.Plane();
-  plane.meshRenderer.layer = 1;
-  plane.transform.translate(0, 0, 0);
-  plane.transform.scale(TILE_SIZE * N * SCALE, 1, TILE_SIZE * N * SCALE);
-  myGame.world.scene.addGameObject(plane);
-  const verts = plane.meshRenderer.vertices;
+  var terrain = new Terrain();
+  terrain.meshRenderer.layer = 0;
+  terrain.transform.translate(0, 0, 0);
+  terrain.transform.scale(TILE_SIZE * N * SCALE, 1, TILE_SIZE * N * SCALE);
+  myGame.world.scene.addGameObject(terrain);
+  const verts = terrain.meshRenderer.vertices;
 
   var len = Math.pow(N + 1, 2) * 3;
 
@@ -194,22 +198,22 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
       }
     }
   }
-  plane.meshRenderer.colors = new Uint8Array(colors);
-  plane.meshRenderer.faceColors = new Uint32Array(faceColors);
+  terrain.meshRenderer.colors = new Uint8Array(colors);
+  terrain.meshRenderer.faceColors = new Uint32Array(faceColors);
 
-  const simplifiedMesh = scaliaEngine.Plane.simplifyExistingGridMesh(
-    plane.meshRenderer.vertices,
-    plane.meshRenderer.faces,
-    plane.meshRenderer.faceColors,
+  const simplifiedMesh = Terrain.simplifyExistingGridMesh(
+    terrain.meshRenderer.vertices,
+    terrain.meshRenderer.faces,
+    terrain.meshRenderer.faceColors,
     N,
   );
 
-  plane.meshRenderer.faces = simplifiedMesh.faces;
-  plane.meshRenderer.vertices = simplifiedMesh.vertices;
-  plane.meshRenderer.faceColors = simplifiedMesh.faceColors;
-  plane.meshRenderer.vertices = simplifiedMesh.vertices;
+  terrain.meshRenderer.faces = simplifiedMesh.faces;
+  terrain.meshRenderer.vertices = simplifiedMesh.vertices;
+  terrain.meshRenderer.faceColors = simplifiedMesh.faceColors;
+  terrain.meshRenderer.vertices = simplifiedMesh.vertices;
 
-  plane.meshRenderer.updateNormals();
+  terrain.meshRenderer.updateNormals();
 
   // for (var i = 0; i < N; i++) {
   //   for (var j = 0; j < N; j++) {
@@ -246,30 +250,29 @@ require(["./engine/main", "./engine/noise"], function (scaliaEngine, Noise) {
   // }
 
   // const box = new scaliaEngine.Box();
-  // box.transform.scale(100,100,100);
-  // box.meshRenderer.color = new Uint8Array([0,0,255]);
-  // box.meshRenderer.layer = 1;
-  // myGame.world.scene.addGameObject(box);
-  // myGame.world.tickRegister(box);
+  // box.transform.scale(100, 100, 100);
   // box.transform.rotate(0, 0, 45);
-  // box.transform.rotate(35.264, 0, 0, 'world');
+  // box.transform.rotate(35.264, 0, 0, "world");
+  // box.meshRenderer.layer = 1;
   // box.debug = true;
+  // myGame.world.scene.addGameObject(box);
 
   // const ball = new scaliaEngine.Ball();
   // ball.transform.scale(100, 100, 100);
-  // ball.meshRenderer.colors = new Uint8Array([0, 0, 255]);
-  // ball.meshRenderer.faceColors = new Uint32Array([0]);
   // ball.meshRenderer.layer = 1;
-  // ball.meshRenderer.updateNormals();
-  // myGame.world.scene.addGameObject(ball);
-  // myGame.world.tickRegister(ball);
   // ball.debug = true;
+  // myGame.world.scene.addGameObject(ball);
+  // myGame.world.tickRegister({
+  //   tick: function (time) {
+  //     ball.transform.translate(0, Math.sin(time.time / 500) * 10, 0, "world");
+  //     ball.transform.rotate(0, 10, 0, "world");
+  //   },
+  // });
 
   var cameraObject = (window.camera = new scaliaEngine.Camera());
   cameraObject.camera.farClippingPane = 2500;
   cameraObject.camera.nearClippingPane = -2500;
-  cameraObject.camera.fogType =
-    scaliaEngine.CameraComponent.FogType.RADIAL;
+  cameraObject.camera.fogType = scaliaEngine.CameraComponent.FogType.RADIAL;
   cameraObject.camera.fogFarPane = 2500;
   cameraObject.camera.fogNearPane = 1500;
   cameraObject.camera.fogColor = new Uint8Array([140, 180, 200]);

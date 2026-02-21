@@ -63,33 +63,25 @@ define(["../GameObject", "../components/MeshComponent"], function (
 
   const ballMesh = generateBallMesh(16, 16, 1);
 
-  const bounds = MeshComponent.computeBoundsFlatArray(
-    new Float32Array(32),
-    ballMesh.vertices,
-  );
+  const bounds = new Float32Array(32);
+
+  MeshComponent.computeBoundsFlatArray(bounds, 0, ballMesh.vertices);
 
   MeshComponent.computeBoundingSphere(bounds, 28, ballMesh.vertices);
 
-  function Sphere() {
+  function Ball() {
     GameObject.call(this);
 
-    var mesh = new MeshComponent(this);
+    const mesh = new MeshComponent(this);
     mesh.vertices = ballMesh.vertices;
     mesh.faces = ballMesh.faces;
     mesh.bounds = bounds;
-    mesh.color = [255, 100, 0]; // Orange
+    mesh.updateNormals();
 
     this.addComponent(mesh);
   }
 
-  var p = (Sphere.prototype = Object.create(GameObject.prototype));
+  Ball.prototype = Object.create(GameObject.prototype);
 
-  p.tick = function (time) {
-    // GameObject.prototype.tick.call(this);
-    // console.log(Math.sin(time.time/1000) * 100);
-    this.transform.translate(0, Math.sin(time.time / 500) * 10, 0, "world");
-    this.transform.rotate(0, 10, 0, "world");
-  };
-
-  return Sphere;
+  return Ball;
 });

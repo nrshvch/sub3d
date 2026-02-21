@@ -1,9 +1,9 @@
 define(["../Component"], function (Component) {
-  function Mesh(gameObject) {
-    Component.call(this, gameObject);
+  function Mesh() {
+    Component.call(this);
 
-    this.colors = new Uint8Array([]);
-    this.faceColors = new Uint32Array([]);
+    this.colors = new Uint8Array([0, 0, 255]);
+    this.faceColors = new Uint32Array([0]);
   }
 
   var p = (Mesh.prototype = Object.create(Component.prototype));
@@ -131,7 +131,7 @@ define(["../Component"], function (Component) {
     out[8] = (a00 * a11 - a01 * a10) * invDet;
   };
 
-  Mesh.computeBoundsFlatArray = function (out, vertices) {
+  Mesh.computeBoundsFlatArray = function (out, offset, vertices) {
     if (vertices.length === 0) return;
 
     // 1. Initialize with the first vertex
@@ -158,38 +158,38 @@ define(["../Component"], function (Component) {
 
     // 3. Fill the 8 corners of the AABB
     // Corner 0: minX, minY, minZ
-    out[0] = minX;
-    out[1] = minY;
-    out[2] = minZ;
+    out[offset] = minX;
+    out[offset + 1] = minY;
+    out[offset + 2] = minZ;
     // Corner 1: maxX, minY, minZ
-    out[3] = maxX;
-    out[4] = minY;
-    out[5] = minZ;
+    out[offset + 3] = maxX;
+    out[offset + 4] = minY;
+    out[offset + 5] = minZ;
     // Corner 2: minX, maxY, minZ
-    out[6] = minX;
-    out[7] = maxY;
-    out[8] = minZ;
+    out[offset + 6] = minX;
+    out[offset + 7] = maxY;
+    out[offset + 8] = minZ;
     // Corner 3: maxX, maxY, minZ
-    out[9] = maxX;
-    out[10] = maxY;
-    out[11] = minZ;
+    out[offset + 9] = maxX;
+    out[offset + 10] = maxY;
+    out[offset + 11] = minZ;
 
     // Corner 4: minX, minY, maxZ
-    out[12] = minX;
-    out[13] = minY;
-    out[14] = maxZ;
+    out[offset + 12] = minX;
+    out[offset + 13] = minY;
+    out[offset + 14] = maxZ;
     // Corner 5: maxX, minY, maxZ
-    out[15] = maxX;
-    out[16] = minY;
-    out[17] = maxZ;
+    out[offset + 15] = maxX;
+    out[offset + 16] = minY;
+    out[offset + 17] = maxZ;
     // Corner 6: minX, maxY, maxZ
-    out[18] = minX;
-    out[19] = maxY;
-    out[20] = maxZ;
+    out[offset + 18] = minX;
+    out[offset + 19] = maxY;
+    out[offset + 20] = maxZ;
     // Corner 7: maxX, maxY, maxZ
-    out[21] = maxX;
-    out[22] = maxY;
-    out[23] = maxZ;
+    out[offset + 21] = maxX;
+    out[offset + 22] = maxY;
+    out[offset + 23] = maxZ;
 
     return out;
   };
