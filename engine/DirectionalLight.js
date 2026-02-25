@@ -1,18 +1,18 @@
-define(["./GameObject", "./Component"], function (GameObject, Component) {
-    function DirectionalLightComponent() {
-        Component.call(this);
-    }
+import GameObject from "./GameObject.js";
+import Component from "./Component.js";
 
-    DirectionalLightComponent.prototype = Object.create(Component.prototype);
+function DirectionalLightComponent() {
+    Component.call(this);
+}
 
-    DirectionalLightComponent.prototype.constructor = DirectionalLightComponent;
+DirectionalLightComponent.prototype = Object.create(Component.prototype);
 
-    function CameraObject(name) {
-        GameObject.call(this, name || "directional light");
-        this.addComponent(new DirectionalLightComponent());
-    }
+DirectionalLightComponent.prototype.constructor = DirectionalLightComponent;
 
-    CameraObject.prototype = Object.create(GameObject.prototype);
+export default function CameraObject(name) {
+    GameObject.call(this, name || "directional light");
+    this.addComponent(new DirectionalLightComponent());
+}
 
-    return CameraObject;
-});
+CameraObject.prototype = Object.create(GameObject.prototype);
+

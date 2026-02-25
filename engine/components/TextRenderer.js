@@ -1,29 +1,27 @@
-define(["../Component"], function (Component) {
-    function TextRenderer() {
-        Component.call(this);
+import Component from "../Component.js";
 
-    }
+export default function TextRenderer() {
+    Component.call(this);
 
-    var p = TextRenderer.prototype = Object.create(Component.prototype);
+}
 
-    p.constructor = TextRenderer;
+var p = TextRenderer.prototype = Object.create(Component.prototype);
 
-    p.text = "sample text";
-    p.color = "white";
-    p.style = "normal 12px arial"
-    p.layer = 0;
-    p.align = "center";
-    p.valign = "middle";
+p.constructor = TextRenderer;
 
-    p.setGameObject = function(gameObject){
-        Component.prototype.setGameObject.call(this, gameObject);
-        gameObject.textRenderer = this;
-    }
+p.text = "sample text";
+p.color = "white";
+p.style = "normal 12px arial"
+p.layer = 0;
+p.align = "center";
+p.valign = "middle";
 
-    p.unsetGameObject = function(){
-        this.gameObject.textRenderer = undefined;
-        Component.prototype.unsetGameObject.call(this);
-    }
+p.setGameObject = function(gameObject){
+    Component.prototype.setGameObject.call(this, gameObject);
+    gameObject.textRenderer = this;
+}
 
-    return TextRenderer;
-});
+p.unsetGameObject = function(){
+    this.gameObject.textRenderer = undefined;
+    Component.prototype.unsetGameObject.call(this);
+}

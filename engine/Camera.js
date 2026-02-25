@@ -1,10 +1,11 @@
-define(["./GameObject", "./components/CameraComponent"], function (GameObject, CameraComponent) {
-    function CameraObject(name) {
-        GameObject.call(this, name || "camera");
-        this.addComponent(new CameraComponent(this.transform));
-    }
+import GameObject from "./GameObject.js";
+import CameraComponent from "./components/CameraComponent.js";
 
-    CameraObject.prototype = Object.create(GameObject.prototype);
+function CameraObject(name) {
+    GameObject.call(this, name || "camera");
+    this.addComponent(new CameraComponent(this.transform));
+}
 
-    return CameraObject;
-});
+CameraObject.prototype = Object.create(GameObject.prototype);
+
+export default CameraObject;

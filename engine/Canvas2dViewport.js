@@ -1,123 +1,125 @@
-define(["./lib/gl-matrix", 'lib/eventmanager', './config', "./Canvas2dRenderer", "./math"], function (glMatrix, EventManager, config, Canvas2dRenderer, math) {
-    const mat4Mul = math.mat4Mul;
+import * as glMatrix from "gl-matrix";
+import EventManager from "../lib/eventmanager.js";
+import config from "./config.js";
+import Canvas2dRenderer from "./Canvas2dRenderer.js";
+import * as math from "./math.js";
 
-    function Canvas2dViewport(camera, canvas) {
-        this.canvas = canvas || document.createElement('canvas');
-        this.context = this.canvas.getContext("2d");
-        this.context.imageSmoothingEnabled = false;
-        this.context.webkitImageSmoothingEnabled = false;
-        this.width = 0;
-        this.height = 0;
+const mat4Mul = math.mat4Mul;
 
-        this.viewportMatrix = new Int16Array(16);
-        this.worldToScreenMatrix = new Float32Array(16);
+export default function Canvas2dViewport(camera, canvas) {
+    this.canvas = canvas || document.createElement('canvas');
+    this.context = this.canvas.getContext("2d");
+    this.context.imageSmoothingEnabled = false;
+    this.context.webkitImageSmoothingEnabled = false;
+    this.width = 0;
+    this.height = 0;
 
-        this.renderer = new Canvas2dRenderer();
+    this.viewportMatrix = new Int16Array(16);
+    this.worldToScreenMatrix = new Float32Array(16);
 
-        this.camera = camera;
+    this.renderer = new Canvas2dRenderer();
 
-        //generate layers
-        this.layers = [];
-        for (var i = 0; i < config.layersCount; i++) {
-            var cnv = document.createElement("canvas");
-            this.layers[i] = cnv.getContext("2d");
-            this.layers[i].imageSmoothingEnabled = false;
-            this.layers[i].webkitImageSmoothingEnabled = false;
-        }
+    this.camera = camera;
 
-        var viewport = this;
-        window.addEventListener('resize', function(){
-            viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+    //generate layers
+    this.layers = [];
+    for (var i = 0; i < config.layersCount; i++) {
+        var cnv = document.createElement("canvas");
+        this.layers[i] = cnv.getContext("2d");
+        this.layers[i].imageSmoothingEnabled = false;
+        this.layers[i].webkitImageSmoothingEnabled = false;
+    }
+
+    var viewport = this;
+    window.addEventListener('resize', function(){
+        viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+    });
+
+    const self = this;
+    this.startRenderLoop = function tick(){
+        requestAnimationFrame(() => {
+          self.render();
+          requestAnimationFrame(tick);
         });
-
-        const self = this;
-        this.startRenderLoop = function tick(){
-            requestAnimationFrame(() => {
-              self.render();
-              requestAnimationFrame(tick);
-            });
-        }
-
-        this.lastRenderStats = {};
     }
 
-    var p = Canvas2dViewport.prototype;
+    this.lastRenderStats = {};
+}
 
-    /**
-     * @type {int[]}
-     */
-    p.size = null;
+var p = Canvas2dViewport.prototype;
 
-    p.width = null;
-    p.height = null;
+/**
+ * @type {int[]}
+ */
+p.size = null;
 
-    /**
-     * 4x4 viewport matrix
-     * @type {Array}
-     */
-    p.viewportMatrix = null;
+p.width = null;
+p.height = null;
 
-    /**
-     * @type {CameraObject}
-     */
-    p.camera = null;
+/**
+ * 4x4 viewport matrix
+ * @type {Array}
+ */
+p.viewportMatrix = null;
 
-    /**
-     * @type {HTMLCanvasElement}
-     */
-    p.canvas = null;
+/**
+ * @type {CameraObject}
+ */
+p.camera = null;
 
-    /**
-     * @type {CanvasRenderingContext2D}
-     */
-    p.context = null;
+/**
+ * @type {HTMLCanvasElement}
+ */
+p.canvas = null;
 
-    p.start = function(){
-        this.setSize(this.canvas.offsetWidth, this.canvas.offsetHeight);
+/**
+ * @type {CanvasRenderingContext2D}
+ */
+p.context = null;
 
-        this.startRenderLoop();
+p.start = function(){
+    this.setSize(this.canvas.offsetWidth, this.canvas.offsetHeight);
+
+    this.startRenderLoop();
+}
+
+p.render = function () {
+    if(this.camera !== null)
+        this.renderer.render(this.camera.gameObject, this, this.lastRenderStats);
+};
+
+/**
+ * @param {int[]} size Vector2. Size of the viewport
+ * @constructor
+ */
+p.setSize = function (width, height) {
+    this.width = width;
+    this.height = height;
+
+    this.canvas.width = width;
+    this.canvas.height = height;
+
+    //update viewport matrix
+    this.viewportMatrix[0] = width/2;
+    this.viewportMatrix[5] = -height/2;
+    this.viewportMatrix[12] = width/2;
+    this.viewportMatrix[13] = height/2;
+
+    //update layer sizes
+    for (var i = 0; i < this.layers.length; i++) {
+        var ctx = this.layers[i];
+        ctx.canvas.width = width;
+        ctx.canvas.height = height;
     }
 
-    p.render = function () {
-        if(this.camera !== null)
-            this.renderer.render(this.camera.gameObject, this, this.lastRenderStats);
-    };
+    this.camera.setup(this.width, this.height);
 
-    /**
-     * @param {int[]} size Vector2. Size of the viewport
-     * @constructor
-     */
-    p.setSize = function (width, height) {
-        this.width = width;
-        this.height = height;
+    return this;
+};
 
-        this.canvas.width = width;
-        this.canvas.height = height;
+p.getWorldToScreen = function () {
+    mat4Mul(this.worldToScreenMatrix, this.viewportMatrix, this.camera.projectionMatrix);
+    mat4Mul(this.worldToScreenMatrix, this.worldToScreenMatrix, this.camera.gameObject.transform.getWorldToLocal());
 
-        //update viewport matrix
-        this.viewportMatrix[0] = width/2;
-        this.viewportMatrix[5] = -height/2;
-        this.viewportMatrix[12] = width/2;
-        this.viewportMatrix[13] = height/2;
-
-        //update layer sizes
-        for (var i = 0; i < this.layers.length; i++) {
-            var ctx = this.layers[i];
-            ctx.canvas.width = width;
-            ctx.canvas.height = height;
-        }
-
-        this.camera.setup(this.width, this.height);
-
-        return this;
-    };
-
-    p.getWorldToScreen = function () {
-        mat4Mul(this.worldToScreenMatrix, this.viewportMatrix, this.camera.projectionMatrix);
-        mat4Mul(this.worldToScreenMatrix, this.worldToScreenMatrix, this.camera.gameObject.transform.getWorldToLocal());
-
-        return this.worldToScreenMatrix;
-    }
-
-    return Canvas2dViewport;
-});
+    return this.worldToScreenMatrix;
+}

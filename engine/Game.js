@@ -1,40 +1,39 @@
-define(["./World"], function (World) {
-    /**
-     * @constructor
-     */
-    function Game() {
-        this.world = new World(this);
+import World from "./World.js";
 
-        var world = this.world;
+/**
+ * @constructor
+ */
+export default function Game() {
+    this.world = new World(this);
 
-        this.tick = function tick(){
-            world.tick();
+    var world = this.world;
 
-            requestAnimationFrame(tick);
-        }
+    this.tick = function tick(){
+        world.tick();
+
+        requestAnimationFrame(tick);
     }
+}
 
-    var p = Game.prototype;
+var p = Game.prototype;
 
-    /**
-     * @type {World}
-     */
-    p.world = null;
+/**
+ * @type {World}
+ */
+p.world = null;
 
-    /**
-     * @type {Render}
-     */
-    p.render = null;
+/**
+ * @type {Render}
+ */
+p.render = null;
 
-    /**
-     * @type {void}
-     */
-    p.run = function () {
-        this.world.start();
-        this.tick();
-    }
+/**
+ * @type {void}
+ */
+p.run = function () {
+    this.world.start();
+    this.tick();
+}
 
-    p.rafHandler = null;
+p.rafHandler = null;
 
-    return Game;
-});

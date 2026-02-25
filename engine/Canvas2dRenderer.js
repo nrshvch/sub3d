@@ -1,24 +1,10 @@
-define([
-  "./config",
-  "./components/PathRenderer",
-  "./components/SpriteRenderer",
-  "./components/TextRenderer",
-  "./components/MeshComponent",
-  "./components/CameraComponent",
-  "./math",
-  "./palette",
-  "./debug"
-], function (
-  config,
-  PathRenderer,
-  SpriteRenderer,
-  TextRenderer,
-  MeshComponent,
-  CameraComponent,
-  math,
-  palette,
-  debug
-) {
+import config from "./config.js";
+import MeshComponent from "./components/MeshComponent.js";
+import CameraComponent from "./components/CameraComponent.js";
+import * as math from "./math.js";
+import * as palette from "./palette.js";
+import * as debug from "./debug.js";
+
   const vec3TransformMat4 = math.vec3TransformMat4;
   const vec4TransformMat4 = math.vec4TransformMat4;
   const mat4Mul = math.mat4Mul;
@@ -26,7 +12,7 @@ define([
 
   const PALETTE_16BIT = palette.createPalette16Bit();
 
-  function Canvas2dRenderer() {
+export default function Canvas2dRenderer() {
     this.layerBuffers = [];
 
     this.drawCalls = 0;
@@ -54,9 +40,10 @@ define([
     // move outside render
     // initialize layer buffers
     for (let i = 0; i < config.layersCount; i++) {
-      this.layerBuffers[i] = this.layerBuffers[i] || [];
+        this.layerBuffers[i] = this.layerBuffers[i] || [];
     }
-  }
+}
+
 
   var p = Canvas2dRenderer.prototype;
 
@@ -1060,5 +1047,4 @@ define([
     return batchCount;
   }
 
-  return Canvas2dRenderer;
-});
+

@@ -1,47 +1,45 @@
-define(["../Component"], function (Component) {
-    function Sprite(sprite) {
-        Component.call(this);
+import Component from "../Component.js";
 
-        this.events = {
-            ready: 0
-        }
+export default function Sprite(sprite) {
+    Component.call(this);
 
-        this.enabled = false;
+    this.events = {
+        ready: 0
     }
 
-    var p = Sprite.prototype = Object.create(Component.prototype);
+    this.enabled = false;
+}
 
-    p.constructor = Sprite;
+var p = Sprite.prototype = Object.create(Component.prototype);
 
-    p.sprite = null;
+p.constructor = Sprite;
 
-    p.pivotX = 0;
-    p.pivotY = 0;
+p.sprite = null;
 
-    p.layer = 0;
+p.pivotX = 0;
+p.pivotY = 0;
 
-    p.setGameObject = function(gameObject){
-        Component.prototype.setGameObject.call(this, gameObject);
-        gameObject.spriteRenderer = this;
-    };
+p.layer = 0;
 
-    p.setSprite = function(sprite){
-        this.sprite = sprite;
-        this.enabled = true;
+p.setGameObject = function(gameObject){
+    Component.prototype.setGameObject.call(this, gameObject);
+    gameObject.spriteRenderer = this;
+};
 
-        return this;
-    };
+p.setSprite = function(sprite){
+    this.sprite = sprite;
+    this.enabled = true;
 
-    p.setPivot = function(x, y){
-        this.pivotX = x;
-        this.pivotY = y;
-        return this;
-    };
+    return this;
+};
 
-    p.unsetGameObject = function(){
-        this.gameObject.spriteRenderer = undefined;
-        Component.prototype.unsetGameObject.call(this);
-    };
+p.setPivot = function(x, y){
+    this.pivotX = x;
+    this.pivotY = y;
+    return this;
+};
 
-    return Sprite;
-});
+p.unsetGameObject = function(){
+    this.gameObject.spriteRenderer = undefined;
+    Component.prototype.unsetGameObject.call(this);
+};

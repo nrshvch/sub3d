@@ -1,28 +1,26 @@
-define(["../Component"], function (Component) {
-    function Path() {
-        Component.call(this);
+import Component from "../Component.js";
 
-        this.points = [];
-    }
+export default function Path() {
+    Component.call(this);
 
-    var p = Path.prototype = Object.create(Component.prototype);
+    this.points = [];
+}
 
-    p.constructor = Path;
+var p = Path.prototype = Object.create(Component.prototype);
 
-    p.points = null;
-    p.color = "white";
-    p.width = 1;
-    p.layer = 0;
+p.constructor = Path;
 
-    p.setGameObject = function(gameObject){
-        Component.prototype.setGameObject.call(this, gameObject);
-        gameObject.pathRenderer = this;
-    }
+p.points = null;
+p.color = "white";
+p.width = 1;
+p.layer = 0;
 
-    p.unsetGameObject = function(){
-        this.gameObject.pathRenderer = undefined;
-        Component.prototype.unsetGameObject.call(this);
-    }
+p.setGameObject = function(gameObject){
+    Component.prototype.setGameObject.call(this, gameObject);
+    gameObject.pathRenderer = this;
+}
 
-    return Path;
-});
+p.unsetGameObject = function(){
+    this.gameObject.pathRenderer = undefined;
+    Component.prototype.unsetGameObject.call(this);
+}
