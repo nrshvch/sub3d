@@ -253,7 +253,7 @@ for (var i = 0; i < N; i++) {
 
     const TREE_SCALE = 0.8;
 
-    if (Math.random() > 0.6 && Math.max(h_00, h_01, h_11, h_10) >= 1) {
+    if (Math.random() > 0.6 && Math.min(h_00, h_10, h_11, h_01) > 0) {
       var tree = new scaliaEngine.Cone();
       tree.meshRenderer.colors = new Uint8Array([0, 100, 0]);
       tree.meshRenderer.layer = 1;
