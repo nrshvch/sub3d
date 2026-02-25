@@ -370,18 +370,16 @@ export default function Canvas2dRenderer() {
         }
       }
 
-      if (this.debug) {
-        for (j = 0; j < renderersCount; j++) {
-          renderer = renderers[j];
-          // Only draw axes for objects with a transform (usually MeshComponents)
-          if (renderer.gameObject && renderer.gameObject.debug) {
-            renderAxis(
-              renderer.gameObject,
-              ctx,
-              worldToScreenMatrix,
-              vec3Cache1,
-            );
-          }
+      for (j = 0; j < renderersCount; j++) {
+        renderer = renderers[j];
+        // Only draw axes for objects with a transform (usually MeshComponents)
+        if (renderer.gameObject && renderer.gameObject.debug) {
+          renderAxis(
+            renderer.gameObject,
+            ctx,
+            worldToScreenMatrix,
+            vec3Cache1,
+          );
         }
       }
 
