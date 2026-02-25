@@ -1,14 +1,11 @@
-define(['./lib/Octree'], function (Octree) {
+define(function () {
     /**
      * @param {Logic} logic
      * @constructor
      */
-    function Scenes(logic, useOctree) {
+    function Scenes(logic) {
         this.logic = logic;
         this.gameObjects = [];
-
-        if (useOctree === true)
-            q = this.octree = new Octree(64,1000,45)
 
         this.removeQueue = [];
     }
@@ -19,13 +16,6 @@ define(['./lib/Octree'], function (Octree) {
      * @type {Logic}
      */
     p.logic = null;
-
-    /**
-     * Reference to octree which will be used to partition space of the world
-     * @type {null}
-     * @private
-     */
-    p.octree = null;
 
     /**
      * @type {GameObject[]}
@@ -67,28 +57,6 @@ define(['./lib/Octree'], function (Octree) {
         this.gameObjects[this.gameObjectsCount++] = gameObject;
         gameObject.setScene(this);
 
-        if (this.octree !== null) {
-            var pos = gameObject.transform.getPosition();
-
-                var item = new Octree.Item(pos[0], pos[1], pos[2]);
-
-                gameObject.item = item;
-                item.gameObject = gameObject;
-
-
-                this.octree.insert(item);
-                var octree = this.octree;
-                gameObject.transform.addEventListener(gameObject.transform.events.update, function (transform) {
-                    octree.remove(item);
-                    var p = transform.getPosition();
-                    item.x = p[0];
-                    item.y = p[1];
-                    item.z = p[2];
-                    octree.insert(item);
-                });
-        }
-
-
         if (this.started)
             gameObject.start();
 
@@ -125,14 +93,6 @@ define(['./lib/Octree'], function (Octree) {
     }
 
     p.retrieve = function (gameObject) {
-        if (this.octree !== null) {
-            var items = this.octree.retrieve(gameObject.item);
-            for (var i = 0; i < items.length; i++) {
-                var item = items[i];
-                items[i] = item.gameObject;
-            }
-            return items;
-        }
         return this.gameObjects;
     }
 
@@ -163,10 +123,6 @@ define(['./lib/Octree'], function (Octree) {
     //             this.gameObjects.splice(this.gameObjects.indexOf(gameObject), 1);
     //             this.gameObjectsCount--;
     //
-    //             //remove from tree
-    //             if(this.octree !== null){
-    //                 this.octree.remove(gameObject.item);
-    //             }
     //         }
     //
     //         this.removeQueueWaiting = false;

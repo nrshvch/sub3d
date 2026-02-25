@@ -1,4 +1,4 @@
-define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox", "../math"], function (glMatrix, Component, BoundingBox, math) {
+define(["../lib/gl-matrix", "../Component", "../math"], function (glMatrix, Component, math) {
     const FogType = {
         'NONE': 'NONE',
         'RADIAL': 'RADIAL',
@@ -24,7 +24,6 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox", "../math"], fu
             [0, 0, 0],
             [0, 0, 0]
         ];
-        this.bounds = new BoundingBox();    //rename to AABB
 
         var cam = this;
         this.transformUpdateEventHandler = function (transform) {
@@ -32,9 +31,6 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox", "../math"], fu
             var localToWorld = transform.getLocalToWorld();
             glMatrix.vec3.transformMat4(cam.frustumBox[0], cam.frustumSize[0], localToWorld);
             glMatrix.vec3.transformMat4(cam.frustumBox[1], cam.frustumSize[1], localToWorld);
-
-            //update obbox
-            cam.bounds.Calculate(cam.frustumBox);
         };
     }
 
@@ -42,7 +38,6 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox", "../math"], fu
 
     CameraComponent.prototype.constructor = CameraComponent;
 
-    CameraComponent.prototype.bounds = null;
     CameraComponent.prototype.frustumSize = null;
     CameraComponent.prototype.frustumBox = null;
     CameraComponent.prototype.projectionMatrix = null;
@@ -73,9 +68,6 @@ define(["../lib/gl-matrix", "../Component", "../lib/BoundingBox", "../math"], fu
 
         //update projection matrix
         glMatrix.mat4.ortho(this.projectionMatrix, -width / 2, width / 2, -height / 2, height / 2, this.nearClippingPane, this.farClippingPane);
-
-        //update aabbox
-        this.bounds.Calculate(this.frustumBox);
     }
 
     CameraComponent.prototype.setGameObject = function (gameObject) {
