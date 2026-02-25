@@ -10,7 +10,7 @@ define(["./World"], function (World) {
         this.tick = function tick(){
             world.tick();
 
-            requestAnimFrame(tick);
+            requestAnimationFrame(tick);
         }
     }
 

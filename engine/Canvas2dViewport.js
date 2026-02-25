@@ -32,9 +32,9 @@ define(["./lib/gl-matrix", 'lib/eventmanager', './config', "./Canvas2dRenderer",
 
         const self = this;
         this.startRenderLoop = function tick(){
-            requestAnimFrame(() => {
+            requestAnimationFrame(() => {
               self.render();
-              requestAnimFrame(tick);
+              requestAnimationFrame(tick);
             });
         }
 

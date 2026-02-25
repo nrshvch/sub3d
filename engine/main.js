@@ -1,17 +1,3 @@
-/*RAF shim*/
-window.requestAnimFrame = (function () {
-  return (
-    window.requestAnimationFrame ||
-    window.webkitRequestAnimationFrame ||
-    window.mozRequestAnimationFrame ||
-    window.oRequestAnimationFrame ||
-    window.msRequestAnimationFrame ||
-    function (callback) {
-      window.setTimeout(callback, 1000 / 60);
-    }
-  );
-})();
-
 define([
   "./config",
   "./Game",
@@ -22,8 +8,6 @@ define([
   "./components/TransformComponent",
   "./components/SpriteRenderer",
   "./lib/gl-matrix",
-  "./lib/assetmanager/assetmanager",
-  "./SpriteManager",
   "./components/PathRenderer",
   "./components/TextRenderer",
   "./primitives/Plane",
@@ -42,8 +26,6 @@ define([
   TransformComponent,
   SpriteRenderer,
   glMatrix,
-  AssetManager,
-  SpriteManager,
   PathRenderer,
   TextRenderer,
   Plane,
@@ -63,10 +45,8 @@ define([
     TransformComponent: TransformComponent,
     SpriteRenderer: SpriteRenderer,
     glMatrix: glMatrix,
-    AssetManager: AssetManager,
     PathRenderer: PathRenderer,
     TextRenderer: TextRenderer,
-    SpriteManager: SpriteManager,
     Plane: Plane,
     Box: Box,
     Cone: Cone,

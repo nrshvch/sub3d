@@ -7,7 +7,7 @@ define(['./Time', './Scene', './config'], function (Time, Scene, config) {
         this.game = game;
         this.time = new Time();
         this.list = [];
-        this.scene = new Scene(this, config.useOctree || false);
+        this.scene = new Scene(this);
     }
 
     var p = World.prototype;
