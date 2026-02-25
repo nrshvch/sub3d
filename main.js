@@ -113,6 +113,26 @@ function getTTDMidpoint(hTL, hTR, hBR, hBL) {
   return (a + d) * 0.5;
 }
 
+function getInterpolatedTTDHeight(u, v, h00, h01, h11, h10, hmid) {
+  if (u + v < 1) {
+    if (u > v) {
+      // Triangle North (0,0)-(1,0)-(0.5,0.5)
+      return (1 - u - v) * h00 + (u - v) * h10 + 2 * v * hmid;
+    } else {
+      // Triangle West (0,0)-(0,1)-(0.5,0.5)
+      return (1 - v - u) * h00 + (v - u) * h01 + 2 * u * hmid;
+    }
+  } else {
+    if (u > v) {
+      // Triangle East (1,0)-(1,1)-(0.5,0.5)
+      return (u - v) * h10 + (u + v - 1) * h11 + 2 * (1 - u) * hmid;
+    } else {
+      // Triangle South (0,1)-(1,1)-(0.5,0.5)
+      return (v - u) * h01 + (u + v - 1) * h11 + 2 * (1 - v) * hmid;
+    }
+  }
+}
+
 const colors = [];
 const faceColors = [];
 for (var x = 0; x < N; x++) {
@@ -213,31 +233,54 @@ terrain.meshRenderer.updateNormals();
 
 for (var i = 0; i < N; i++) {
   for (var j = 0; j < N; j++) {
-    const z = calcZ(i, j);
-    if (Math.random() > 0.8 && z >= 1) {
+    // i is column (X), j is row (Z)
+    var x = j; // row index
+    var y = i; // col index
+    var a = (x * (N + 1) + y) * 3;
+    var ay = a + 1; // (row x, col y)   -> (0,0)
+    var by = a + 4; // (row x, col y+1) -> (1,0)
+    var cy = a + (N + 1) * 3 + 4; // (row x+1, col y+1) -> (1,1)
+    var dy = cy - 3; // (row x+1, col y) -> (0,1)
+
+    var e = (N + 1) * (N + 1) * 3 + (x * N + y) * 3;
+    var ey = e + 1;
+
+    const h_00 = verts[ay];
+    const h_10 = verts[by];
+    const h_11 = verts[cy];
+    const h_01 = verts[dy];
+    const h_mid = verts[ey];
+
+    const TREE_SCALE = 0.8;
+
+    if (Math.random() > 0.6 && Math.max(h_00, h_01, h_11, h_10) >= 1) {
       var tree = new scaliaEngine.Cone();
       tree.meshRenderer.colors = new Uint8Array([0, 100, 0]);
       tree.meshRenderer.layer = 1;
-      const offsetX =
-        (TILE_SIZE / 2 + (Math.random() * TILE_SIZE) / 2 - TILE_SIZE / 4) *
-        SCALE;
-      const offsetY =
-        (TILE_SIZE / 2 + (Math.random() * TILE_SIZE) / 2 - TILE_SIZE / 4) *
-        SCALE;
+
+      const u = 0.25 + Math.random() * 0.5;
+      const v = 0.25 + Math.random() * 0.5;
+      const offsetX = u * TILE_SIZE * SCALE;
+      const offsetY = v * TILE_SIZE * SCALE;
+
       const size = Math.random() / 2 + 0.5;
       const yRot = Math.random() * 50 - 25;
+
+      const h = getInterpolatedTTDHeight(u, v, h_00, h_01, h_11, h_10, h_mid);
+
       tree.transform.translate(
         (i - N / 2) * TILE_SIZE * SCALE + offsetX,
-        z * 16 * SCALE + 2 * SCALE,
+        h + 2 * SCALE,
         (j - N / 2) * TILE_SIZE * SCALE + offsetY,
       );
       tree.transform.scale(
-        25 * size * SCALE,
-        50 * size * SCALE,
-        25 * size * SCALE,
+        25 * size * SCALE * TREE_SCALE,
+        50 * size * SCALE * TREE_SCALE,
+        25 * size * SCALE * TREE_SCALE,
       );
       tree.transform.rotate(0, yRot, 0);
       myGame.world.scene.addGameObject(tree);
+      // tree.debug = true;
     }
   }
 }
