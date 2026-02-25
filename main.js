@@ -133,6 +133,36 @@ function getInterpolatedTTDHeight(u, v, h00, h01, h11, h10, hmid) {
   }
 }
 
+function getTerrainHeight(worldX, worldZ) {
+  const fcol = worldX / (TILE_SIZE * SCALE) + N / 2;
+  const frow = worldZ / (TILE_SIZE * SCALE) + N / 2;
+  const col = Math.floor(fcol);
+  const row = Math.floor(frow);
+
+  if (col < 0 || col >= N || row < 0 || row >= N) return 0;
+
+  const u = fcol - col;
+  const v = frow - row;
+
+  const a = (row * (N + 1) + col) * 3;
+  const ay = a + 1; // (row, col)
+  const by = a + 4; // (row, col+1)
+  const cy = a + (N + 1) * 3 + 4; // (row+1, col+1)
+  const dy = cy - 3; // (row+1, col)
+  const e = (N + 1) * (N + 1) * 3 + (row * N + col) * 3;
+  const ey = e + 1;
+
+  return getInterpolatedTTDHeight(
+    u,
+    v,
+    verts[ay],
+    verts[dy],
+    verts[cy],
+    verts[by],
+    verts[ey],
+  );
+}
+
 const colors = [];
 const faceColors = [];
 for (var x = 0; x < N; x++) {
@@ -370,8 +400,32 @@ document.onmousemove = function (e) {
 
   x0 = x;
   y0 = y;
-  //console.log(dy);
-  camera.transform.translate(-dx + dy, 0, dx + dy, "world");
+
+  const mat = cameraObject.transform.getLocalToWorld();
+
+  // Right vector (first column)
+  const rx = mat[0];
+  const rz = mat[2];
+  const rLen = Math.sqrt(rx * rx + rz * rz);
+  const rightX = rx / rLen;
+  const rightZ = rz / rLen;
+
+  // Forward vector (negative third column)
+  const fx = -mat[8];
+  const fz = -mat[10];
+  const fLen = Math.sqrt(fx * fx + fz * fz);
+  const forwardX = fx / fLen;
+  const forwardZ = fz / fLen;
+
+  const sensitivity = 0.5 * SCALE;
+  const moveX = rightX * (-dx * sensitivity) + forwardX * (-dy * sensitivity);
+  const moveZ = rightZ * (-dx * sensitivity) + forwardZ * (-dy * sensitivity);
+
+  cameraObject.transform.translate(moveX, 0, moveZ, "world");
+
+  const pos = cameraObject.transform.getPosition();
+  const terrainH = getTerrainHeight(pos[0], pos[2]);
+  cameraObject.transform.setPosition(pos[0], terrainH, pos[2]);
 };
 
 document.onwheel = function (e) {
