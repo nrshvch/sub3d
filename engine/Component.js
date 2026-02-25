@@ -1,48 +1,46 @@
-define(["lib/eventmanager"], function (EventManager) {
-    /**
-     * @constructor
-     */
-    function Component() {
-        EventManager.call(this);
-    }
+import EventManager from "../lib/eventmanager.js";
 
-    var p = Component.prototype = Object.create(EventManager.prototype);
+/**
+ * @constructor
+ */
+export default function Component() {
+    EventManager.call(this);
+}
 
-    /**
-     * @type {GameObject}
-     * @read-only
-     */
-    p.gameObject = null;
+var p = Component.prototype = Object.create(EventManager.prototype);
 
-    p.enabled = true;
+/**
+ * @type {GameObject}
+ * @read-only
+ */
+p.gameObject = null;
 
-    p.awaken = false;
+p.enabled = true;
 
-    p.setGameObject = function(gameObject){
-        this.gameObject = gameObject;
-    };
+p.awaken = false;
 
-    p.unsetGameObject = function(){
-        this.gameObject = null;
-    };
+p.setGameObject = function(gameObject){
+    this.gameObject = gameObject;
+};
 
-    /**
-     * Runs once & just before first start() call
-     * Runs when gameObject is in the scene
-     * @type {function}
-     */
-    p.awake = null;
+p.unsetGameObject = function(){
+    this.gameObject = null;
+};
 
-    /**
-     * Runs when game starts
-     */
-    p.start = null;
+/**
+ * Runs once & just before first start() call
+ * Runs when gameObject is in the scene
+ * @type {function}
+ */
+p.awake = null;
 
-    /**
-     * Runs on every game logic tick
-     * @type {function}
-     */
-    p.tick = null;
+/**
+ * Runs when game starts
+ */
+p.start = null;
 
-    return Component;
-});
+/**
+ * Runs on every game logic tick
+ * @type {function}
+ */
+p.tick = null;

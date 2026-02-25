@@ -30,33 +30,34 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  */
-define(function () {
-  var F2 = 0.5 * (Math.sqrt(3.0) - 1.0),
-    G2 = (3.0 - Math.sqrt(3.0)) / 6.0,
-    F3 = 1.0 / 3.0,
-    G3 = 1.0 / 6.0,
-    F4 = (Math.sqrt(5.0) - 1.0) / 4.0,
-    G4 = (5.0 - Math.sqrt(5.0)) / 20.0;
 
-  function SimplexNoise(random) {
-    this.perm = new Uint8Array(512);
-    this.permMod12 = new Uint8Array(512);
+var F2 = 0.5 * (Math.sqrt(3.0) - 1.0),
+  G2 = (3.0 - Math.sqrt(3.0)) / 6.0,
+  F3 = 1.0 / 3.0,
+  G3 = 1.0 / 6.0,
+  F4 = (Math.sqrt(5.0) - 1.0) / 4.0,
+  G4 = (5.0 - Math.sqrt(5.0)) / 20.0;
 
-    if (typeof random == "object" && random.length == 256) {
-      //if array.
-      this.p = new Uint8Array(random);
-    } else {
-      if (!random) random = Math.random;
-      for (var i = 0; i < 256; i++) {
-        this.p[i] = random() * 256;
-      }
-    }
+export default function SimplexNoise(random) {
+  this.perm = new Uint8Array(512);
+  this.permMod12 = new Uint8Array(512);
 
-    for (i = 0; i < 512; i++) {
-      this.perm[i] = this.p[i & 255];
-      this.permMod12[i] = this.perm[i] % 12;
+  if (typeof random == "object" && random.length == 256) {
+    //if array.
+    this.p = new Uint8Array(random);
+  } else {
+    if (!random) random = Math.random;
+    this.p = new Uint8Array(256); // Added initialization
+    for (var i = 0; i < 256; i++) {
+      this.p[i] = random() * 256;
     }
   }
+
+  for (i = 0; i < 512; i++) {
+    this.perm[i] = this.p[i & 255];
+    this.permMod12[i] = this.perm[i] % 12;
+  }
+}
 
   SimplexNoise.prototype = {
     grad3: new Float32Array([
@@ -437,5 +438,4 @@ define(function () {
     },
   };
 
-  return SimplexNoise;
-});
+
