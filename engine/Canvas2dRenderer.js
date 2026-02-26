@@ -764,12 +764,15 @@ function destructMesh(
 
       const x0 = vec4Cache[v0],
         y0 = vec4Cache[v0 + 1],
+        z0 = vec4Cache[v0 + 2],
         w0 = vec4Cache[v0 + 3];
       const x1 = vec4Cache[v1],
         y1 = vec4Cache[v1 + 1],
+        z1 = vec4Cache[v1 + 2],
         w1 = vec4Cache[v1 + 3];
       const x2 = vec4Cache[v2],
         y2 = vec4Cache[v2 + 1],
+        z2 = vec4Cache[v2 + 2],
         w2 = vec4Cache[v2 + 3];
 
       // --- CLIP-SPACE TRIVIAL REJECTION ---
@@ -779,7 +782,15 @@ function destructMesh(
       if (x0 > w0 && x1 > w1 && x2 > w2) outcode |= 2;
       if (y0 < -w0 && y1 < -w1 && y2 < -w2) outcode |= 4;
       if (y0 > w0 && y1 > w1 && y2 > w2) outcode |= 8;
-      if (w0 < near && w1 < near && w2 < near) outcode |= 16;
+
+      // Near Plane: In Clip Space, Z should be >= 0 (or >= -w depending on matrix)
+      // If all Z are less than 0, the face is behind the near plane.
+      if (z0 < -w0 && z1 < -w1 && z2 < -w2) outcode |= 16;
+
+      // Far Plane: In Clip Space, Z should be <= w
+      // If all Z are greater than their respective w, the face is past the far plane.
+      if (z0 > w0 && z1 > w1 && z2 > w2) outcode |= 32;
+
       if (outcode !== 0) continue;
 
       // --- PERSPECTIVE DIVIDE ---
