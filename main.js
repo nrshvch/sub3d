@@ -336,6 +336,7 @@ for (var i = 0; i < N; i++) {
 // });
 
 var cameraObject = (window.camera = new scaliaEngine.Camera());
+//TODO: far/near are swapped for some reason, most likely because gl-matrix is far=-Z, but we assume far=+Z
 cameraObject.camera.farClippingPane = 2500;
 cameraObject.camera.nearClippingPane = -2500;
 cameraObject.camera.fogType = scaliaEngine.CameraComponent.FogType.RADIAL;
