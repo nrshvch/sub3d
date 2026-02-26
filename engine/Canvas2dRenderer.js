@@ -219,7 +219,6 @@ p.render = function (camera, viewport, stats) {
       colorBuffer,
       geometryBuffer,
       clipGeometryBuffer,
-      camera,
       vw,
       vh,
       cameraLocalMatrix,
@@ -666,7 +665,6 @@ function destructMesh(
   colorBuffer,
   geometryBuffer,
   clipGeometryBuffer,
-  camera,
   w,
   h,
   cameraLocalMatrix,
@@ -677,8 +675,6 @@ function destructMesh(
   faceNormalsBuffer,
 ) {
   let i = 0;
-  const cam = camera.camera;
-  const near = cam.nearClippingPane;
   const halfW = w * 0.5,
     halfH = h * 0.5;
 
