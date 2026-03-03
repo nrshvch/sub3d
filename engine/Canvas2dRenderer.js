@@ -18,8 +18,6 @@ export default function Canvas2dRenderer() {
   this.drawCalls = 0;
   this.faces = 0;
 
-  this.batchBuffer = new Int32Array(1024 * 3);
-
   this.lightDirection = new Float32Array([0, 0, 0]);
 
   this.depthBuffer = new Float32Array(0);
@@ -257,50 +255,20 @@ p.render = function (camera, viewport, stats) {
       });
     }
 
-    let batchBuffer = this.batchBuffer;
-    if (batchBuffer.length < indexBuffer.length * 3) {
-      var newBatchBuffer = new Int32Array(indexBuffer.length * 3);
-      newBatchBuffer.set(batchBuffer);
-      this.batchBuffer = batchBuffer = newBatchBuffer;
-    }
-    const batchCount = generateBatches(
-      batchBuffer,
-      indexBuffer,
-      l,
-      color16Buffer,
-      typeBuffer,
-    );
-
     const stroke = (config.layerStrokeMask & (i + 1)) === i + 1;
 
-    for (var b = 0; b < batchCount; b++) {
-      var bPtr = b * 3;
-      var start = batchBuffer[bPtr];
-      var count = batchBuffer[bPtr + 1];
-      var colorKey = batchBuffer[bPtr + 2];
+    for (var k = 0; k < l; k++) {
+      var index = indexBuffer[k]; // The sorted index
+      var geoIdx = index * 6;
+      var colorKey = color16Buffer[index];
 
-      // Set State ONCE per batch
       ctx.beginPath();
+      ctx.moveTo(geometryBuffer[geoIdx], geometryBuffer[geoIdx + 1]);
+      ctx.lineTo(geometryBuffer[geoIdx + 2], geometryBuffer[geoIdx + 3]);
+      ctx.lineTo(geometryBuffer[geoIdx + 4], geometryBuffer[geoIdx + 5]);
+      ctx.closePath();
 
-      for (var k = start; k < start + count; k++) {
-        var index = indexBuffer[k]; // The sorted index
-        var geoIdx = index * 6;
-
-        ctx.moveTo(geometryBuffer[geoIdx], geometryBuffer[geoIdx + 1]);
-        ctx.lineTo(geometryBuffer[geoIdx + 2], geometryBuffer[geoIdx + 3]);
-        ctx.lineTo(geometryBuffer[geoIdx + 4], geometryBuffer[geoIdx + 5]);
-        ctx.closePath();
-      }
-
-      if (this.debug) {
-        if (count > 1) {
-          ctx.fillStyle = `rgb(0,0,${b % 255})`;
-          ctx.fill();
-        } else {
-          ctx.fillStyle = ctx.strokeStyle = PALETTE_16BIT[colorKey];
-          ctx.fill();
-        }
-      } else if (this.wireframe) {
+      if (this.wireframe) {
         ctx.lineWidth = 0.5;
         ctx.strokeStyle = "rgb(0,0,255)";
         ctx.stroke();
@@ -311,34 +279,6 @@ p.render = function (camera, viewport, stats) {
           ctx.stroke();
         }
         ctx.fill();
-      }
-
-      if (this.debug) {
-        // --- DEBUG: DRAW ORDER NUMBERS ---
-        ctx.fillStyle = "white"; // Make numbers visible
-        ctx.font = "10px monospace";
-        ctx.textAlign = "center";
-
-        for (var k = start; k < start + count; k++) {
-          var index = indexBuffer[k];
-          var g = index * 6;
-
-          // Calculate the center of the triangle for text placement
-          var centerX =
-            (geometryBuffer[g] +
-              geometryBuffer[g + 2] +
-              geometryBuffer[g + 4]) /
-            3;
-          var centerY =
-            (geometryBuffer[g + 1] +
-              geometryBuffer[g + 3] +
-              geometryBuffer[g + 5]) /
-            3;
-
-          // 'k' is the actual sequence index in the final render array
-          // ctx.fillText(k.toString() + "," + b, centerX, centerY);
-          ctx.fillText(b, centerX, centerY);
-        }
       }
     }
 
@@ -354,7 +294,7 @@ p.render = function (camera, viewport, stats) {
 
     viewport.context.drawImage(ctx.canvas, 0, 0);
 
-    drawCalls += batchCount;
+    drawCalls += l;
     faces += l;
     layerBufferLengths[i] = 0;
   }
@@ -973,46 +913,4 @@ function quantizeFaceColors(
     // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
     color16KeyBuffer[i] = (qr << 8) | (qg << 3) | (qb >> 3);
   }
-}
-
-function generateBatches(
-  batchBuffer,
-  activeIndices,
-  count,
-  colorBuffer,
-  typeBuffer,
-) {
-  let batchCount = 0;
-  if (count === 0) return 0;
-
-  const firstIdx = activeIndices[0];
-  let currentStart = 0;
-  let lastColorKey = colorBuffer[firstIdx];
-  let lastType = typeBuffer[firstIdx];
-
-  for (let i = 1; i < count; i++) {
-    const index = activeIndices[i];
-    const colorKey = colorBuffer[index];
-    const type = typeBuffer[index];
-
-    if (colorKey !== lastColorKey || type !== lastType) {
-      const bIdx = batchCount * 3;
-      batchBuffer[bIdx] = currentStart;
-      batchBuffer[bIdx + 1] = i - currentStart;
-      batchBuffer[bIdx + 2] = lastColorKey;
-
-      batchCount++;
-      currentStart = i;
-      lastColorKey = colorKey;
-      lastType = type;
-    }
-  }
-
-  const bIdx = batchCount * 3;
-  batchBuffer[bIdx] = currentStart;
-  batchBuffer[bIdx + 1] = count - currentStart;
-  batchBuffer[bIdx + 2] = lastColorKey;
-  batchCount++;
-
-  return batchCount;
 }
