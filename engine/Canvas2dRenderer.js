@@ -22,10 +22,6 @@ export default function Canvas2dRenderer() {
 
   this.depthBuffer = new Float32Array(0);
   this.indexBuffer = new Uint32Array(0);
-  // Geometry buffer stores the 2D screen coordinates of vertices,
-  // when face is partially on the screen, some of vertices may be negative,
-  // so Int16Array is used, allowing -32768 to 32767 values.
-  this.geometryBuffer = new Int16Array(0);
   this.clipGeometryBuffer = new Float32Array(0);
   this.color16Buffer = new Uint16Array(0);
   this.colorBuffer = new Uint32Array(0);
@@ -34,6 +30,9 @@ export default function Canvas2dRenderer() {
   this.visibleObjectsBuffer = new Uint32Array(100);
   this.layerBuffers = [];
   this.layerBufferLengths = new Uint32Array(1);
+
+  this.vertexBuffer = new Float32Array(0);
+  this.vertexIndexBuffer = new Uint32Array(0);
 
   // move outside render
   // initialize layer buffers
@@ -54,7 +53,7 @@ p.mat3Scratchpad1 = new Float32Array(9);
 p.render = function (camera, viewport, stats) {
   let t0 = Date.now();
 
-  var gameObjects = camera.scene.retrieve(camera),
+  let gameObjects = camera.scene.retrieve(camera),
     layersCount = config.layersCount,
     vw = viewport.width,
     vh = viewport.height,
@@ -69,7 +68,8 @@ p.render = function (camera, viewport, stats) {
     vec4Cache = this.vec4Cache,
     depthBuffer = this.depthBuffer,
     indexBuffer = this.indexBuffer,
-    geometryBuffer = this.geometryBuffer,
+    vertexIndexBuffer = this.vertexIndexBuffer,
+    vertexBuffer = this.vertexBuffer,
     clipGeometryBuffer = this.clipGeometryBuffer,
     color16Buffer = this.color16Buffer,
     colorBuffer = this.colorBuffer,
@@ -143,11 +143,6 @@ p.render = function (camera, viewport, stats) {
   for (i = 0; i < layersCount; i++) {
     ctx = viewport.layers[i];
 
-    ctx.lineJoin = "round";
-
-    if ((config.layerClearMask & (i + 1)) === i + 1)
-      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
     renderers = layerBuffers[i];
     renderersCount = layerBufferLengths[i];
 
@@ -194,10 +189,6 @@ p.render = function (camera, viewport, stats) {
       newArr.set(color16Buffer);
       this.color16Buffer = color16Buffer = newArr;
 
-      newArr = new Int16Array(maxFacesCount * 6);
-      newArr.set(geometryBuffer);
-      this.geometryBuffer = geometryBuffer = newArr;
-
       newArr = new Float32Array(maxFacesCount * 9);
       newArr.set(clipGeometryBuffer);
       this.clipGeometryBuffer = clipGeometryBuffer = newArr;
@@ -205,6 +196,14 @@ p.render = function (camera, viewport, stats) {
       newArr = new Float32Array(maxFacesCount * 3);
       newArr.set(faceNormalsBuffer);
       this.faceNormalsBuffer = faceNormalsBuffer = newArr;
+
+      let _vertexBuffer = new Float32Array(maxFacesCount * 9);
+      _vertexBuffer.set(vertexBuffer);
+      this.vertexBuffer = vertexBuffer = _vertexBuffer;
+
+      let _vertexIndexBuffer = new Uint32Array(maxFacesCount * 3);
+      _vertexIndexBuffer.set(vertexIndexBuffer);
+      this.vertexIndexBuffer = vertexIndexBuffer = _vertexIndexBuffer;
     }
 
     const l = destructMesh(
@@ -215,16 +214,15 @@ p.render = function (camera, viewport, stats) {
       indexBuffer,
       depthBuffer,
       colorBuffer,
-      geometryBuffer,
       clipGeometryBuffer,
-      vw,
-      vh,
       cameraLocalMatrix,
       clipSpaceMatrix,
       mat4Scratchpad2,
       mat4Scratchpad1,
       this.mat3Scratchpad1,
       faceNormalsBuffer,
+      vertexBuffer,
+      vertexIndexBuffer,
     );
 
     calcLight(
@@ -255,31 +253,34 @@ p.render = function (camera, viewport, stats) {
       });
     }
 
-    const stroke = (config.layerStrokeMask & (i + 1)) === i + 1;
+    if (this.wireframe) {
+      drawWireframe(
+        ctx,
+        vertexBuffer,
+        vertexIndexBuffer,
+        indexBuffer,
+        l,
+        0,
+        vw,
+        vh,
+      );
+    } else {
+      const toStroke = (config.layerStrokeMask & (i + 1)) === i + 1;
+      const toClear = (config.layerClearMask & (i + 1)) === i + 1;
 
-    for (var k = 0; k < l; k++) {
-      var index = indexBuffer[k]; // The sorted index
-      var geoIdx = index * 6;
-      var colorKey = color16Buffer[index];
-
-      ctx.beginPath();
-      ctx.moveTo(geometryBuffer[geoIdx], geometryBuffer[geoIdx + 1]);
-      ctx.lineTo(geometryBuffer[geoIdx + 2], geometryBuffer[geoIdx + 3]);
-      ctx.lineTo(geometryBuffer[geoIdx + 4], geometryBuffer[geoIdx + 5]);
-      ctx.closePath();
-
-      if (this.wireframe) {
-        ctx.lineWidth = 0.5;
-        ctx.strokeStyle = "rgb(0,0,255)";
-        ctx.stroke();
-      } else {
-        const color = (ctx.fillStyle = PALETTE_16BIT[colorKey]);
-        if (stroke) {
-          ctx.strokeStyle = color;
-          ctx.stroke();
-        }
-        ctx.fill();
-      }
+      drawTriangles(
+        ctx,
+        vertexBuffer,
+        vertexIndexBuffer,
+        indexBuffer,
+        color16Buffer,
+        l,
+        0,
+        toStroke,
+        toClear,
+        vw,
+        vh,
+      );
     }
 
     for (j = 0; j < renderersCount; j++) {
@@ -582,17 +583,16 @@ function exactCull(
  * @param {Uint32Array} indexBuffer - Array to store sequential face indices for sorting.
  * @param {Float32Array} depthBuffer - Stores the average camera-space Z-depth per face.
  * @param {Uint32Array} colorBuffer - Stores the packed RGBA face colors.
- * @param {Int16Array} geometryBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
  * @param {Float32Array} clipGeometryBuffer - Stores Camera-Space positions for lighting/fog.
  * @param {Object} camera - The camera component containing near/far planes.
- * @param {number} w - Viewport width.
- * @param {number} h - Viewport height.
  * @param {Float32Array} cameraLocalMatrix - The 4x4 World-to-Local (View) matrix.
  * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
  * @param {Float32Array} mat4Scratchpad1 - Reusable matrix for Model-View calculations.
  * @param {Float32Array} mat4Scratchpad2 - Reusable matrix for Model-View-Projection (MVP).
  * @param {Float32Array} mat3Scratchpad1 - Reusable matrix 9-element (3x3)
  * @param {Float32Array} faceNormalsBuffer
+ * @param {Float32Array} vertexBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
+ * @param {Uint32Array} vertexIndexBuffer - Indexes of vertices in the vertexBuffer.
  * @returns {number} The total count of processed (visible) faces.
  */
 function destructMesh(
@@ -603,20 +603,17 @@ function destructMesh(
   indexBuffer,
   depthBuffer,
   colorBuffer,
-  geometryBuffer,
   clipGeometryBuffer,
-  w,
-  h,
   cameraLocalMatrix,
   clipSpaceMatrix,
   mat4Scratchpad1,
   mat4Scratchpad2,
   mat3Scratchpad1,
   faceNormalsBuffer,
+  vertexBuffer,
+  vertexIndexBuffer,
 ) {
   let i = 0;
-  const halfW = w * 0.5,
-    halfH = h * 0.5;
 
   for (let j = 0; j < renderersCount; j++) {
     const mesh = renderers[j];
@@ -666,7 +663,8 @@ function destructMesh(
       nm8 = nm[8];
 
     // FACE PROCESSING
-    for (let f = 0; f < faces.length; f += 3) {
+    const facesCount = faces.length;
+    for (let f = 0; f < facesCount; f += 3) {
       const idx0 = faces[f],
         idx1 = faces[f + 1],
         idx2 = faces[f + 2];
@@ -745,19 +743,37 @@ function destructMesh(
 
       const fIdx = (f / 3) | 0;
       const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
-      colorBuffer[i] =
+      const colorIndex =
         (mesh.colors[cIdx] << 24) |
         (mesh.colors[cIdx + 1] << 16) |
         (mesh.colors[cIdx + 2] << 8) |
         255;
 
-      const gIdx = i * 6;
-      geometryBuffer[gIdx] = n0x * halfW + halfW;
-      geometryBuffer[gIdx + 1] = -n0y * halfH + halfH;
-      geometryBuffer[gIdx + 2] = n1x * halfW + halfW;
-      geometryBuffer[gIdx + 3] = -n1y * halfH + halfH;
-      geometryBuffer[gIdx + 4] = n2x * halfW + halfW;
-      geometryBuffer[gIdx + 5] = -n2y * halfH + halfH;
+      colorBuffer[i] = colorIndex;
+
+      const v0Idx = i * 9;
+      const v1Idx = i * 9 + 3;
+      const v2Idx = i * 9 + 6;
+      // const v0Idx = idx0 * 3;
+      // const v1Idx = idx1 * 3;
+      // const v2Idx = idx2 * 3;
+
+      vertexBuffer[v0Idx] = n0x;
+      vertexBuffer[v0Idx + 1] = -n0y;
+      vertexBuffer[v0Idx + 2] = colorIndex;
+
+      vertexBuffer[v1Idx] = n1x;
+      vertexBuffer[v1Idx + 1] = -n1y;
+      vertexBuffer[v1Idx + 2] = colorIndex;
+
+      vertexBuffer[v2Idx] = n2x;
+      vertexBuffer[v2Idx + 1] = -n2y;
+      vertexBuffer[v2Idx + 2] = colorIndex;
+
+      const viIdx = i * 3;
+      vertexIndexBuffer[viIdx] = v0Idx;
+      vertexIndexBuffer[viIdx + 1] = v1Idx;
+      vertexIndexBuffer[viIdx + 2] = v2Idx;
 
       const cgIdx = i * 9;
       clipGeometryBuffer[cgIdx] = vec3Cache2[v0c];
@@ -817,7 +833,7 @@ function calcLight(
 
 function calcFog(
   indexLen,
-  geometryBuffer,
+  clipGeometryBuffer,
   colorBuffer,
   depthBuffer,
   fogType,
@@ -840,15 +856,15 @@ function calcFog(
       fogType === CameraComponent.FogType.RADIAL_FAST ||
       fogType === CameraComponent.FogType.RADIAL
     ) {
-      const w0x = geometryBuffer[i * 9];
-      const w0y = geometryBuffer[i * 9 + 1];
-      const w0z = geometryBuffer[i * 9 + 2];
-      const w1x = geometryBuffer[i * 9 + 3];
-      const w1y = geometryBuffer[i * 9 + 4];
-      const w1z = geometryBuffer[i * 9 + 5];
-      const w2x = geometryBuffer[i * 9 + 6];
-      const w2y = geometryBuffer[i * 9 + 7];
-      const w2z = geometryBuffer[i * 9 + 8];
+      const w0x = clipGeometryBuffer[i * 9];
+      const w0y = clipGeometryBuffer[i * 9 + 1];
+      const w0z = clipGeometryBuffer[i * 9 + 2];
+      const w1x = clipGeometryBuffer[i * 9 + 3];
+      const w1y = clipGeometryBuffer[i * 9 + 4];
+      const w1z = clipGeometryBuffer[i * 9 + 5];
+      const w2x = clipGeometryBuffer[i * 9 + 6];
+      const w2y = clipGeometryBuffer[i * 9 + 7];
+      const w2z = clipGeometryBuffer[i * 9 + 8];
 
       // 1. Get the local camera-space coordinates from your cache
       // We use the average of the 3 vertices for the face
@@ -912,5 +928,118 @@ function quantizeFaceColors(
 
     // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
     color16KeyBuffer[i] = (qr << 8) | (qg << 3) | (qb >> 3);
+  }
+}
+
+/**
+ * Draw
+ * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
+ * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
+ * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
+ * @param {Uint32Array} indexBuffer - Depth-sorted array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
+ * @param {Uint16Array} color16Buffer - Array of face 16-bit color index
+ * @param {number} count - Number of elements in indexBuffer
+ * @param {number} offset - Starting index of the triangles to draw
+ * @param {boolean} toStroke - Should faces be stroked, to fix gaps?
+ * @param {boolean} toClear - Should ctx be cleared before drawing?
+ * @param {number} w - Canvas width
+ * @param {number} h - Canvas height
+ */
+function drawTriangles(
+  ctx,
+  vertexBuffer,
+  vertexIndexBuffer,
+  indexBuffer,
+  color16Buffer,
+  count,
+  offset,
+  toStroke,
+  toClear,
+  w,
+  h,
+) {
+  const halfW = w * 0.5,
+    halfH = h * 0.5;
+
+  const len = offset + count;
+
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 1;
+
+  if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  for (let i = offset; i < len; i++) {
+    const idx = indexBuffer[i];
+    const v0Idx = vertexIndexBuffer[idx * 3];
+    const v1Idx = vertexIndexBuffer[idx * 3 + 1];
+    const v2Idx = vertexIndexBuffer[idx * 3 + 2];
+    const colorIndex = color16Buffer[idx];
+
+    ctx.beginPath();
+    ctx.moveTo(
+      vertexBuffer[v0Idx] * halfW + halfW,
+      vertexBuffer[v0Idx + 1] * halfH + halfH,
+    );
+    ctx.lineTo(
+      vertexBuffer[v1Idx] * halfW + halfW,
+      vertexBuffer[v1Idx + 1] * halfH + halfH,
+    );
+    ctx.lineTo(
+      vertexBuffer[v2Idx] * halfW + halfW,
+      vertexBuffer[v2Idx + 1] * halfH + halfH,
+    );
+    ctx.closePath();
+
+    ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[colorIndex];
+
+    if (toStroke) {
+      ctx.stroke();
+    }
+
+    ctx.fill();
+  }
+}
+
+function drawWireframe(
+  ctx,
+  vertexBuffer,
+  vertexIndexBuffer,
+  indexBuffer,
+  count,
+  offset,
+  w,
+  h,
+) {
+  const halfW = w * 0.5,
+    halfH = h * 0.5;
+
+  const len = offset + count;
+
+  ctx.lineJoin = "miter";
+  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = "rgb(0,0,255)";
+
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  for (let i = offset; i < len; i++) {
+    const idx = indexBuffer[i];
+    const vIdx = vertexIndexBuffer[idx * 9];
+
+    ctx.beginPath();
+    ctx.moveTo(
+      vertexBuffer[vIdx] * halfW + halfW,
+      vertexBuffer[vIdx + 1] * halfH + halfH,
+    );
+    ctx.lineTo(
+      vertexBuffer[vIdx + 3] * halfW + halfW,
+      vertexBuffer[vIdx + 4] * halfH + halfH,
+    );
+    ctx.lineTo(
+      vertexBuffer[vIdx + 6] * halfW + halfW,
+      vertexBuffer[vIdx + 7] * halfH + halfH,
+    );
+    ctx.closePath();
+
+    ctx.stroke();
   }
 }
