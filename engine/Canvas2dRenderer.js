@@ -39,6 +39,9 @@ export default function Canvas2dRenderer() {
   for (let i = 0; i < config.layersCount; i++) {
     this.layerBuffers[i] = this.layerBuffers[i] || [];
   }
+
+  this.vMapping = new Int32Array(0);
+  this.vTags = new Uint32Array(0);
 }
 
 var p = Canvas2dRenderer.prototype;
@@ -82,7 +85,9 @@ p.render = function (camera, viewport, stats) {
     mat4Scratchpad2 = this.mat4Scratchpad2,
     worldToScreenMatrix = viewport.getWorldToScreen(),
     cameraLocalMatrix = camera.transform.getWorldToLocal(),
-    clipSpaceMatrix = camera.camera.getClipSpaceMatrix();
+    clipSpaceMatrix = camera.camera.getClipSpaceMatrix(),
+    vMapping = this.vMapping,
+    vTags = this.vTags;
 
   let drawCalls = 0;
   let faces = 0;
@@ -150,22 +155,21 @@ p.render = function (camera, viewport, stats) {
     let maxVertsCount = 0;
     for (let o = 0; o < renderersCount; o++) {
       maxFacesCount += renderers[o].faces.length;
-      maxVertsCount = Math.max(maxVertsCount, renderers[o].vertices.length);
+      const vertexCount = renderers[o].vertices.length;
+      if (vertexCount > maxVertsCount) maxVertsCount = vertexCount;
     }
     maxFacesCount = (maxFacesCount / 3) | 0;
 
+    const maxIndexCount = (maxVertsCount / 3) | 0;
+    if (this.vMapping.length < maxIndexCount) {
+      this.vMapping = vMapping = new Int32Array(maxIndexCount);
+      this.vTags = vTags = new Uint32Array(maxIndexCount);
+    }
+
     if (vec3Cache1.length < maxVertsCount) {
-      const _vec3Cache1 = new Float32Array(maxVertsCount);
-      _vec3Cache1.set(vec3Cache1);
-      this.vec3Cache1 = vec3Cache1 = _vec3Cache1;
-
-      const _vec3Cache2 = new Float32Array(maxVertsCount);
-      _vec3Cache2.set(vec3Cache2);
-      this.vec3Cache2 = vec3Cache2 = _vec3Cache2;
-
-      const _vec4Cache = new Float32Array((maxVertsCount * 4) / 3);
-      _vec4Cache.set(vec4Cache);
-      this.vec4Cache = vec4Cache = _vec4Cache;
+      this.vec3Cache1 = vec3Cache1 = new Float32Array(maxVertsCount);
+      this.vec3Cache2 = vec3Cache2 = new Float32Array(maxVertsCount);
+      this.vec4Cache = vec4Cache = new Float32Array((maxVertsCount * 4) / 3);
     }
 
     if (depthBuffer.length < maxFacesCount) {
@@ -223,6 +227,8 @@ p.render = function (camera, viewport, stats) {
       faceNormalsBuffer,
       vertexBuffer,
       vertexIndexBuffer,
+      this.vMapping,
+      this.vTags,
     );
 
     calcLight(
@@ -560,6 +566,8 @@ function exactCull(
   return visibleCount;
 }
 
+let callId = 0;
+
 /**
  * Decomposes visible meshes into individual faces, performing culling and coordinate projection.
  * This function implements a standard 3D graphics pipeline:
@@ -584,7 +592,6 @@ function exactCull(
  * @param {Float32Array} depthBuffer - Stores the average camera-space Z-depth per face.
  * @param {Uint32Array} colorBuffer - Stores the packed RGBA face colors.
  * @param {Float32Array} clipGeometryBuffer - Stores Camera-Space positions for lighting/fog.
- * @param {Object} camera - The camera component containing near/far planes.
  * @param {Float32Array} cameraLocalMatrix - The 4x4 World-to-Local (View) matrix.
  * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
  * @param {Float32Array} mat4Scratchpad1 - Reusable matrix for Model-View calculations.
@@ -593,6 +600,8 @@ function exactCull(
  * @param {Float32Array} faceNormalsBuffer
  * @param {Float32Array} vertexBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
  * @param {Uint32Array} vertexIndexBuffer - Indexes of vertices in the vertexBuffer.
+ * @param {Int32Array} vMapping - Persistent buffer storing the vertexBuffer offset for the current mesh.
+ * @param {Uint32Array} vTags - Persistent buffer storing the callId tag to validate vMapping entries.
  * @returns {number} The total count of processed (visible) faces.
  */
 function destructMesh(
@@ -612,12 +621,18 @@ function destructMesh(
   faceNormalsBuffer,
   vertexBuffer,
   vertexIndexBuffer,
+  vMapping, // New: Persistent Int32Array(max_verts)
+  vTags, // New: Persistent Uint32Array(max_verts)
 ) {
-  let i = 0;
+  let i = 0; // face counter
+  let uniqueVertexCount = 0; // vertex pointer for vertexBuffer
 
   for (let j = 0; j < renderersCount; j++) {
     const mesh = renderers[j];
     if (mesh.constructor !== MeshComponent) continue;
+
+    // Increment unique ID for this specific mesh
+    ++callId;
 
     const W = mesh.gameObject.transform.dirtyL
       ? mesh.gameObject.transform.getLocalToWorld()
@@ -751,29 +766,52 @@ function destructMesh(
 
       colorBuffer[i] = colorIndex;
 
-      const v0Idx = i * 9;
-      const v1Idx = i * 9 + 3;
-      const v2Idx = i * 9 + 6;
-      // const v0Idx = idx0 * 3;
-      // const v1Idx = idx1 * 3;
-      // const v2Idx = idx2 * 3;
+      // --- MAPPING & VERTEX SUBMISSION ---
+      // Only unique vertices should be stored.
+      // We check each vertex index. If it hasn't been added to vertexBuffer
+      // for THIS callId, we write it and store the new index.
 
-      vertexBuffer[v0Idx] = n0x;
-      vertexBuffer[v0Idx + 1] = -n0y;
-      vertexBuffer[v0Idx + 2] = colorIndex;
+      // Process Vertex 0
+      if (vTags[idx0] !== callId) {
+        const v0Idx = uniqueVertexCount * 3;
+        vertexBuffer[v0Idx] = n0x;
+        vertexBuffer[v0Idx + 1] = -n0y;
+        vertexBuffer[v0Idx + 2] = colorIndex;
+        vMapping[idx0] = v0Idx; // Store the buffer offset
+        vTags[idx0] = callId;
+        vertexIndexBuffer[i * 3] = v0Idx;
+        uniqueVertexCount++;
+      } else {
+        vertexIndexBuffer[i * 3] = vMapping[idx0];
+      }
 
-      vertexBuffer[v1Idx] = n1x;
-      vertexBuffer[v1Idx + 1] = -n1y;
-      vertexBuffer[v1Idx + 2] = colorIndex;
+      // Process Vertex 1
+      if (vTags[idx1] !== callId) {
+        const v1Idx = uniqueVertexCount * 3;
+        vertexBuffer[v1Idx] = n1x;
+        vertexBuffer[v1Idx + 1] = -n1y;
+        vertexBuffer[v1Idx + 2] = colorIndex;
+        vMapping[idx1] = v1Idx;
+        vTags[idx1] = callId;
+        vertexIndexBuffer[i * 3 + 1] = v1Idx;
+        uniqueVertexCount++;
+      } else {
+        vertexIndexBuffer[i * 3 + 1] = vMapping[idx1];
+      }
 
-      vertexBuffer[v2Idx] = n2x;
-      vertexBuffer[v2Idx + 1] = -n2y;
-      vertexBuffer[v2Idx + 2] = colorIndex;
-
-      const viIdx = i * 3;
-      vertexIndexBuffer[viIdx] = v0Idx;
-      vertexIndexBuffer[viIdx + 1] = v1Idx;
-      vertexIndexBuffer[viIdx + 2] = v2Idx;
+      // Process Vertex 2
+      if (vTags[idx2] !== callId) {
+        const v2Idx = uniqueVertexCount * 3;
+        vertexBuffer[v2Idx] = n2x;
+        vertexBuffer[v2Idx + 1] = -n2y;
+        vertexBuffer[v2Idx + 2] = colorIndex;
+        vMapping[idx2] = v2Idx;
+        vTags[idx2] = callId;
+        vertexIndexBuffer[i * 3 + 2] = v2Idx;
+        uniqueVertexCount++;
+      } else {
+        vertexIndexBuffer[i * 3 + 2] = vMapping[idx2];
+      }
 
       const cgIdx = i * 9;
       clipGeometryBuffer[cgIdx] = vec3Cache2[v0c];
