@@ -1023,20 +1023,22 @@ function drawWireframe(
 
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i];
-    const vIdx = vertexIndexBuffer[idx * 9];
+    const v0Idx = vertexIndexBuffer[idx * 3];
+    const v1Idx = vertexIndexBuffer[idx * 3 + 1];
+    const v2Idx = vertexIndexBuffer[idx * 3 + 2];
 
     ctx.beginPath();
     ctx.moveTo(
-      vertexBuffer[vIdx] * halfW + halfW,
-      vertexBuffer[vIdx + 1] * halfH + halfH,
+      vertexBuffer[v0Idx] * halfW + halfW,
+      vertexBuffer[v0Idx + 1] * halfH + halfH,
     );
     ctx.lineTo(
-      vertexBuffer[vIdx + 3] * halfW + halfW,
-      vertexBuffer[vIdx + 4] * halfH + halfH,
+      vertexBuffer[v1Idx] * halfW + halfW,
+      vertexBuffer[v1Idx + 1] * halfH + halfH,
     );
     ctx.lineTo(
-      vertexBuffer[vIdx + 6] * halfW + halfW,
-      vertexBuffer[vIdx + 7] * halfH + halfH,
+      vertexBuffer[v2Idx] * halfW + halfW,
+      vertexBuffer[v2Idx + 1] * halfH + halfH,
     );
     ctx.closePath();
 
