@@ -643,6 +643,24 @@ function destructMesh(
     // MV = cameraLocalMatrix * W
     mat4Mul(mat4Scratchpad1, cameraLocalMatrix, W);
 
+    // Unpack Clip-Space Matrix for inlining
+    const m0 = mat4Scratchpad2[0],
+      m1 = mat4Scratchpad2[1],
+      m2 = mat4Scratchpad2[2],
+      m3 = mat4Scratchpad2[3],
+      m4 = mat4Scratchpad2[4],
+      m5 = mat4Scratchpad2[5],
+      m6 = mat4Scratchpad2[6],
+      m7 = mat4Scratchpad2[7],
+      m8 = mat4Scratchpad2[8],
+      m9 = mat4Scratchpad2[9],
+      m10 = mat4Scratchpad2[10],
+      m11 = mat4Scratchpad2[11],
+      m12 = mat4Scratchpad2[12],
+      m13 = mat4Scratchpad2[13],
+      m14 = mat4Scratchpad2[14],
+      m15 = mat4Scratchpad2[15];
+
     const faces = mesh.faces,
       verts = mesh.vertices,
       faceNormals = mesh.faceNormals;
@@ -673,46 +691,73 @@ function destructMesh(
       // Transform each vertex to Clip Space ONLY ONCE per mesh.
       // We use idx << 2 to store results in vec4Cache at the original index position.
       if (vTags[idx0] !== callId) {
-        let vo = idx0 * 3;
-        vec4TransformMat4(
-          vec4Cache,
-          idx0 << 2,
-          verts[vo],
-          verts[vo + 1],
-          verts[vo + 2],
-          1.0,
-          mat4Scratchpad2,
-        );
+        const vo = idx0 * 3;
+        // vec4TransformMat4(
+        //   vec4Cache,
+        //   idx0 << 2,
+        //   verts[vo],
+        //   verts[vo + 1],
+        //   verts[vo + 2],
+        //   1.0,
+        //   mat4Scratchpad2,
+        // );
+        // Inlined vec4TransformMat4
+        const at = idx0 << 2;
+        const vx = verts[vo],
+          vy = verts[vo + 1],
+          vz = verts[vo + 2];
+        vec4Cache[at] = m0 * vx + m4 * vy + m8 * vz + m12;
+        vec4Cache[at + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
+        vec4Cache[at + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
+        vec4Cache[at + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
         vTags[idx0] = callId;
         vMapping[idx0] = -1; // Flag: Transformed but not yet submitted to vertexBuffer
       }
 
       if (vTags[idx1] !== callId) {
-        let vo = idx1 * 3;
-        vec4TransformMat4(
-          vec4Cache,
-          idx1 << 2,
-          verts[vo],
-          verts[vo + 1],
-          verts[vo + 2],
-          1.0,
-          mat4Scratchpad2,
-        );
+        const vo = idx1 * 3;
+        // vec4TransformMat4(
+        //     vec4Cache,
+        //     idx1 << 2,
+        //     verts[vo],
+        //     verts[vo + 1],
+        //     verts[vo + 2],
+        //     1.0,
+        //     mat4Scratchpad2,
+        // );
+        // Inlined vec4TransformMat4
+        const at = idx1 << 2;
+        const vx = verts[vo],
+          vy = verts[vo + 1],
+          vz = verts[vo + 2];
+        vec4Cache[at] = m0 * vx + m4 * vy + m8 * vz + m12;
+        vec4Cache[at + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
+        vec4Cache[at + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
+        vec4Cache[at + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
         vTags[idx1] = callId;
         vMapping[idx1] = -1;
       }
 
       if (vTags[idx2] !== callId) {
-        let vo = idx2 * 3;
-        vec4TransformMat4(
-          vec4Cache,
-          idx2 << 2,
-          verts[vo],
-          verts[vo + 1],
-          verts[vo + 2],
-          1.0,
-          mat4Scratchpad2,
-        );
+        const vo = idx2 * 3;
+        // vec4TransformMat4(
+        //     vec4Cache,
+        //     idx2 << 2,
+        //     verts[vo],
+        //     verts[vo + 1],
+        //     verts[vo + 2],
+        //     1.0,
+        //     mat4Scratchpad2,
+        // );
+        // Inlined vec4TransformMat4
+        const at = idx2 << 2;
+        const vx = verts[vo],
+          vy = verts[vo + 1],
+          vz = verts[vo + 2];
+        vec4Cache[at] = m0 * vx + m4 * vy + m8 * vz + m12;
+        vec4Cache[at + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
+        vec4Cache[at + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
+        vec4Cache[at + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
         vTags[idx2] = callId;
         vMapping[idx2] = -1;
       }
@@ -736,21 +781,31 @@ function destructMesh(
 
       // --- CLIP-SPACE TRIVIAL REJECTION ---
       // Skip divisions for off-screen faces
-      let outcode = 0;
-      if (x0 < -w0 && x1 < -w1 && x2 < -w2) outcode |= 1;
-      if (x0 > w0 && x1 > w1 && x2 > w2) outcode |= 2;
-      if (y0 < -w0 && y1 < -w1 && y2 < -w2) outcode |= 4;
-      if (y0 > w0 && y1 > w1 && y2 > w2) outcode |= 8;
+      // let outcode = 0;
+      // if (x0 < -w0 && x1 < -w1 && x2 < -w2) outcode |= 1;
+      // if (x0 > w0 && x1 > w1 && x2 > w2) outcode |= 2;
+      // if (y0 < -w0 && y1 < -w1 && y2 < -w2) outcode |= 4;
+      // if (y0 > w0 && y1 > w1 && y2 > w2) outcode |= 8;
+      //
+      // // Near Plane: In Clip Space, Z should be >= 0 (or >= -w depending on matrix)
+      // // If all Z are less than 0, the face is behind the near plane.
+      // if (z0 < -w0 && z1 < -w1 && z2 < -w2) outcode |= 16;
+      //
+      // // Far Plane: In Clip Space, Z should be <= w
+      // // If all Z are greater than their respective w, the face is past the far plane.
+      // if (z0 > w0 && z1 > w1 && z2 > w2) outcode |= 32;
+      //
+      // if (outcode !== 0) continue;
 
-      // Near Plane: In Clip Space, Z should be >= 0 (or >= -w depending on matrix)
-      // If all Z are less than 0, the face is behind the near plane.
-      if (z0 < -w0 && z1 < -w1 && z2 < -w2) outcode |= 16;
-
-      // Far Plane: In Clip Space, Z should be <= w
-      // If all Z are greater than their respective w, the face is past the far plane.
-      if (z0 > w0 && z1 > w1 && z2 > w2) outcode |= 32;
-
-      if (outcode !== 0) continue;
+      // If you use a partial outcode elsewhere (like for clipping logic), you would need the full outcode mask.
+      // Since you are only using it to continue, the result is identical
+      // Faster short-circuiting rejection
+      if (x0 < -w0 && x1 < -w1 && x2 < -w2) continue;
+      if (x0 > w0 && x1 > w1 && x2 > w2) continue;
+      if (y0 < -w0 && y1 < -w1 && y2 < -w2) continue;
+      if (y0 > w0 && y1 > w1 && y2 > w2) continue;
+      if (z0 < -w0 && z1 < -w1 && z2 < -w2) continue;
+      if (z0 > w0 && z1 > w1 && z2 > w2) continue;
 
       // --- PERSPECTIVE DIVIDE ---
       const invW0 = 1 / w0,
@@ -779,9 +834,9 @@ function destructMesh(
         fnz = faceNormals[f + 2];
 
       // Transform normal: Model -> World via Normal Matrix
-      let wnx = fnx * nm0 + fny * nm3 + fnz * nm6;
-      let wny = fnx * nm1 + fny * nm4 + fnz * nm7;
-      let wnz = fnx * nm2 + fny * nm5 + fnz * nm8;
+      const wnx = fnx * nm0 + fny * nm3 + fnz * nm6;
+      const wny = fnx * nm1 + fny * nm4 + fnz * nm7;
+      const wnz = fnx * nm2 + fny * nm5 + fnz * nm8;
       // Re-normalize for uniform/non-uniform scaling
       const mag = Math.sqrt(wnx * wnx + wny * wny + wnz * wnz);
       const invMag = mag > 0 ? 1 / mag : 0;
