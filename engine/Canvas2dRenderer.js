@@ -646,21 +646,6 @@ function destructMesh(
     const faces = mesh.faces,
       verts = mesh.vertices,
       faceNormals = mesh.faceNormals;
-    let v4idx = 0;
-
-    // VERTEX TRANSFORMATION (One pass)
-    for (let l = 0; l < verts.length; l += 3) {
-      const vx = verts[l],
-        vy = verts[l + 1],
-        vz = verts[l + 2];
-
-      // Transform to Camera Space (Stride 3)
-      vec3TransformMat4(vec3Cache2, l, vx, vy, vz, mat4Scratchpad1);
-
-      // Transform to Clip Space (Stride 4) - Standard MVP
-      vec4TransformMat4(vec4Cache, v4idx, vx, vy, vz, 1.0, mat4Scratchpad2);
-      v4idx += 4;
-    }
 
     // NM Normal Matrix calculation per mesh
     MeshComponent.computeNormalMatrix(mat3Scratchpad1, W);
@@ -683,6 +668,55 @@ function destructMesh(
       const idx0 = faces[f],
         idx1 = faces[f + 1],
         idx2 = faces[f + 2];
+
+      // --- GATE 1: LAZY CLIP-SPACE TRANSFORMATION ---
+      // Transform each vertex to Clip Space ONLY ONCE per mesh.
+      // We use idx << 2 to store results in vec4Cache at the original index position.
+      if (vTags[idx0] !== callId) {
+        let vo = idx0 * 3;
+        vec4TransformMat4(
+          vec4Cache,
+          idx0 << 2,
+          verts[vo],
+          verts[vo + 1],
+          verts[vo + 2],
+          1.0,
+          mat4Scratchpad2,
+        );
+        vTags[idx0] = callId;
+        vMapping[idx0] = -1; // Flag: Transformed but not yet submitted to vertexBuffer
+      }
+
+      if (vTags[idx1] !== callId) {
+        let vo = idx1 * 3;
+        vec4TransformMat4(
+          vec4Cache,
+          idx1 << 2,
+          verts[vo],
+          verts[vo + 1],
+          verts[vo + 2],
+          1.0,
+          mat4Scratchpad2,
+        );
+        vTags[idx1] = callId;
+        vMapping[idx1] = -1;
+      }
+
+      if (vTags[idx2] !== callId) {
+        let vo = idx2 * 3;
+        vec4TransformMat4(
+          vec4Cache,
+          idx2 << 2,
+          verts[vo],
+          verts[vo + 1],
+          verts[vo + 2],
+          1.0,
+          mat4Scratchpad2,
+        );
+        vTags[idx2] = callId;
+        vMapping[idx2] = -1;
+      }
+
       const v0 = idx0 << 2,
         v1 = idx1 << 2,
         v2 = idx2 << 2; // Fast multiply by 4
@@ -735,13 +769,9 @@ function destructMesh(
       const v0c = idx0 * 3,
         v1c = idx1 * 3,
         v2c = idx2 * 3;
-      const depth =
-        (vec3Cache2[v0c + 2] + vec3Cache2[v1c + 2] + vec3Cache2[v2c + 2]) *
-        0.33333;
 
       // FILL BUFFERS
       indexBuffer[i] = i;
-      depthBuffer[i] = depth;
 
       // WORLD-SPACE LIGHTING
       const fnx = faceNormals[f],
@@ -772,57 +802,77 @@ function destructMesh(
       // for THIS callId, we write it and store the new index.
 
       // Process Vertex 0
-      if (vTags[idx0] !== callId) {
+      if (vMapping[idx0] === -1) {
         const v0Idx = uniqueVertexCount * 3;
+        vec3TransformMat4(
+          vec3Cache2,
+          v0c,
+          verts[v0c],
+          verts[v0c + 1],
+          verts[v0c + 2],
+          mat4Scratchpad1,
+        );
         vertexBuffer[v0Idx] = n0x;
         vertexBuffer[v0Idx + 1] = -n0y;
         vertexBuffer[v0Idx + 2] = colorIndex;
         vMapping[idx0] = v0Idx; // Store the buffer offset
-        vTags[idx0] = callId;
-        vertexIndexBuffer[i * 3] = v0Idx;
         uniqueVertexCount++;
-      } else {
-        vertexIndexBuffer[i * 3] = vMapping[idx0];
       }
 
+      vertexIndexBuffer[i * 3] = vMapping[idx0];
+
       // Process Vertex 1
-      if (vTags[idx1] !== callId) {
+      if (vMapping[idx1] === -1) {
         const v1Idx = uniqueVertexCount * 3;
+        vec3TransformMat4(
+          vec3Cache2,
+          v1c,
+          verts[v1c],
+          verts[v1c + 1],
+          verts[v1c + 2],
+          mat4Scratchpad1,
+        );
         vertexBuffer[v1Idx] = n1x;
         vertexBuffer[v1Idx + 1] = -n1y;
         vertexBuffer[v1Idx + 2] = colorIndex;
         vMapping[idx1] = v1Idx;
-        vTags[idx1] = callId;
-        vertexIndexBuffer[i * 3 + 1] = v1Idx;
         uniqueVertexCount++;
-      } else {
-        vertexIndexBuffer[i * 3 + 1] = vMapping[idx1];
       }
 
+      vertexIndexBuffer[i * 3 + 1] = vMapping[idx1];
+
       // Process Vertex 2
-      if (vTags[idx2] !== callId) {
+      if (vMapping[idx2] === -1) {
         const v2Idx = uniqueVertexCount * 3;
+        vec3TransformMat4(
+          vec3Cache2,
+          v2c,
+          verts[v2c],
+          verts[v2c + 1],
+          verts[v2c + 2],
+          mat4Scratchpad1,
+        );
         vertexBuffer[v2Idx] = n2x;
         vertexBuffer[v2Idx + 1] = -n2y;
         vertexBuffer[v2Idx + 2] = colorIndex;
         vMapping[idx2] = v2Idx;
-        vTags[idx2] = callId;
-        vertexIndexBuffer[i * 3 + 2] = v2Idx;
         uniqueVertexCount++;
-      } else {
-        vertexIndexBuffer[i * 3 + 2] = vMapping[idx2];
       }
+
+      vertexIndexBuffer[i * 3 + 2] = vMapping[idx2];
 
       const cgIdx = i * 9;
       clipGeometryBuffer[cgIdx] = vec3Cache2[v0c];
       clipGeometryBuffer[cgIdx + 1] = vec3Cache2[v0c + 1];
-      clipGeometryBuffer[cgIdx + 2] = vec3Cache2[v0c + 2];
+      const v0z = (clipGeometryBuffer[cgIdx + 2] = vec3Cache2[v0c + 2]);
       clipGeometryBuffer[cgIdx + 3] = vec3Cache2[v1c];
       clipGeometryBuffer[cgIdx + 4] = vec3Cache2[v1c + 1];
-      clipGeometryBuffer[cgIdx + 5] = vec3Cache2[v1c + 2];
+      const v1z = (clipGeometryBuffer[cgIdx + 5] = vec3Cache2[v1c + 2]);
       clipGeometryBuffer[cgIdx + 6] = vec3Cache2[v2c];
       clipGeometryBuffer[cgIdx + 7] = vec3Cache2[v2c + 1];
-      clipGeometryBuffer[cgIdx + 8] = vec3Cache2[v2c + 2];
+      const v2z = (clipGeometryBuffer[cgIdx + 8] = vec3Cache2[v2c + 2]);
+
+      depthBuffer[i] = (v0z + v1z + v2z) * 0.33333;
 
       const fnIdx = i * 3;
       faceNormalsBuffer[fnIdx] = wnx * invMag;
