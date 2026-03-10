@@ -1,9 +1,9 @@
 {
-  "name": "xl3d",
+  "name": "xl3d.js",
   "version": "0.0.1",
   "type": "module",
-  "description": "This is extremely limited 3d engine",
-  "main": "src/main.js",
+  "description": "This is extremely limited 3d engine I've created.",
+  "main": "xl3d.js",
   "directories": {
     "lib": "lib"
   },
