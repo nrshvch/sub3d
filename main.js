@@ -1,5 +1,5 @@
-import scaliaEngine from "./engine/main.js";
-import Noise from "./engine/noise.js";
+import scaliaEngine from "./src/main.js";
+import Noise from "./src/noise.js";
 import Terrain from "./terrain.js";
 
 var myGame = new scaliaEngine.Game();

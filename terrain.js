@@ -1,5 +1,5 @@
-import GameObject from "./engine/GameObject.js";
-import MeshComponent from "./engine/components/MeshComponent.js";
+import GameObject from "./src/GameObject.js";
+import MeshComponent from "./src/components/MeshComponent.js";
 
 /**
  * Simplifies an existing subdivided grid mesh.
