@@ -1,5 +1,7 @@
-import GameObject from "./src/GameObject.js";
-import MeshComponent from "./src/components/MeshComponent.js";
+import scaliaEngine from "./xl3d/xl3d.js";
+
+const GameObject = scaliaEngine.GameObject;
+const MeshComponent = scaliaEngine.MeshComponent;
 
 function generateApartmentMesh() {
   const verts = [];

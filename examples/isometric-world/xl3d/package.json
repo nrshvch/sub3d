@@ -1,0 +1,29 @@
+{
+  "name": "xl3d.js",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "This is extremely limited 3d engine I've created.",
+  "main": "xl3d.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://git.narushevi.ch/denis/scalia"
+  },
+  "author": "Denis Narushevich",
+  "license": "ISC",
+  "devDependencies": {
+    "prettier": "^3.8.1",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "gl-matrix": "^3.4.4"
+  }
+}
