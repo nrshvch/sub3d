@@ -5,7 +5,7 @@ export default defineConfig({
     lib: {
       entry: "./src/main.js",
       formats: ["es"],
-      fileName: "xl3d",
+      fileName: "sub3d",
     },
   },
 });

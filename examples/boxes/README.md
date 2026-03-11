@@ -1,4 +1,4 @@
-# Isometric World Example
+# Boxes Example
 
 You can run it locally:
 - `npm i`

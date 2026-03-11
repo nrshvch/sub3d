@@ -1,4 +1,4 @@
-import scaliaEngine from "xl3d";
+import scaliaEngine from "sub3d";
 import { vec3 } from "gl-matrix";
 
 var myGame = new scaliaEngine.Game();

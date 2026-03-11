@@ -1,8 +1,8 @@
 {
-  "name": "xl3d",
+  "name": "sub3d",
   "version": "0.0.1",
   "type": "module",
-  "description": "This is extremely limited 3d engine",
+  "description": "This is subpar 3d engine",
   "main": "src/main.js",
   "directories": {
     "lib": "lib"

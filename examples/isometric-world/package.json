@@ -9,6 +9,6 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "xl3d": "file:./xl3d"
+    "sub3d": "file:./sub3d"
   }
 }

@@ -1,4 +1,4 @@
-import scaliaEngine from "xl3d";
+import scaliaEngine from "sub3d";
 import Noise from "./noise.js";
 import Terrain from "./terrain.js";
 import Tree from "./Tree.js";
