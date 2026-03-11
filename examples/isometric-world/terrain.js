@@ -1,4 +1,4 @@
-import scaliaEngine from "./xl3d/xl3d.js";
+import scaliaEngine from "xl3d";
 
 const GameObject = scaliaEngine.GameObject;
 const MeshComponent = scaliaEngine.MeshComponent;
