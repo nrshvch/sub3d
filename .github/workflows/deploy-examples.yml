@@ -1,0 +1,49 @@
+name: Deploy Examples to GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Build Boxes Example
+        run: |
+          cd examples/boxes
+          npm install
+          npx vite build --base=/sub3d/examples/boxes/ --outDir=../../dist/examples/boxes
+
+      - name: Build Isometric World Example
+        run: |
+          cd examples/isometric-world
+          npm install
+          npx vite build --base=/sub3d/examples/isometric-world/ --outDir=../../dist/examples/isometric-world
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "./dist"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
