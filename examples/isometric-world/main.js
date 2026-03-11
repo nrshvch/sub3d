@@ -1,12 +1,13 @@
 import scaliaEngine from "xl3d";
 import Noise from "./noise.js";
 import Terrain from "./terrain.js";
+import Tree from "./Tree.js";
 
 var myGame = new scaliaEngine.Game();
 
 const TILE_SIZE = 45.255;
 var N = 100;
-var SCALE = 1;
+var SCALE = 1.6;
 
 var terrain = new Terrain();
 terrain.meshRenderer.layer = 0;
@@ -284,7 +285,7 @@ for (var i = 0; i < N; i++) {
     const TREE_SCALE = 0.8;
 
     if (Math.random() > 0.6 && Math.min(h_00, h_10, h_11, h_01) > 0) {
-      var tree = new scaliaEngine.Cone();
+      var tree = new Tree();
       tree.meshRenderer.colors = new Uint8Array([0, 100, 0]);
       tree.meshRenderer.layer = 1;
 
