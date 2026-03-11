@@ -301,7 +301,7 @@ for (var i = 0; i < N; i++) {
 
       tree.transform.translate(
         (i - N / 2) * TILE_SIZE * SCALE + offsetX,
-        h + 2 * SCALE,
+        h,
         (j - N / 2) * TILE_SIZE * SCALE + offsetY,
       );
       tree.transform.scale(
@@ -309,9 +309,9 @@ for (var i = 0; i < N; i++) {
         50 * size * SCALE * TREE_SCALE,
         25 * size * SCALE * TREE_SCALE,
       );
-      tree.transform.rotate(0, yRot, 0);
+      tree.transform.rotate((Math.random() * 10 - 5) | 0, yRot, (Math.random() * 10 - 5) | 0);
+
       myGame.world.scene.addGameObject(tree);
-      // tree.debug = true;
     }
   }
 }
