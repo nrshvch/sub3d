@@ -10,6 +10,6 @@
   },
   "dependencies": {
     "gl-matrix": "^3.4.4",
-    "xl3d": "file:./xl3d"
+    "sub3d": "file:./sub3d"
   }
 }
