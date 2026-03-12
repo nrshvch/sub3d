@@ -309,7 +309,11 @@ for (var i = 0; i < N; i++) {
         50 * size * SCALE * TREE_SCALE,
         25 * size * SCALE * TREE_SCALE,
       );
-      tree.transform.rotate((Math.random() * 10 - 5) | 0, yRot, (Math.random() * 10 - 5) | 0);
+      tree.transform.rotate(
+        (Math.random() * 10 - 5) | 0,
+        yRot,
+        (Math.random() * 10 - 5) | 0,
+      );
 
       myGame.world.scene.addGameObject(tree);
     }
@@ -454,7 +458,7 @@ const viewport = new scaliaEngine.Canvas2dViewport(
   camera.camera,
   document.getElementById("canvas"),
 );
-
+viewport.dpr = window.devicePixelRatio;
 viewport.start();
 
 window.myGame = myGame;
@@ -469,12 +473,7 @@ var objectsEl = document.getElementById("objects");
 var visibleObjectsEl = document.getElementById("visibleObjects");
 var facesCountEl = document.getElementById("facesCount");
 
-const debugBtn = document.getElementById("debug-btn");
 const debugWireframeBtn = document.getElementById("debug-wireframe-btn");
-debugBtn.addEventListener("click", () => {
-  renderer.wireframe = false;
-  renderer.debug = !renderer.debug;
-});
 debugWireframeBtn.addEventListener("click", () => {
   renderer.debug = false;
   renderer.wireframe = !renderer.wireframe;
