@@ -92,6 +92,7 @@ var drawCallsEl = document.getElementById("drawCalls");
 var objectsEl = document.getElementById("objects");
 var visibleObjectsEl = document.getElementById("visibleObjects");
 var facesCountEl = document.getElementById("facesCount");
+var dprEl = document.getElementById("dpr");
 
 const debugWireframeBtn = document.getElementById("debug-wireframe-btn");
 debugWireframeBtn.addEventListener("click", () => {
@@ -110,4 +111,5 @@ setInterval(() => {
   objectsEl.innerText = myGame.world.scene.gameObjects.length;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
+  dprEl.innerText = window.devicePixelRatio;
 }, 100);
