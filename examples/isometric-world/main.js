@@ -370,16 +370,25 @@ var x0, y0;
 var mousepressed = false;
 
 document.onpointerdown = function (e) {
+  // Add this line at the very top to stop Safari from scrolling/refreshing
+  if (e.cancelable) e.preventDefault();
+
   mousepressed = true;
   x0 = e.pageX;
   y0 = e.pageY;
 };
 
 document.onpointerup = function () {
+  // Add this line at the very top to stop Safari from scrolling/refreshing
+  if (e.cancelable) e.preventDefault();
+
   mousepressed = false;
 };
 
 document.onpointermove = function (e) {
+  // Add this line at the very top to stop Safari from scrolling/refreshing
+  if (e.cancelable) e.preventDefault();
+
   if (!mousepressed) return;
 
   var x = e.pageX;
