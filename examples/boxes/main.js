@@ -77,7 +77,7 @@ const viewport = new scaliaEngine.Canvas2dViewport(
   camera.camera,
   document.getElementById("canvas"),
 );
-
+viewport.dpr = window.devicePixelRatio;
 viewport.start();
 
 window.myGame = myGame;
@@ -93,12 +93,7 @@ var objectsEl = document.getElementById("objects");
 var visibleObjectsEl = document.getElementById("visibleObjects");
 var facesCountEl = document.getElementById("facesCount");
 
-const debugBtn = document.getElementById("debug-btn");
 const debugWireframeBtn = document.getElementById("debug-wireframe-btn");
-debugBtn.addEventListener("click", () => {
-  renderer.wireframe = false;
-  renderer.debug = !renderer.debug;
-});
 debugWireframeBtn.addEventListener("click", () => {
   renderer.debug = false;
   renderer.wireframe = !renderer.wireframe;
