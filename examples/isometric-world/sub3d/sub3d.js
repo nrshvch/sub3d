@@ -144,7 +144,7 @@ function ur(r, n, e) {
   var t = n[0], a = n[1], s = n[2], i = n[3], c = n[4], l = n[5], h = n[6], f = n[7], v = n[8], d = n[9], M = n[10], y = n[11], p = n[12], m = n[13], o = n[14], $ = n[15], x = e[0], g = e[1], w = e[2], z = e[3];
   return r[0] = x * t + g * c + w * v + z * p, r[1] = x * a + g * l + w * d + z * m, r[2] = x * s + g * h + w * M + z * o, r[3] = x * i + g * f + w * y + z * $, x = e[4], g = e[5], w = e[6], z = e[7], r[4] = x * t + g * c + w * v + z * p, r[5] = x * a + g * l + w * d + z * m, r[6] = x * s + g * h + w * M + z * o, r[7] = x * i + g * f + w * y + z * $, x = e[8], g = e[9], w = e[10], z = e[11], r[8] = x * t + g * c + w * v + z * p, r[9] = x * a + g * l + w * d + z * m, r[10] = x * s + g * h + w * M + z * o, r[11] = x * i + g * f + w * y + z * $, x = e[12], g = e[13], w = e[14], z = e[15], r[12] = x * t + g * c + w * v + z * p, r[13] = x * a + g * l + w * d + z * m, r[14] = x * s + g * h + w * M + z * o, r[15] = x * i + g * f + w * y + z * $, r;
 }
-var j = 1e-6, R = typeof Float32Array < "u" ? Float32Array : Array, yr = Math.random, le = "zyx";
+var j = 1e-6, R = typeof Float32Array < "u" ? Float32Array : Array, mr = Math.random, le = "zyx";
 function pr(r) {
   return r >= 0 ? Math.round(r) : r % 0.5 === 0 ? Math.floor(r) : Math.round(r);
 }
@@ -169,7 +169,7 @@ const U1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     return R;
   },
   EPSILON: j,
-  RANDOM: yr,
+  RANDOM: mr,
   equals: N1,
   round: pr,
   setMatrixArrayType: E1,
@@ -906,7 +906,7 @@ function ma(r, n, e, t, a, s) {
 }
 function pa(r, n) {
   n = n === void 0 ? 1 : n;
-  var e = yr() * 2 * Math.PI, t = yr() * 2 - 1, a = Math.sqrt(1 - t * t) * n;
+  var e = mr() * 2 * Math.PI, t = mr() * 2 - 1, a = Math.sqrt(1 - t * t) * n;
   return r[0] = Math.cos(e) * a, r[1] = Math.sin(e) * a, r[2] = t * n, r;
 }
 function kr(r, n, e) {
@@ -1102,7 +1102,7 @@ function He(r, n, e, t) {
 function Ga(r, n) {
   n = n === void 0 ? 1 : n;
   var e, t, a, s, i, c, l;
-  l = yr(), e = l * 2 - 1, t = (4 * yr() - 2) * Math.sqrt(l * -l + l), i = e * e + t * t, l = yr(), a = l * 2 - 1, s = (4 * yr() - 2) * Math.sqrt(l * -l + l), c = a * a + s * s;
+  l = mr(), e = l * 2 - 1, t = (4 * mr() - 2) * Math.sqrt(l * -l + l), i = e * e + t * t, l = mr(), a = l * 2 - 1, s = (4 * mr() - 2) * Math.sqrt(l * -l + l), c = a * a + s * s;
   var h = Math.sqrt((1 - i) / c);
   return r[0] = n * e, r[1] = n * t, r[2] = n * a * h, r[3] = n * s * h, r;
 }
@@ -1239,7 +1239,7 @@ function Gr(r, n, e, t) {
   return M = a * l + s * h + i * f + c * v, M < 0 && (M = -M, l = -l, h = -h, f = -f, v = -v), 1 - M > j ? (d = Math.acos(M), y = Math.sin(d), p = Math.sin((1 - t) * d) / y, m = Math.sin(t * d) / y) : (p = 1 - t, m = t), r[0] = p * a + m * l, r[1] = p * s + m * h, r[2] = p * i + m * f, r[3] = p * c + m * v, r;
 }
 function fs(r) {
-  var n = yr(), e = yr(), t = yr(), a = Math.sqrt(1 - n), s = Math.sqrt(n);
+  var n = mr(), e = mr(), t = mr(), a = Math.sqrt(1 - n), s = Math.sqrt(n);
   return r[0] = a * Math.sin(2 * Math.PI * e), r[1] = a * Math.cos(2 * Math.PI * e), r[2] = s * Math.sin(2 * Math.PI * t), r[3] = s * Math.cos(2 * Math.PI * t), r;
 }
 function vs(r, n) {
@@ -1619,7 +1619,7 @@ function Oi(r, n, e, t) {
 }
 function ji(r, n) {
   n = n === void 0 ? 1 : n;
-  var e = yr() * 2 * Math.PI;
+  var e = mr() * 2 * Math.PI;
   return r[0] = Math.cos(e) * n, r[1] = Math.sin(e) * n, r;
 }
 function Ti(r, n, e) {
@@ -2273,13 +2273,13 @@ Ir.render = function(r, n, e) {
       a.length
     ), A.set(W);
   }
-  const dr = ec(
+  const Mr = ec(
     a,
     C,
     A
   ), rr = tc(
     A,
-    dr,
+    Mr,
     a,
     C
   );
@@ -2392,8 +2392,8 @@ function ec(r, n, e) {
   b = 1 / Math.sqrt(q * q + A * A + F * F), q *= b, A *= b, F *= b, T *= b;
   let L = c + s, O = v + h, k = p + M, G = x + o;
   b = 1 / Math.sqrt(L * L + O * O + k * k), L *= b, O *= b, k *= b, G *= b;
-  let C = c - s, X = v - h, Z = p - M, dr = x - o;
-  b = 1 / Math.sqrt(C * C + X * X + Z * Z), C *= b, X *= b, Z *= b, dr *= b;
+  let C = c - s, X = v - h, Z = p - M, Mr = x - o;
+  b = 1 / Math.sqrt(C * C + X * X + Z * Z), C *= b, X *= b, Z *= b, Mr *= b;
   let rr = c + i, cr = v + f, W = p + y, I = x + $;
   b = 1 / Math.sqrt(rr * rr + cr * cr + W * W), rr *= b, cr *= b, W *= b, I *= b;
   let _ = c - i, V = v - f, P = p - y, nr = x - $;
@@ -2402,8 +2402,8 @@ function ec(r, n, e) {
   for (let Wr = 0; Wr < Rr; Wr++) {
     const wr = r[Wr];
     if (!wr.meshRenderer || !wr.meshRenderer.enabled) continue;
-    const E = wr.transform.dirtyL ? wr.transform.getLocalToWorld() : wr.transform.localToWorld, Pr = wr.meshRenderer.bounds, Dr = Pr[28], Br = Pr[29], Nr = Pr[30], J = E[0] * Dr + E[4] * Br + E[8] * Nr + E[12], Q = E[1] * Dr + E[5] * Br + E[9] * Nr + E[13], H = E[2] * Dr + E[6] * Br + E[10] * Nr + E[14], fr = E[0] * E[0] + E[1] * E[1] + E[2] * E[2], Er = E[4] * E[4] + E[5] * E[5] + E[6] * E[6], Cr = E[8] * E[8] + E[9] * E[9] + E[10] * E[10], Mr = Pr[31] * Math.sqrt(Math.max(fr, Er, Cr));
-    g * J + w * Q + z * H + S < -Mr || q * J + A * Q + F * H + T < -Mr || L * J + O * Q + k * H + G < -Mr || C * J + X * Q + Z * H + dr < -Mr || rr * J + cr * Q + W * H + I < -Mr || _ * J + V * Q + P * H + nr < -Mr || (e[t++] = Wr);
+    const E = wr.transform.dirtyL ? wr.transform.getLocalToWorld() : wr.transform.localToWorld, Pr = wr.meshRenderer.bounds, Dr = Pr[28], Br = Pr[29], Nr = Pr[30], J = E[0] * Dr + E[4] * Br + E[8] * Nr + E[12], Q = E[1] * Dr + E[5] * Br + E[9] * Nr + E[13], H = E[2] * Dr + E[6] * Br + E[10] * Nr + E[14], fr = E[0] * E[0] + E[1] * E[1] + E[2] * E[2], Er = E[4] * E[4] + E[5] * E[5] + E[6] * E[6], Cr = E[8] * E[8] + E[9] * E[9] + E[10] * E[10], yr = Pr[31] * Math.sqrt(Math.max(fr, Er, Cr));
+    g * J + w * Q + z * H + S < -yr || q * J + A * Q + F * H + T < -yr || L * J + O * Q + k * H + G < -yr || C * J + X * Q + Z * H + Mr < -yr || rr * J + cr * Q + W * H + I < -yr || _ * J + V * Q + P * H + nr < -yr || (e[t++] = Wr);
   }
   return t;
 }
@@ -2416,9 +2416,9 @@ function tc(r, n, e, t) {
       const F = A.bounds;
       let T = 63;
       for (let L = 0; L < 24; L += 3) {
-        const O = F[L], k = F[L + 1], G = F[L + 2], C = q[0] * O + q[4] * k + q[8] * G + q[12], X = q[1] * O + q[5] * k + q[9] * G + q[13], Z = q[2] * O + q[6] * k + q[10] * G + q[14], dr = s * C + h * X + M * Z + o, rr = i * C + f * X + y * Z + $, cr = c * C + v * X + p * Z + x, W = l * C + d * X + m * Z + g;
+        const O = F[L], k = F[L + 1], G = F[L + 2], C = q[0] * O + q[4] * k + q[8] * G + q[12], X = q[1] * O + q[5] * k + q[9] * G + q[13], Z = q[2] * O + q[6] * k + q[10] * G + q[14], Mr = s * C + h * X + M * Z + o, rr = i * C + f * X + y * Z + $, cr = c * C + v * X + p * Z + x, W = l * C + d * X + m * Z + g;
         let I = 0;
-        dr < -W && (I |= 1), dr > W && (I |= 2), rr < -W && (I |= 4), rr > W && (I |= 8), cr < -W && (I |= 16), cr > W && (I |= 32), T &= I;
+        Mr < -W && (I |= 1), Mr > W && (I |= 2), rr < -W && (I |= 4), rr > W && (I |= 8), cr < -W && (I |= 16), cr > W && (I |= 32), T &= I;
       }
       T === 0 && (r[w++] = S);
     } else {
@@ -2437,24 +2437,24 @@ function ac(r, n, e, t, a, s, i, c, l, h, f, v, d, M, y, p, m, o) {
     ++Sr;
     const z = w.gameObject.transform.dirtyL ? w.gameObject.transform.getLocalToWorld() : w.gameObject.transform.localToWorld;
     ee(v, h, z), ee(f, l, z);
-    const S = v[0], b = v[1], q = v[2], A = v[3], F = v[4], T = v[5], L = v[6], O = v[7], k = v[8], G = v[9], C = v[10], X = v[11], Z = v[12], dr = v[13], rr = v[14], cr = v[15], W = w.faces, I = w.vertices, _ = w.faceNormals;
+    const S = v[0], b = v[1], q = v[2], A = v[3], F = v[4], T = v[5], L = v[6], O = v[7], k = v[8], G = v[9], C = v[10], X = v[11], Z = v[12], Mr = v[13], rr = v[14], cr = v[15], W = w.faces, I = w.vertices, _ = w.faceNormals;
     Y.computeNormalMatrix(d, z);
     const V = d, P = V[0], nr = V[1], Rr = V[2], Wr = V[3], wr = V[4], E = V[5], Pr = V[6], Dr = V[7], Br = V[8], Nr = W.length;
     for (let J = 0; J < Nr; J += 3) {
       const Q = W[J], H = W[J + 1], fr = W[J + 2];
       if (o[Q] !== Sr) {
         const U = Q * 3, er = Q << 2, tr = I[U], ar = I[U + 1], sr = I[U + 2];
-        t[er] = S * tr + F * ar + k * sr + Z, t[er + 1] = b * tr + T * ar + G * sr + dr, t[er + 2] = q * tr + L * ar + C * sr + rr, t[er + 3] = A * tr + O * ar + X * sr + cr, o[Q] = Sr, m[Q] = -1;
+        t[er] = S * tr + F * ar + k * sr + Z, t[er + 1] = b * tr + T * ar + G * sr + Mr, t[er + 2] = q * tr + L * ar + C * sr + rr, t[er + 3] = A * tr + O * ar + X * sr + cr, o[Q] = Sr, m[Q] = -1;
       }
       if (o[H] !== Sr) {
         const U = H * 3, er = H << 2, tr = I[U], ar = I[U + 1], sr = I[U + 2];
-        t[er] = S * tr + F * ar + k * sr + Z, t[er + 1] = b * tr + T * ar + G * sr + dr, t[er + 2] = q * tr + L * ar + C * sr + rr, t[er + 3] = A * tr + O * ar + X * sr + cr, o[H] = Sr, m[H] = -1;
+        t[er] = S * tr + F * ar + k * sr + Z, t[er + 1] = b * tr + T * ar + G * sr + Mr, t[er + 2] = q * tr + L * ar + C * sr + rr, t[er + 3] = A * tr + O * ar + X * sr + cr, o[H] = Sr, m[H] = -1;
       }
       if (o[fr] !== Sr) {
         const U = fr * 3, er = fr << 2, tr = I[U], ar = I[U + 1], sr = I[U + 2];
-        t[er] = S * tr + F * ar + k * sr + Z, t[er + 1] = b * tr + T * ar + G * sr + dr, t[er + 2] = q * tr + L * ar + C * sr + rr, t[er + 3] = A * tr + O * ar + X * sr + cr, o[fr] = Sr, m[fr] = -1;
+        t[er] = S * tr + F * ar + k * sr + Z, t[er + 1] = b * tr + T * ar + G * sr + Mr, t[er + 2] = q * tr + L * ar + C * sr + rr, t[er + 3] = A * tr + O * ar + X * sr + cr, o[fr] = Sr, m[fr] = -1;
       }
-      const Er = Q << 2, Cr = H << 2, Mr = fr << 2, tn = t[Er], an = t[Er + 1], Gn = t[Er + 2], br = t[Er + 3], sn = t[Cr], cn = t[Cr + 1], Yn = t[Cr + 2], Ar = t[Cr + 3], ln = t[Mr], hn = t[Mr + 1], Xn = t[Mr + 2], qr = t[Mr + 3];
+      const Er = Q << 2, Cr = H << 2, yr = fr << 2, tn = t[Er], an = t[Er + 1], Gn = t[Er + 2], br = t[Er + 3], sn = t[Cr], cn = t[Cr + 1], Yn = t[Cr + 2], Ar = t[Cr + 3], ln = t[yr], hn = t[yr + 1], Xn = t[yr + 2], qr = t[yr + 3];
       if (tn < -br && sn < -Ar && ln < -qr || tn > br && sn > Ar && ln > qr || an < -br && cn < -Ar && hn < -qr || an > br && cn > Ar && hn > qr || Gn < -br && Yn < -Ar && Xn < -qr || Gn > br && Yn > Ar && Xn > qr) continue;
       const Zn = 1 / br, _n = 1 / Ar, Qn = 1 / qr, fn = tn * Zn, vn = an * Zn, Hn = sn * _n, Jn = cn * _n, Kn = ln * Qn, un = hn * Qn;
       if ((Hn - fn) * (un - vn) - (Jn - vn) * (Kn - fn) > 0) continue;
@@ -2595,30 +2595,40 @@ function T1(r, n) {
     });
   }, this.lastRenderStats = {};
 }
-var mr = T1.prototype;
-mr.size = null;
-mr.width = null;
-mr.height = null;
-mr.viewportMatrix = null;
-mr.camera = null;
-mr.canvas = null;
-mr.context = null;
-mr.start = function() {
+var dr = T1.prototype;
+dr.size = null;
+dr.dpr = 1;
+dr.width = null;
+dr.height = null;
+dr.viewportMatrix = null;
+dr.camera = null;
+dr.canvas = null;
+dr.context = null;
+dr.start = function() {
   this.setSize(this.canvas.offsetWidth, this.canvas.offsetHeight), this.startRenderLoop();
 };
-mr.render = function() {
+dr.render = function() {
   this.camera !== null && this.renderer.render(this.camera.gameObject, this, this.lastRenderStats);
 };
-mr.setSize = function(r, n) {
+dr.setSize = function(r, n) {
+  const e = r * this.dpr, t = n * this.dpr;
   this.width = r, this.height = n, this.canvas.width = r, this.canvas.height = n, this.viewportMatrix[0] = r / 2, this.viewportMatrix[5] = -n / 2, this.viewportMatrix[12] = r / 2, this.viewportMatrix[13] = n / 2;
-  for (var e = 0; e < this.layers.length; e++) {
-    var t = this.layers[e];
-    t.canvas.width = r, t.canvas.height = n;
+  for (var a = 0; a < this.layers.length; a++) {
+    var s = this.layers[a];
+    s.canvas.width = r, s.canvas.height = n;
   }
-  return this.camera.setup(this.width, this.height), this;
+  this.camera.setup(e, t);
 };
-mr.getWorldToScreen = function() {
-  return te(this.worldToScreenMatrix, this.viewportMatrix, this.camera.projectionMatrix), te(this.worldToScreenMatrix, this.worldToScreenMatrix, this.camera.gameObject.transform.getWorldToLocal()), this.worldToScreenMatrix;
+dr.getWorldToScreen = function() {
+  return te(
+    this.worldToScreenMatrix,
+    this.viewportMatrix,
+    this.camera.projectionMatrix
+  ), te(
+    this.worldToScreenMatrix,
+    this.worldToScreenMatrix,
+    this.camera.gameObject.transform.getWorldToLocal()
+  ), this.worldToScreenMatrix;
 };
 function Hr() {
   B.call(this);
