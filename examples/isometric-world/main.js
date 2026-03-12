@@ -366,36 +366,20 @@ myGame.world.tickRegister({
   },
 });
 
-document.onkeydown = function (e) {
-  if (e.keyCode == 65) {
-    //a
-    camera.transform.translate(0, 0, -10, "world");
-  } else if (e.keyCode == 68) {
-    //d
-    camera.transform.translate(0, 0, 10, "world");
-  } else if (e.keyCode == 87) {
-    //w
-    camera.transform.translate(10, 0, 0, "world");
-  } else if (e.keyCode == 83) {
-    //s
-    camera.transform.translate(-10, 0, 0, "world");
-  }
-};
-
 var x0, y0;
 var mousepressed = false;
 
-document.onmousedown = function (e) {
+document.onpointerdown = function (e) {
   mousepressed = true;
   x0 = e.pageX;
   y0 = e.pageY;
 };
 
-document.onmouseup = function () {
+document.onpointerup = function () {
   mousepressed = false;
 };
 
-document.onmousemove = function (e) {
+document.onpointermove = function (e) {
   if (!mousepressed) return;
 
   var x = e.pageX;
