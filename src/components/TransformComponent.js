@@ -107,7 +107,6 @@ p.unsetGameObject = function(){
 }
 
 p.removeParent = function(){
-    this.parent.removeEventListener(this.parent.events.update, this.onParentUpdate);
     this.parent = null;
     // this.dirtyL = true;
     // this.dirtyW = true;
