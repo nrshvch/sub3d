@@ -31,7 +31,6 @@ p.render = null;
  * @type {void}
  */
 p.run = function () {
-    this.world.start();
     this.tick();
 }
 

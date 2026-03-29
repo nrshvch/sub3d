@@ -27,14 +27,6 @@ export default function CameraComponent(transform) {
         [0, 0, 0],
         [0, 0, 0]
     ];
-
-    var cam = this;
-    this.transformUpdateEventHandler = function (transform) {
-        //update frustumbox
-        var localToWorld = transform.getLocalToWorld();
-        glMatrix.vec3.transformMat4(cam.frustumBox[0], cam.frustumSize[0], localToWorld);
-        glMatrix.vec3.transformMat4(cam.frustumBox[1], cam.frustumSize[1], localToWorld);
-    };
 }
 
 CameraComponent.prototype = Object.create(Component.prototype);
@@ -76,12 +68,10 @@ CameraComponent.prototype.setup = function (width, height) {
 CameraComponent.prototype.setGameObject = function (gameObject) {
     Component.prototype.setGameObject.call(this, gameObject);
     gameObject.camera = this;
-    gameObject.transform.addEventListener(gameObject.transform.events.update, this.transformUpdateEventHandler);
 }
 
 CameraComponent.prototype.unsetGameObject = function () {
     this.gameObject.camera = undefined;
-    this.gameObject.transform.removeEventListener(this.gameObject.transform.events.update, this.transformUpdateEventHandler);
     Component.prototype.unsetGameObject.call(this);
 }
 

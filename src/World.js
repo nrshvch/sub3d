@@ -1,13 +1,11 @@
 import Time from "./Time.js";
 import Scene from "./Scene.js";
-import config from "./config.js";
 
 /**
  * @param {Game} game
  * @constructor
  */
 export default function World(game) {
-    this.game = game;
     this.time = new Time();
     this.list = [];
     this.scene = new Scene(this);
@@ -18,7 +16,6 @@ var p = World.prototype;
 /**
  * @type {Game}
  */
-p.game = null;
 
 /**
  * The scene
@@ -30,10 +27,6 @@ p.scene = null;
  * @type {Time}
  */
 p.time = null;
-
-p.start = function () {
-    this.scene.start();
-}
 
 p.tickRegister = function(obj) {
     if (obj._tickerIndex !== undefined) return; // Already registered

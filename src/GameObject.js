@@ -9,8 +9,6 @@ export default function GameObject(name) {
     this.components = [];
     this.transform = this.addComponent(new Transform());
 
-    this.removeQueue = [];
-
     this.name = name || "gameObject";
 }
 
@@ -20,13 +18,6 @@ var p = GameObject.prototype;
  * @type {Number}
  */
 p.instanceId = 0;
-
-/**
- * If currently is started.
- * GameObject is started when game is run, or when gameObject is added in already running world.
- * @type {boolean}
- */
-p.started = false;
 
 /**
  * @type {string}
@@ -40,11 +31,13 @@ p.name = null;
 p.layer = 0;
 
 /**
- * Reference to world object
+ * Scene reference
  * @public
- * @type {World}
+ * @type {Scene}
  */
-p.world = null;
+p.scene = null;
+
+p.world  = null;
 
 /**
  * Transform component attached to this game object.
@@ -63,35 +56,7 @@ p.components = null;
 p.componentsCount = 0;
 
 /**
- * @private
- * @type {[]}
- */
-p.removeQueue = null;
-
-/**
- * @private
- * @type {boolean}
- */
-p.removeQueueWaiting = false;
-
-/**
- * Runs when game starts
- */
-p.start = function () {
-    var cmp, i;
-    for (i = 0; i < this.componentsCount; i++) {
-        cmp = this.components[i];
-
-        !cmp.awaken && cmp.awake !== null && cmp.awake();
-
-        cmp.start !== null && cmp.start();
-    }
-
-    this.started = true;
-};
-
-/**
- * @param {World} world
+ * @param {Scene} scene
  */
 p.setScene = function (scene) {
     this.scene = scene;
@@ -107,15 +72,11 @@ p.addComponent = function (component) {
 
     component.setGameObject(this);
 
-    this.started && component.start !== null && component.start();
-
     return component;
 }
 
 p.removeComponent = function (component) {
     component.unsetGameObject();
-    this.removeQueue.push(component);
-    this.removeQueueWaiting = true;
 }
 
 /**
@@ -130,9 +91,4 @@ p.getComponent = function (Type) {
             return component;
     }
     return null;
-}
-
-p.destroy = function () {
-    this.world.removeGameObject(this);
-    this.world = null;
 }
