@@ -5,7 +5,7 @@ var myGame = new scaliaEngine.Game();
 
 var box = (window.cube = new scaliaEngine.Ball());
 box.meshRenderer.layer = 1;
-myGame.world.scene.addGameObject(box);
+
 box.transform.scale(20, 20, 20);
 box.debug = true;
 
@@ -33,7 +33,6 @@ for (var i = 0; i < 500; i++) {
 
   var size = (Math.random() * 2.5) | 0;
 
-  myGame.world.scene.addGameObject(child);
   child.transform.scale(size, size, size);
   // child.debug = true;
   child.transform.rotate(
@@ -44,7 +43,7 @@ for (var i = 0; i < 500; i++) {
   myGame.world.tickRegister({
     tick: (time) => {
       if (dt !== null) {
-        child.transform.rotate(0, 0, 3);
+        //child.transform.rotate(0, 0, 3);
       }
       dt = time.now;
     },
@@ -52,6 +51,8 @@ for (var i = 0; i < 500; i++) {
 
   cube.transform.addChild(child.transform);
 }
+
+myGame.world.scene.addGameObject(box);
 
 var cameraObject = (window.camera = new scaliaEngine.Camera());
 cameraObject.camera.farClippingPane = 1000;

@@ -39,14 +39,6 @@ export default function Transform() {
         0, 0, 1, 0,
         0, 0, 0, 1
     ]);
-
-    //When parent updates, our coords changes
-    //so let's set flag to update out matrices
-    var self = this;
-    this.onParentUpdate = function(parent){
-        self.dirtyL = true;
-        self.dirtyW = true;
-    }
 }
 
 var p = Transform.prototype = Object.create(Component.prototype),
@@ -65,9 +57,9 @@ p.children = null;
 
 p.parent = null;
 
-p.dirtyW = false;
+p.dirtyW = true;
 
-p.dirtyL = false;
+p.dirtyL = true;
 
 /**
  * Event handler for parent update event
@@ -97,14 +89,12 @@ p.removeChild = function(child){
 p.setParent = function(parent){
     this.parent = parent;
 
-    parent.addEventListener(parent.events.update, this.onParentUpdate);
-
     //if parent's gameObject is already added to scene, then add ourselves too
     if(parent.gameObject.world !== null)
         parent.gameObject.world.addGameObject(this.gameObject);
 
-    this.dirtyL = true;
-    this.dirtyW = true;
+    // this.dirtyL = true;
+    // this.dirtyW = true;
 }
 
 p.setGameObject = function(gameObject){
@@ -119,8 +109,8 @@ p.unsetGameObject = function(){
 p.removeParent = function(){
     this.parent.removeEventListener(this.parent.events.update, this.onParentUpdate);
     this.parent = null;
-    this.dirtyL = true;
-    this.dirtyW = true;
+    // this.dirtyL = true;
+    // this.dirtyW = true;
 }
 
 p.translate = function (x, y, z, relativeTo) {
@@ -135,10 +125,8 @@ p.translate = function (x, y, z, relativeTo) {
     } else
         glMatrix.mat4.translate(this.local, this.local, bufferVec3);
 
-    this.dirtyL = true; //flag to update localToWorld
-    this.dirtyW = true; //flag to update worldToLocal
-
-    this.dispatchEvent(this.events.update, this);
+    // this.dirtyL = true; //flag to update localToWorld
+    // this.dirtyW = true; //flag to update worldToLocal
 }
 
 p.rotate = function (x, y, z, relativeTo) {
@@ -159,20 +147,19 @@ p.rotate = function (x, y, z, relativeTo) {
         mat4.rotateX(this.local, this.local, x * degreeToRad);
     }
 
-    this.dirtyL = true; //flag to update localToWorld
-    this.dirtyW = true; //flag to update worldToLocal
-
-    this.dispatchEvent(this.events.update, this);
+    // this.dirtyL = true; //flag to update localToWorld
+    // this.dirtyW = true; //flag to update worldToLocal
 }
 
 p.getLocalToWorld = function () {
     if (this.dirtyL === true) {
-        if (this.parent === null) {
-            this.localToWorld.set(this.local)
-        } else {
-            mat4Mul(this.localToWorld, this.parent.getLocalToWorld(), this.local)
-        }
-        this.dirtyL = false;
+      if (this.parent === null) {
+        this.localToWorld.set(this.local);
+      } else {
+        //TODO: only closest parent matrix can be used, no need to go recursively to root
+        mat4Mul(this.localToWorld, this.parent.getLocalToWorld(), this.local);
+      }
+      // this.dirtyL = false;
     }
 
     return this.localToWorld;
@@ -180,8 +167,9 @@ p.getLocalToWorld = function () {
 
 p.getWorldToLocal = function () {
     if(this.dirtyW === true){
+      //TODO: only closest parent matrix can be used, no need to go recursively to root 
         glMatrix.mat4.invert(this.worldToLocal, this.getLocalToWorld());
-        this.dirtyW = false;
+        // this.dirtyW = false;
     }
     return this.worldToLocal;
 }
@@ -235,10 +223,8 @@ p.setPosition = function (x, y, z) {
     this.local[13] = bufferVec3[1];
     this.local[14] = bufferVec3[2];
 
-    this.dirtyL = true; //flag to update localToWorld
-    this.dirtyW = true; //flag to update worldToLocal
-
-    this.dispatchEvent(this.events.update, this);
+    // this.dirtyL = true; //flag to update localToWorld
+    // this.dirtyW = true; //flag to update worldToLocal
 }
 
 p.setLocalPosition = function(x, y, z){
@@ -247,19 +233,15 @@ p.setLocalPosition = function(x, y, z){
     this.local[13] = y;
     this.local[14] = z;
 
-    this.dirtyL = true; //flag to update localToWorld
-    this.dirtyW = true; //flag to update worldToLocal
-
-    this.dispatchEvent(this.events.update, this);
+    // this.dirtyL = true; //flag to update localToWorld
+    // this.dirtyW = true; //flag to update worldToLocal
 }
 
 p.scale = function(x, y, z) {
     glMatrix.mat4.scale(this.local, this.local, [x, y, z]);
 
-    this.dirtyL = true; //flag to update localToWorld
-    this.dirtyW = true; //flag to update worldToLocal
-
-    this.dispatchEvent(this.events.update, this);
+    // this.dirtyL = true; //flag to update localToWorld
+    // this.dirtyW = true; //flag to update worldToLocal
 }
 
 p.forward = function(out){
