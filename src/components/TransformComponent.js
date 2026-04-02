@@ -26,7 +26,7 @@ export default function Transform() {
         0, 0, 0, 1
     ]);
 
-    this.localToWorld = new Float32Array([
+    this.worldMatrix = new Float32Array([
         1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
@@ -49,7 +49,7 @@ p.constructor = Transform;
 
 p.local = null;
 
-p.localToWorld = null;
+p.worldMatrix = null;
 
 p.worldToLocal = null;
 
@@ -153,15 +153,15 @@ p.rotate = function (x, y, z, relativeTo) {
 p.getLocalToWorld = function () {
     if (this.dirtyL === true) {
       if (this.parent === null) {
-        this.localToWorld.set(this.local);
+        this.worldMatrix.set(this.local);
       } else {
         //TODO: only closest parent matrix can be used, no need to go recursively to root
-        mat4Mul(this.localToWorld, this.parent.getLocalToWorld(), this.local);
+        mat4Mul(this.worldMatrix, this.parent.getLocalToWorld(), this.local);
       }
       // this.dirtyL = false;
     }
 
-    return this.localToWorld;
+    return this.worldMatrix;
 }
 
 p.getWorldToLocal = function () {
@@ -243,16 +243,14 @@ p.scale = function(x, y, z) {
     // this.dirtyW = true; //flag to update worldToLocal
 }
 
-p.forward = function(out){
-    if (out === undefined)
-        out = [];
-
-    var m = this.getLocalToWorld();
-
-    out[0] = m[8];
-    out[1] = m[9];
-    out[2] = m[10];
-
-    return out;
-}
+p.updateWorldMatrix = function (deep = false) {
+  if (this.parent === null) {
+    this.worldMatrix.set(this.local);
+  } else {
+    if (deep) {
+      this.parent.updateWorldMatrix(deep);
+    }
+    mat4Mul(this.worldMatrix, this.parent.worldMatrix, this.local);
+  }
+};
 

@@ -416,9 +416,7 @@ function roughCull(gameobjects, m, out_visibleBuffer) {
     const obj = gameobjects[i];
     if (!obj.meshRenderer || !obj.meshRenderer.enabled) continue;
 
-    const t = obj.transform.dirtyL
-      ? obj.transform.getLocalToWorld()
-      : obj.transform.localToWorld;
+    const t = obj.transform.worldMatrix;
     const b = obj.meshRenderer.bounds;
 
     // Transform Sphere Center to World
@@ -492,7 +490,7 @@ function exactCull(
     const go = gameObjects[objIdx];
 
     // Matrix access (assumes World Matrix is already updated by 1st pass or hierarchy loop)
-    const t = go.transform.localToWorld;
+    const t = go.transform.worldMatrix;
     const renderer = go.meshRenderer;
 
     if (renderer && renderer.enabled && renderer.bounds) {
@@ -634,9 +632,7 @@ function destructMesh(
     // Increment unique ID for this specific mesh
     ++callId;
 
-    const W = mesh.gameObject.transform.dirtyL
-      ? mesh.gameObject.transform.getLocalToWorld()
-      : mesh.gameObject.transform.localToWorld;
+    const W = mesh.gameObject.transform.worldMatrix;
 
     // MVP (Clip Space) and MV (Camera Space) - Calculated once per mesh
     mat4Mul(mat4Scratchpad2, clipSpaceMatrix, W);
@@ -950,12 +946,9 @@ function calcLight(
   const light = scene.light;
   if (!light) return;
 
-  // 1. Get the world forward vector of the light
-  light.transform.forward(lightDirBuffer);
-
-  const lx = -lightDirBuffer[0];
-  const ly = -lightDirBuffer[1];
-  const lz = -lightDirBuffer[2];
+  const lx = -light.transform.worldMatrix[8];
+  const ly = -light.transform.worldMatrix[9];
+  const lz = -light.transform.worldMatrix[10];
 
   for (let i = 0; i < indexLen; i++) {
     const wnx = faceNormalsBuffer[i * 3];
