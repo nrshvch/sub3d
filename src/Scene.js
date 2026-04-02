@@ -44,6 +44,8 @@ p.retrieve = function () {
   while (stackIndex > 0) {
     const gameObject = stack[--stackIndex];
 
+    gameObject.transform.updateWorldMatrix();
+
     // Add reference to our flat list
     gameObjects[listIndex++] = gameObject;
 
