@@ -23,10 +23,6 @@ export default function CameraComponent(transform) {
         [0, 0, 0],
         [0, 0, 0]
     ];
-    this.frustumBox = [
-        [0, 0, 0],
-        [0, 0, 0]
-    ];
 }
 
 CameraComponent.prototype = Object.create(Component.prototype);
@@ -34,7 +30,6 @@ CameraComponent.prototype = Object.create(Component.prototype);
 CameraComponent.prototype.constructor = CameraComponent;
 
 CameraComponent.prototype.frustumSize = null;
-CameraComponent.prototype.frustumBox = null;
 CameraComponent.prototype.projectionMatrix = null;
 CameraComponent.prototype.clipSpaceMatrix = null;
 
@@ -55,11 +50,6 @@ CameraComponent.prototype.setup = function (width, height) {
         [-width / 2, -height / 2, 0],
         [width / 2, height / 2, length]
     ];
-
-    //update frustumbox
-    var localToWorld = this.gameObject.transform.getLocalToWorld();
-    glMatrix.vec3.transformMat4(this.frustumBox[0], this.frustumSize[0], localToWorld);
-    glMatrix.vec3.transformMat4(this.frustumBox[1], this.frustumSize[1], localToWorld);
 
     //update projection matrix
     glMatrix.mat4.ortho(this.projectionMatrix, -width / 2, width / 2, -height / 2, height / 2, this.nearClippingPane, this.farClippingPane);
