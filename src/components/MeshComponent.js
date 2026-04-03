@@ -32,7 +32,8 @@ p.vertexNormals = null;
 p.bounds = null;
 
 /**
- * Generates face normals for any indexed triangle mesh.
+ * Generates both face and vertex normals.
+ * Uses area-weighting for vertex normals to provide smoother shading.
  * @param {number} winding - Set to 1 for CCW (Standard), -1 for CW.
  */
 p.updateNormals = function (winding = 1) {
@@ -40,11 +41,18 @@ p.updateNormals = function (winding = 1) {
   const verts = this.vertices;
   const count = faces.length;
 
-  // Initialize or reuse buffer
+  // Initialize or reuse buffers
   if (!this.faceNormals || this.faceNormals.length !== count) {
     this.faceNormals = new Float32Array(count);
   }
 
+  if (!this.vertexNormals || this.vertexNormals.length !== verts.length) {
+    this.vertexNormals = new Float32Array(verts.length);
+  } else {
+    this.vertexNormals.fill(0); // Reset for re-calculation
+  }
+
+  // Calculate Face Normals and Accumulate for Vertices
   for (let i = 0; i < count; i += 3) {
     const v0 = faces[i] * 3,
       v1 = faces[i + 1] * 3,
@@ -65,11 +73,43 @@ p.updateNormals = function (winding = 1) {
 
     const mag = Math.sqrt(nx * nx + ny * ny + nz * nz);
     if (mag > 1e-10) {
-      // Small epsilon check
       const invMag = 1 / mag;
+
+      // Store Normalized Face Normal
       this.faceNormals[i] = nx * invMag;
       this.faceNormals[i + 1] = ny * invMag;
       this.faceNormals[i + 2] = nz * invMag;
+
+      // Accumulate RAW Normal (Area-Weighted) into Vertices
+      this.vertexNormals[v0] += nx;
+      this.vertexNormals[v0 + 1] += ny;
+      this.vertexNormals[v0 + 2] += nz;
+
+      this.vertexNormals[v1] += nx;
+      this.vertexNormals[v1 + 1] += ny;
+      this.vertexNormals[v1 + 2] += nz;
+
+      this.vertexNormals[v2] += nx;
+      this.vertexNormals[v2 + 1] += ny;
+      this.vertexNormals[v2 + 2] += nz;
+    }
+  }
+
+  // Normalize Vertex Normals
+  for (let i = 0; i < this.vertexNormals.length; i += 3) {
+    const vnx = this.vertexNormals[i];
+    const vny = this.vertexNormals[i + 1];
+    const vnz = this.vertexNormals[i + 2];
+
+    const vmag = Math.sqrt(vnx * vnx + vny * vny + vnz * vnz);
+    if (vmag > 1e-10) {
+      const vInvMag = 1 / vmag;
+      this.vertexNormals[i] *= vInvMag;
+      this.vertexNormals[i + 1] *= vInvMag;
+      this.vertexNormals[i + 2] *= vInvMag;
+    } else {
+      // Fallback for isolated/broken vertices (Up vector)
+      this.vertexNormals[i + 1] = 1.0;
     }
   }
 };
@@ -238,4 +278,3 @@ Mesh.computeBoundingSphere = function (out, offset, vertices) {
   out[offset + 2] = cz;
   out[offset + 3] = radius;
 };
-
