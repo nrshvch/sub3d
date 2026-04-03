@@ -861,6 +861,15 @@ function destructMesh(
         vertexBuffer[v0Idx + 2] = colorIndex;
         vMapping[idx0] = v0Idx; // Store the buffer offset
         uniqueVertexCount++;
+
+        // Vertex 0 Normal
+        const vn0 = idx0 * 3;
+        vertexNormalsBuffer[v0Idx] =
+          vn[vn0] * nm0 + vn[vn0 + 1] * nm3 + vn[vn0 + 2] * nm6;
+        vertexNormalsBuffer[v0Idx + 1] =
+          vn[vn0] * nm1 + vn[vn0 + 1] * nm4 + vn[vn0 + 2] * nm7;
+        vertexNormalsBuffer[v0Idx + 2] =
+          vn[vn0] * nm2 + vn[vn0 + 1] * nm5 + vn[vn0 + 2] * nm8;
       }
 
       vertexIndexBuffer[i * 3] = vMapping[idx0];
@@ -881,6 +890,15 @@ function destructMesh(
         vertexBuffer[v1Idx + 2] = colorIndex;
         vMapping[idx1] = v1Idx;
         uniqueVertexCount++;
+
+        // Vertex 1 Normal
+        const vn1 = idx1 * 3;
+        vertexNormalsBuffer[v1Idx] =
+          vn[vn1] * nm0 + vn[vn1 + 1] * nm3 + vn[vn1 + 2] * nm6;
+        vertexNormalsBuffer[v1Idx + 1] =
+          vn[vn1] * nm1 + vn[vn1 + 1] * nm4 + vn[vn1 + 2] * nm7;
+        vertexNormalsBuffer[v1Idx + 2] =
+          vn[vn1] * nm2 + vn[vn1 + 1] * nm5 + vn[vn1 + 2] * nm8;
       }
 
       vertexIndexBuffer[i * 3 + 1] = vMapping[idx1];
@@ -901,6 +919,15 @@ function destructMesh(
         vertexBuffer[v2Idx + 2] = colorIndex;
         vMapping[idx2] = v2Idx;
         uniqueVertexCount++;
+
+        // Vertex 2 Normal
+        const vn2 = idx2 * 3;
+        vertexNormalsBuffer[v2Idx] =
+          vn[vn2] * nm0 + vn[vn2 + 1] * nm3 + vn[vn2 + 2] * nm6;
+        vertexNormalsBuffer[v2Idx + 1] =
+          vn[vn2] * nm1 + vn[vn2 + 1] * nm4 + vn[vn2 + 2] * nm7;
+        vertexNormalsBuffer[v2Idx + 2] =
+          vn[vn2] * nm2 + vn[vn2 + 1] * nm5 + vn[vn2 + 2] * nm8;
       }
 
       vertexIndexBuffer[i * 3 + 2] = vMapping[idx2];
@@ -922,18 +949,6 @@ function destructMesh(
       faceNormalsBuffer[fnIdx] = wnx * invMag;
       faceNormalsBuffer[fnIdx + 1] = wny * invMag;
       faceNormalsBuffer[fnIdx + 2] = wnz * invMag;
-
-      const vno = idx0 * 3; // Offset for Vertex 0
-
-      // Transform the Vertex Normal using the Normal Matrix (nm)
-      const wvnx = vn[vno] * nm0 + vn[vno+1] * nm3 + vn[vno+2] * nm6;
-      const wvny = vn[vno] * nm1 + vn[vno+1] * nm4 + vn[vno+2] * nm7;
-      const wvnz = vn[vno] * nm2 + vn[vno+1] * nm5 + vn[vno+2] * nm8;
-
-      // Store in a vertexNormalBuffer (similar to faceNormalsBuffer)
-      vertexNormalsBuffer[uniqueVertexCount * 3] = wvnx;
-      vertexNormalsBuffer[uniqueVertexCount * 3] = wvny;
-      vertexNormalsBuffer[uniqueVertexCount * 3] = wvnz;
 
       i++;
     }
@@ -1023,7 +1038,8 @@ function drawTriangles(
     ctx.closePath();
 
     switch (wireframe ? 3 : shaderTypeBuffer[idx]) {
-      case 0: { //FLAT (light shading + fog)
+      case 0: {
+        //FLAT (light shading + fog)
         // Calculating face lightning
         const light = scene.light;
 
@@ -1125,7 +1141,8 @@ function drawTriangles(
         ctx.fill();
         break;
       }
-      case 1: { //EMISSIVE (no light shading, just fog)
+      case 1: {
+        //EMISSIVE (no light shading, just fog)
         const color32 = colorBuffer[idx];
         let r = (color32 >>> 24) & 255;
         let g = (color32 >>> 16) & 255;
@@ -1211,7 +1228,8 @@ function drawTriangles(
         ctx.fill();
         break;
       }
-      case 2: { // UNLIT (no light shading, no fog, just mesh color)
+      case 2: {
+        // UNLIT (no light shading, no fog, just mesh color)
         const color32 = colorBuffer[idx];
         let r = (color32 >>> 24) & 255;
         let g = (color32 >>> 16) & 255;
