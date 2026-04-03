@@ -5,8 +5,8 @@ import * as math from "./math.js";
 import * as palette from "./palette.js";
 import * as debug from "./debug.js";
 
+const computeNormalMatrix = MeshComponent.computeNormalMatrix;
 const vec3TransformMat4 = math.vec3TransformMat4;
-const vec4TransformMat4 = math.vec4TransformMat4;
 const mat4Mul = math.mat4Mul;
 const renderAxis = debug.renderAxis;
 
@@ -23,9 +23,10 @@ export default function Canvas2dRenderer() {
   this.depthBuffer = new Float32Array(0);
   this.indexBuffer = new Uint32Array(0);
   this.clipGeometryBuffer = new Float32Array(0);
-  this.color16Buffer = new Uint16Array(0);
   this.colorBuffer = new Uint32Array(0);
+  this.shaderTypeBuffer = new Uint32Array(0);
   this.faceNormalsBuffer = new Float32Array(0);
+  this.vertexNormalsBuffer = new Float32Array(0);
   this.typeBuffer = new Uint8Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
   this.layerBuffers = [];
@@ -74,9 +75,10 @@ p.render = function (camera, viewport, stats) {
     vertexIndexBuffer = this.vertexIndexBuffer,
     vertexBuffer = this.vertexBuffer,
     clipGeometryBuffer = this.clipGeometryBuffer,
-    color16Buffer = this.color16Buffer,
     colorBuffer = this.colorBuffer,
+    shaderTypeBuffer = this.shaderTypeBuffer,
     faceNormalsBuffer = this.faceNormalsBuffer,
+    vertexNormalsBuffer = this.vertexNormalsBuffer,
     typeBuffer = this.typeBuffer,
     visibleObjectsBuffer = this.visibleObjectsBuffer,
     layerBuffers = this.layerBuffers,
@@ -189,9 +191,9 @@ p.render = function (camera, viewport, stats) {
       newArr.set(colorBuffer);
       this.colorBuffer = colorBuffer = newArr;
 
-      newArr = new Uint16Array(maxFacesCount);
-      newArr.set(color16Buffer);
-      this.color16Buffer = color16Buffer = newArr;
+      newArr = new Uint32Array(maxFacesCount);
+      newArr.set(shaderTypeBuffer);
+      this.shaderTypeBuffer = shaderTypeBuffer = newArr;
 
       newArr = new Float32Array(maxFacesCount * 9);
       newArr.set(clipGeometryBuffer);
@@ -200,6 +202,11 @@ p.render = function (camera, viewport, stats) {
       newArr = new Float32Array(maxFacesCount * 3);
       newArr.set(faceNormalsBuffer);
       this.faceNormalsBuffer = faceNormalsBuffer = newArr;
+
+      //TODO: this should use max verts count, not max faces count.
+      newArr = new Float32Array(maxFacesCount * 3);
+      newArr.set(vertexNormalsBuffer);
+      this.vertexNormalsBuffer = vertexNormalsBuffer = newArr;
 
       let _vertexBuffer = new Float32Array(maxFacesCount * 9);
       _vertexBuffer.set(vertexBuffer);
@@ -218,6 +225,7 @@ p.render = function (camera, viewport, stats) {
       indexBuffer,
       depthBuffer,
       colorBuffer,
+      shaderTypeBuffer,
       clipGeometryBuffer,
       cameraLocalMatrix,
       clipSpaceMatrix,
@@ -225,33 +233,12 @@ p.render = function (camera, viewport, stats) {
       mat4Scratchpad1,
       this.mat3Scratchpad1,
       faceNormalsBuffer,
+      vertexNormalsBuffer,
       vertexBuffer,
       vertexIndexBuffer,
       this.vMapping,
       this.vTags,
     );
-
-    calcLight(
-      l,
-      colorBuffer,
-      camera.scene,
-      this.lightDirection,
-      camera.camera.ambientLight,
-      faceNormalsBuffer,
-    );
-
-    calcFog(
-      l,
-      clipGeometryBuffer,
-      colorBuffer,
-      depthBuffer,
-      camera.camera.fogType,
-      camera.camera.fogColor,
-      camera.camera.fogNearPane,
-      camera.camera.fogFarPane,
-    );
-
-    quantizeFaceColors(indexBuffer, l, colorBuffer, color16Buffer);
 
     if ((config.depthSortingMask & (i + 1)) === i + 1) {
       indexBuffer.subarray(0, l).sort(function (a, b) {
@@ -259,35 +246,35 @@ p.render = function (camera, viewport, stats) {
       });
     }
 
-    if (this.wireframe) {
-      drawWireframe(
-        ctx,
-        vertexBuffer,
-        vertexIndexBuffer,
-        indexBuffer,
-        l,
-        0,
-        vw,
-        vh,
-      );
-    } else {
-      const toStroke = (config.layerStrokeMask & (i + 1)) === i + 1;
-      const toClear = (config.layerClearMask & (i + 1)) === i + 1;
+    const toStroke = (config.layerStrokeMask & (i + 1)) === i + 1;
+    const toClear = (config.layerClearMask & (i + 1)) === i + 1;
 
-      drawTriangles(
-        ctx,
-        vertexBuffer,
-        vertexIndexBuffer,
-        indexBuffer,
-        color16Buffer,
-        l,
-        0,
-        toStroke,
-        toClear,
-        vw,
-        vh,
-      );
-    }
+    drawTriangles(
+      ctx,
+      vertexBuffer,
+      vertexIndexBuffer,
+      indexBuffer,
+      colorBuffer,
+      shaderTypeBuffer,
+      l,
+      0,
+      toStroke,
+      toClear,
+      vw,
+      vh,
+      clipGeometryBuffer,
+      depthBuffer,
+      camera.camera.fogType,
+      camera.camera.fogColor,
+      camera.camera.fogNearPane,
+      camera.camera.fogFarPane,
+      camera.scene,
+      this.lightDirection,
+      camera.camera.ambientLight,
+      faceNormalsBuffer,
+      vertexNormalsBuffer,
+      this.wireframe,
+    );
 
     for (j = 0; j < renderersCount; j++) {
       renderer = renderers[j];
@@ -589,6 +576,7 @@ let callId = 0;
  * @param {Uint32Array} indexBuffer - Array to store sequential face indices for sorting.
  * @param {Float32Array} depthBuffer - Stores the average camera-space Z-depth per face.
  * @param {Uint32Array} colorBuffer - Stores the packed RGBA face colors.
+ * @param {Uint32Array} shaderTypeBuffer
  * @param {Float32Array} clipGeometryBuffer - Stores Camera-Space positions for lighting/fog.
  * @param {Float32Array} cameraLocalMatrix - The 4x4 World-to-Local (View) matrix.
  * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
@@ -596,6 +584,7 @@ let callId = 0;
  * @param {Float32Array} mat4Scratchpad2 - Reusable matrix for Model-View-Projection (MVP).
  * @param {Float32Array} mat3Scratchpad1 - Reusable matrix 9-element (3x3)
  * @param {Float32Array} faceNormalsBuffer
+ * @param {Float32Array} vertexNormalsBuffer
  * @param {Float32Array} vertexBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
  * @param {Uint32Array} vertexIndexBuffer - Indexes of vertices in the vertexBuffer.
  * @param {Int32Array} vMapping - Persistent buffer storing the vertexBuffer offset for the current mesh.
@@ -610,6 +599,7 @@ function destructMesh(
   indexBuffer,
   depthBuffer,
   colorBuffer,
+  shaderTypeBuffer,
   clipGeometryBuffer,
   cameraLocalMatrix,
   clipSpaceMatrix,
@@ -617,6 +607,7 @@ function destructMesh(
   mat4Scratchpad2,
   mat3Scratchpad1,
   faceNormalsBuffer,
+  vertexNormalsBuffer,
   vertexBuffer,
   vertexIndexBuffer,
   vMapping, // New: Persistent Int32Array(max_verts)
@@ -659,10 +650,11 @@ function destructMesh(
 
     const faces = mesh.faces,
       verts = mesh.vertices,
-      faceNormals = mesh.faceNormals;
+      faceNormals = mesh.faceNormals,
+      vn = mesh.vertexNormals;
 
     // NM Normal Matrix calculation per mesh
-    MeshComponent.computeNormalMatrix(mat3Scratchpad1, W);
+    computeNormalMatrix(mat3Scratchpad1, W);
 
     const nm = mat3Scratchpad1;
     // Unpack Normal Matrix for speed
@@ -846,6 +838,7 @@ function destructMesh(
         255;
 
       colorBuffer[i] = colorIndex;
+      shaderTypeBuffer[i] = mesh.shaderType;
 
       // --- MAPPING & VERTEX SUBMISSION ---
       // Only unique vertices should be stored.
@@ -929,142 +922,23 @@ function destructMesh(
       faceNormalsBuffer[fnIdx] = wnx * invMag;
       faceNormalsBuffer[fnIdx + 1] = wny * invMag;
       faceNormalsBuffer[fnIdx + 2] = wnz * invMag;
+
+      const vno = idx0 * 3; // Offset for Vertex 0
+
+      // Transform the Vertex Normal using the Normal Matrix (nm)
+      const wvnx = vn[vno] * nm0 + vn[vno+1] * nm3 + vn[vno+2] * nm6;
+      const wvny = vn[vno] * nm1 + vn[vno+1] * nm4 + vn[vno+2] * nm7;
+      const wvnz = vn[vno] * nm2 + vn[vno+1] * nm5 + vn[vno+2] * nm8;
+
+      // Store in a vertexNormalBuffer (similar to faceNormalsBuffer)
+      vertexNormalsBuffer[uniqueVertexCount * 3] = wvnx;
+      vertexNormalsBuffer[uniqueVertexCount * 3] = wvny;
+      vertexNormalsBuffer[uniqueVertexCount * 3] = wvnz;
+
       i++;
     }
   }
   return i;
-}
-
-function calcLight(
-  indexLen,
-  colorBuffer,
-  scene,
-  lightDirBuffer,
-  ambientLightIntensity,
-  faceNormalsBuffer,
-) {
-  const light = scene.light;
-  if (!light) return;
-
-  const lx = -light.transform.worldMatrix[8];
-  const ly = -light.transform.worldMatrix[9];
-  const lz = -light.transform.worldMatrix[10];
-
-  for (let i = 0; i < indexLen; i++) {
-    const wnx = faceNormalsBuffer[i * 3];
-    const wny = faceNormalsBuffer[i * 3 + 1];
-    const wnz = faceNormalsBuffer[i * 3 + 2];
-
-    const dot = wnx * lx + wny * ly + wnz * lz;
-    const intensity = Math.max(ambientLightIntensity, dot);
-
-    const color = colorBuffer[i];
-    const r = ((color >>> 24) & 255) * intensity;
-    const g = ((color >>> 16) & 255) * intensity;
-    const b = ((color >>> 8) & 255) * intensity;
-
-    colorBuffer[i] = (r << 24) | (g << 16) | (b << 8) | 255;
-  }
-}
-
-function calcFog(
-  indexLen,
-  clipGeometryBuffer,
-  colorBuffer,
-  depthBuffer,
-  fogType,
-  fogColor,
-  fogNearPane,
-  fogFarPane,
-) {
-  if (fogType === CameraComponent.FogType.NONE) return;
-
-  for (let i = 0; i < indexLen; i++) {
-    const color = colorBuffer[i];
-    const depth = depthBuffer[i];
-    let fogAmount = 0;
-
-    let r = (color >>> 24) & 255;
-    let g = (color >>> 16) & 255;
-    let b = (color >>> 8) & 255;
-
-    if (
-      fogType === CameraComponent.FogType.RADIAL_FAST ||
-      fogType === CameraComponent.FogType.RADIAL
-    ) {
-      const w0x = clipGeometryBuffer[i * 9];
-      const w0y = clipGeometryBuffer[i * 9 + 1];
-      const w0z = clipGeometryBuffer[i * 9 + 2];
-      const w1x = clipGeometryBuffer[i * 9 + 3];
-      const w1y = clipGeometryBuffer[i * 9 + 4];
-      const w1z = clipGeometryBuffer[i * 9 + 5];
-      const w2x = clipGeometryBuffer[i * 9 + 6];
-      const w2y = clipGeometryBuffer[i * 9 + 7];
-      const w2z = clipGeometryBuffer[i * 9 + 8];
-
-      // 1. Get the local camera-space coordinates from your cache
-      // We use the average of the 3 vertices for the face
-      const lx = (w0x + w1x + w2x) * 0.33333;
-      const ly = (w0y + w1y + w2y) * 0.33333;
-      const lz = (w0z + w1z + w2z) * 0.33333;
-
-      if (fogType === CameraComponent.FogType.RADIAL_FAST) {
-        // We need the squares of your panes for the comparison
-        const nearSq = fogNearPane * fogNearPane;
-        const farSq = fogFarPane * fogFarPane;
-        const invFogRangeSq = 1.0 / (farSq - nearSq);
-
-        // Calculate Squared Distance (No Math.sqrt!)
-        const distSq = lx * lx + ly * ly + lz * lz;
-
-        // Calculate fogAmount based on the squared distribution
-        fogAmount = (distSq - nearSq) * invFogRangeSq;
-      } else {
-        // 2. Calculate Radial Distance
-        // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
-        const distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
-
-        // 3. Calculate fogAmount using distance instead of depth
-        fogAmount = (distance - fogNearPane) / (fogFarPane - fogNearPane);
-      }
-    } else if (fogType === CameraComponent.FogType.LINEAR) {
-      fogAmount = (depth - fogNearPane) / (fogFarPane - fogNearPane);
-    }
-
-    if (fogAmount > 1) fogAmount = 1;
-
-    // Blend the mesh color with the fog color
-    if (fogAmount > 0) {
-      r = (r * (1 - fogAmount) + fogColor[0] * fogAmount) | 0;
-      g = (g * (1 - fogAmount) + fogColor[1] * fogAmount) | 0;
-      b = (b * (1 - fogAmount) + fogColor[2] * fogAmount) | 0;
-
-      colorBuffer[i] = (r << 24) | (g << 16) | (b << 8) | 255;
-    }
-  }
-}
-
-function quantizeFaceColors(
-  indexBuffer,
-  indexLen,
-  colorBuffer,
-  color16KeyBuffer,
-) {
-  for (let i = 0; i < indexLen; i++) {
-    const color = colorBuffer[i];
-
-    let r = (color >>> 24) & 255;
-    let g = (color >>> 16) & 255;
-    let b = (color >>> 8) & 255;
-
-    // 1. Quantize 8-bit color channels to 5-6-5 bits
-    const qr = r & 0xf8; // Keep 5 bits
-    const qg = g & 0xfc; // Keep 6 bits
-    const qb = b & 0xf8; // Keep 5 bits
-
-    // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-    color16KeyBuffer[i] = (qr << 8) | (qg << 3) | (qb >> 3);
-  }
 }
 
 /**
@@ -1073,34 +947,57 @@ function quantizeFaceColors(
  * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
  * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
  * @param {Uint32Array} indexBuffer - Depth-sorted array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
- * @param {Uint16Array} color16Buffer - Array of face 16-bit color index
+ * @param {Uint32Array} colorBuffer - Array of face 32-bit color index
+ * @param {Uint32Array} shaderTypeBuffer
  * @param {number} count - Number of elements in indexBuffer
  * @param {number} offset - Starting index of the triangles to draw
  * @param {boolean} toStroke - Should faces be stroked, to fix gaps?
  * @param {boolean} toClear - Should ctx be cleared before drawing?
  * @param {number} w - Canvas width
  * @param {number} h - Canvas height
+ * @param {Float32Array} clipGeometryBuffer - Array of clip geometry vertices in the format [x0, y0, z0, x1, y1, z1, ...]
+ * @param {Float32Array} depthBuffer - Array of depth values for each face
+ * @param {number} fogType - Fog type
+ * @param {number[]} fogColor - Fog color
+ * @param {number} fogNearPane - Near plane distance
+ * @param {number} fogFarPane - Far plane distance
+ * @param scene
+ * @param {number} lightDirBuffer - Array of a light direction in the format [x, y, z]
+ * @param {number} ambientLightIntensity - Ambient light intensity
+ * @param {Float32Array} faceNormalsBuffer - Array of face normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
+ * @param {Float32Array} vertexNormalsBuffer
+ * @param {boolean} wireframe - Should faces be drawn as wireframes?
  */
 function drawTriangles(
   ctx,
   vertexBuffer,
   vertexIndexBuffer,
   indexBuffer,
-  color16Buffer,
+  colorBuffer,
+  shaderTypeBuffer,
   count,
   offset,
   toStroke,
   toClear,
   w,
   h,
+  clipGeometryBuffer,
+  depthBuffer,
+  fogType,
+  fogColor,
+  fogNearPane,
+  fogFarPane,
+  scene,
+  lightDirBuffer,
+  ambientLightIntensity,
+  faceNormalsBuffer,
+  vertexNormalsBuffer,
+  wireframe,
 ) {
   const halfW = w * 0.5,
     halfH = h * 0.5;
 
   const len = offset + count;
-
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 1;
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
@@ -1109,7 +1006,6 @@ function drawTriangles(
     const v0Idx = vertexIndexBuffer[idx * 3];
     const v1Idx = vertexIndexBuffer[idx * 3 + 1];
     const v2Idx = vertexIndexBuffer[idx * 3 + 2];
-    const colorIndex = color16Buffer[idx];
 
     ctx.beginPath();
     ctx.moveTo(
@@ -1126,58 +1022,228 @@ function drawTriangles(
     );
     ctx.closePath();
 
-    ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[colorIndex];
+    switch (wireframe ? 3 : shaderTypeBuffer[idx]) {
+      case 0: { //FLAT (light shading + fog)
+        // Calculating face lightning
+        const light = scene.light;
 
-    if (toStroke) {
-      ctx.stroke();
+        const color32 = colorBuffer[idx];
+        let r = (color32 >>> 24) & 255;
+        let g = (color32 >>> 16) & 255;
+        let b = (color32 >>> 8) & 255;
+
+        if (light) {
+          const lx = -light.transform.worldMatrix[8];
+          const ly = -light.transform.worldMatrix[9];
+          const lz = -light.transform.worldMatrix[10];
+
+          const wnx = faceNormalsBuffer[idx * 3];
+          const wny = faceNormalsBuffer[idx * 3 + 1];
+          const wnz = faceNormalsBuffer[idx * 3 + 2];
+
+          const dot = wnx * lx + wny * ly + wnz * lz;
+          const intensity = Math.max(ambientLightIntensity, dot);
+
+          r *= intensity;
+          g *= intensity;
+          b *= intensity;
+        }
+
+        // Calculating fog
+        const depth = depthBuffer[idx];
+        let fogAmount = 0;
+
+        if (
+          fogType === CameraComponent.FogType.RADIAL_FAST ||
+          fogType === CameraComponent.FogType.RADIAL
+        ) {
+          const w0x = clipGeometryBuffer[idx * 9];
+          const w0y = clipGeometryBuffer[idx * 9 + 1];
+          const w0z = clipGeometryBuffer[idx * 9 + 2];
+          const w1x = clipGeometryBuffer[idx * 9 + 3];
+          const w1y = clipGeometryBuffer[idx * 9 + 4];
+          const w1z = clipGeometryBuffer[idx * 9 + 5];
+          const w2x = clipGeometryBuffer[idx * 9 + 6];
+          const w2y = clipGeometryBuffer[idx * 9 + 7];
+          const w2z = clipGeometryBuffer[idx * 9 + 8];
+
+          // 1. Get the local camera-space coordinates from your cache
+          // We use the average of the 3 vertices for the face
+          const lx = (w0x + w1x + w2x) * 0.33333;
+          const ly = (w0y + w1y + w2y) * 0.33333;
+          const lz = (w0z + w1z + w2z) * 0.33333;
+
+          if (fogType === CameraComponent.FogType.RADIAL_FAST) {
+            // We need the squares of your panes for the comparison
+            const nearSq = fogNearPane * fogNearPane;
+            const farSq = fogFarPane * fogFarPane;
+            const invFogRangeSq = 1.0 / (farSq - nearSq);
+
+            // Calculate Squared Distance (No Math.sqrt!)
+            const distSq = lx * lx + ly * ly + lz * lz;
+
+            // Calculate fogAmount based on the squared distribution
+            fogAmount = (distSq - nearSq) * invFogRangeSq;
+          } else {
+            // 2. Calculate Radial Distance
+            // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
+            const distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
+
+            // 3. Calculate fogAmount using distance instead of depth
+            fogAmount = (distance - fogNearPane) / (fogFarPane - fogNearPane);
+          }
+        } else if (fogType === CameraComponent.FogType.LINEAR) {
+          fogAmount = (depth - fogNearPane) / (fogFarPane - fogNearPane);
+        }
+
+        if (fogAmount > 1) fogAmount = 1;
+
+        // Blend the mesh color with the fog color
+        if (fogAmount > 0) {
+          r = (r * (1 - fogAmount) + fogColor[0] * fogAmount) | 0;
+          g = (g * (1 - fogAmount) + fogColor[1] * fogAmount) | 0;
+          b = (b * (1 - fogAmount) + fogColor[2] * fogAmount) | 0;
+        }
+
+        // Quantize 8-bit color channels to 5-6-5 bits
+        const qr = r & 0xf8; // Keep 5 bits
+        const qg = g & 0xfc; // Keep 6 bits
+        const qb = b & 0xf8; // Keep 5 bits
+
+        // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+        const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
+
+        ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
+
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 1;
+
+        if (toStroke) {
+          ctx.stroke();
+        }
+
+        ctx.fill();
+        break;
+      }
+      case 1: { //EMISSIVE (no light shading, just fog)
+        const color32 = colorBuffer[idx];
+        let r = (color32 >>> 24) & 255;
+        let g = (color32 >>> 16) & 255;
+        let b = (color32 >>> 8) & 255;
+
+        // Calculating fog
+        const depth = depthBuffer[idx];
+        let fogAmount = 0;
+
+        if (
+          fogType === CameraComponent.FogType.RADIAL_FAST ||
+          fogType === CameraComponent.FogType.RADIAL
+        ) {
+          const w0x = clipGeometryBuffer[idx * 9];
+          const w0y = clipGeometryBuffer[idx * 9 + 1];
+          const w0z = clipGeometryBuffer[idx * 9 + 2];
+          const w1x = clipGeometryBuffer[idx * 9 + 3];
+          const w1y = clipGeometryBuffer[idx * 9 + 4];
+          const w1z = clipGeometryBuffer[idx * 9 + 5];
+          const w2x = clipGeometryBuffer[idx * 9 + 6];
+          const w2y = clipGeometryBuffer[idx * 9 + 7];
+          const w2z = clipGeometryBuffer[idx * 9 + 8];
+
+          // 1. Get the local camera-space coordinates from your cache
+          // We use the average of the 3 vertices for the face
+          const lx = (w0x + w1x + w2x) * 0.33333;
+          const ly = (w0y + w1y + w2y) * 0.33333;
+          const lz = (w0z + w1z + w2z) * 0.33333;
+
+          if (fogType === CameraComponent.FogType.RADIAL_FAST) {
+            // We need the squares of your panes for the comparison
+            const nearSq = fogNearPane * fogNearPane;
+            const farSq = fogFarPane * fogFarPane;
+            const invFogRangeSq = 1.0 / (farSq - nearSq);
+
+            // Calculate Squared Distance (No Math.sqrt!)
+            const distSq = lx * lx + ly * ly + lz * lz;
+
+            // Calculate fogAmount based on the squared distribution
+            fogAmount = (distSq - nearSq) * invFogRangeSq;
+          } else {
+            // 2. Calculate Radial Distance
+            // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
+            const distance = Math.sqrt(lx * lx + ly * ly + lz * lz);
+
+            // 3. Calculate fogAmount using distance instead of depth
+            fogAmount = (distance - fogNearPane) / (fogFarPane - fogNearPane);
+          }
+        } else if (fogType === CameraComponent.FogType.LINEAR) {
+          fogAmount = (depth - fogNearPane) / (fogFarPane - fogNearPane);
+        }
+
+        //TODO: pass this via mesh renderer
+        const glowPower = 0; // 0 = no glow, 1 = full glow
+        let effectiveFog = Math.max(0, fogAmount - glowPower);
+
+        if (effectiveFog > 1) effectiveFog = 1;
+
+        // Blend the mesh color with the fog color
+        if (effectiveFog > 0) {
+          r = (r * (1 - effectiveFog) + fogColor[0] * effectiveFog) | 0;
+          g = (g * (1 - effectiveFog) + fogColor[1] * effectiveFog) | 0;
+          b = (b * (1 - effectiveFog) + fogColor[2] * effectiveFog) | 0;
+        }
+
+        // Quantize 8-bit color channels to 5-6-5 bits
+        const qr = r & 0xf8; // Keep 5 bits
+        const qg = g & 0xfc; // Keep 6 bits
+        const qb = b & 0xf8; // Keep 5 bits
+
+        // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+        const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
+
+        ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
+
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 1;
+
+        if (toStroke) {
+          ctx.stroke();
+        }
+
+        ctx.fill();
+        break;
+      }
+      case 2: { // UNLIT (no light shading, no fog, just mesh color)
+        const color32 = colorBuffer[idx];
+        let r = (color32 >>> 24) & 255;
+        let g = (color32 >>> 16) & 255;
+        let b = (color32 >>> 8) & 255;
+
+        // Quantize 8-bit color channels to 5-6-5 bits
+        const qr = r & 0xf8; // Keep 5 bits
+        const qg = g & 0xfc; // Keep 6 bits
+        const qb = b & 0xf8; // Keep 5 bits
+
+        // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+        const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
+
+        ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
+
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 1;
+
+        if (toStroke) {
+          ctx.stroke();
+        }
+
+        ctx.fill();
+        break;
+      }
+      case 3: {
+        ctx.lineJoin = "miter";
+        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = "rgb(0,0,255)";
+        ctx.stroke();
+        break;
+      }
     }
-
-    ctx.fill();
-  }
-}
-
-function drawWireframe(
-  ctx,
-  vertexBuffer,
-  vertexIndexBuffer,
-  indexBuffer,
-  count,
-  offset,
-  w,
-  h,
-) {
-  const halfW = w * 0.5,
-    halfH = h * 0.5;
-
-  const len = offset + count;
-
-  ctx.lineJoin = "miter";
-  ctx.lineWidth = 0.5;
-  ctx.strokeStyle = "rgb(0,0,255)";
-
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-  for (let i = offset; i < len; i++) {
-    const idx = indexBuffer[i];
-    const v0Idx = vertexIndexBuffer[idx * 3];
-    const v1Idx = vertexIndexBuffer[idx * 3 + 1];
-    const v2Idx = vertexIndexBuffer[idx * 3 + 2];
-
-    ctx.beginPath();
-    ctx.moveTo(
-      vertexBuffer[v0Idx] * halfW + halfW,
-      vertexBuffer[v0Idx + 1] * halfH + halfH,
-    );
-    ctx.lineTo(
-      vertexBuffer[v1Idx] * halfW + halfW,
-      vertexBuffer[v1Idx + 1] * halfH + halfH,
-    );
-    ctx.lineTo(
-      vertexBuffer[v2Idx] * halfW + halfW,
-      vertexBuffer[v2Idx + 1] * halfH + halfH,
-    );
-    ctx.closePath();
-
-    ctx.stroke();
   }
 }
