@@ -1022,6 +1022,9 @@ function drawTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+  let currentLineJoin = "";
+  let currentLineWidth = -1;
+
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i];
     const v0Idx = vertexIndexBuffer[idx * 3];
@@ -1137,8 +1140,9 @@ function drawTriangles(
 
         ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
 
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 1;
+        if (currentLineJoin !== "round")
+          ctx.lineJoin = currentLineJoin = "round";
+        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
 
         if (toStroke) {
           ctx.stroke();
@@ -1224,8 +1228,9 @@ function drawTriangles(
 
         ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
 
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 1;
+        if (currentLineJoin !== "round")
+          ctx.lineJoin = currentLineJoin = "round";
+        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
 
         if (toStroke) {
           ctx.stroke();
@@ -1251,8 +1256,9 @@ function drawTriangles(
 
         ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
 
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 1;
+        if (currentLineJoin !== "round")
+          ctx.lineJoin = currentLineJoin = "round";
+        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
 
         if (toStroke) {
           ctx.stroke();
@@ -1262,8 +1268,9 @@ function drawTriangles(
         break;
       }
       case 3: {
-        ctx.lineJoin = "miter";
-        ctx.lineWidth = 0.5;
+        if (currentLineJoin !== "miter")
+          ctx.lineJoin = currentLineJoin = "miter";
+        if (currentLineWidth !== 0.5) ctx.lineWidth = currentLineWidth = 0.5;
         ctx.strokeStyle = "rgb(0,0,255)";
         ctx.stroke();
         break;
@@ -1389,8 +1396,9 @@ function drawTriangles(
         let pc1 = PALETTE_16BIT[c16_1];
         let pc2 = PALETTE_16BIT[c16_2];
 
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 1;
+        if (currentLineJoin !== "round")
+          ctx.lineJoin = currentLineJoin = "round";
+        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
 
         // EARLY OUT: If all quantized colors are identical, fallback to cheapest flat fill
         if (pc0 === pc1 && pc1 === pc2) {
@@ -1458,9 +1466,6 @@ function drawTriangles(
           pc0 = pc1;
           pc1 = t;
         }
-
-        ctx.lineJoin = "round";
-        ctx.lineWidth = 1;
 
         // If intensity difference is minimal, use flat shading
         if (pi2 - pi0 < 0.001) {
