@@ -864,12 +864,14 @@ function destructMesh(
 
         // Vertex 0 Normal
         const vn0 = idx0 * 3;
-        vertexNormalsBuffer[v0Idx] =
-          vn[vn0] * nm0 + vn[vn0 + 1] * nm3 + vn[vn0 + 2] * nm6;
-        vertexNormalsBuffer[v0Idx + 1] =
-          vn[vn0] * nm1 + vn[vn0 + 1] * nm4 + vn[vn0 + 2] * nm7;
-        vertexNormalsBuffer[v0Idx + 2] =
-          vn[vn0] * nm2 + vn[vn0 + 1] * nm5 + vn[vn0 + 2] * nm8;
+        const nx0 = vn[vn0] * nm0 + vn[vn0 + 1] * nm3 + vn[vn0 + 2] * nm6;
+        const ny0 = vn[vn0] * nm1 + vn[vn0 + 1] * nm4 + vn[vn0 + 2] * nm7;
+        const nz0 = vn[vn0] * nm2 + vn[vn0 + 1] * nm5 + vn[vn0 + 2] * nm8;
+        const mag0 = Math.sqrt(nx0 * nx0 + ny0 * ny0 + nz0 * nz0);
+        const invMag0 = mag0 > 0 ? 1 / mag0 : 0;
+        vertexNormalsBuffer[v0Idx] = nx0 * invMag0;
+        vertexNormalsBuffer[v0Idx + 1] = ny0 * invMag0;
+        vertexNormalsBuffer[v0Idx + 2] = nz0 * invMag0;
       }
 
       vertexIndexBuffer[i * 3] = vMapping[idx0];
@@ -893,12 +895,14 @@ function destructMesh(
 
         // Vertex 1 Normal
         const vn1 = idx1 * 3;
-        vertexNormalsBuffer[v1Idx] =
-          vn[vn1] * nm0 + vn[vn1 + 1] * nm3 + vn[vn1 + 2] * nm6;
-        vertexNormalsBuffer[v1Idx + 1] =
-          vn[vn1] * nm1 + vn[vn1 + 1] * nm4 + vn[vn1 + 2] * nm7;
-        vertexNormalsBuffer[v1Idx + 2] =
-          vn[vn1] * nm2 + vn[vn1 + 1] * nm5 + vn[vn1 + 2] * nm8;
+        const nx1 = vn[vn1] * nm0 + vn[vn1 + 1] * nm3 + vn[vn1 + 2] * nm6;
+        const ny1 = vn[vn1] * nm1 + vn[vn1 + 1] * nm4 + vn[vn1 + 2] * nm7;
+        const nz1 = vn[vn1] * nm2 + vn[vn1 + 1] * nm5 + vn[vn1 + 2] * nm8;
+        const mag1 = Math.sqrt(nx1 * nx1 + ny1 * ny1 + nz1 * nz1);
+        const invMag1 = mag1 > 0 ? 1 / mag1 : 0;
+        vertexNormalsBuffer[v1Idx] = nx1 * invMag1;
+        vertexNormalsBuffer[v1Idx + 1] = ny1 * invMag1;
+        vertexNormalsBuffer[v1Idx + 2] = nz1 * invMag1;
       }
 
       vertexIndexBuffer[i * 3 + 1] = vMapping[idx1];
@@ -922,12 +926,14 @@ function destructMesh(
 
         // Vertex 2 Normal
         const vn2 = idx2 * 3;
-        vertexNormalsBuffer[v2Idx] =
-          vn[vn2] * nm0 + vn[vn2 + 1] * nm3 + vn[vn2 + 2] * nm6;
-        vertexNormalsBuffer[v2Idx + 1] =
-          vn[vn2] * nm1 + vn[vn2 + 1] * nm4 + vn[vn2 + 2] * nm7;
-        vertexNormalsBuffer[v2Idx + 2] =
-          vn[vn2] * nm2 + vn[vn2 + 1] * nm5 + vn[vn2 + 2] * nm8;
+        const nx2 = vn[vn2] * nm0 + vn[vn2 + 1] * nm3 + vn[vn2 + 2] * nm6;
+        const ny2 = vn[vn2] * nm1 + vn[vn2 + 1] * nm4 + vn[vn2 + 2] * nm7;
+        const nz2 = vn[vn2] * nm2 + vn[vn2 + 1] * nm5 + vn[vn2 + 2] * nm8;
+        const mag2 = Math.sqrt(nx2 * nx2 + ny2 * ny2 + nz2 * nz2);
+        const invMag2 = mag2 > 0 ? 1 / mag2 : 0;
+        vertexNormalsBuffer[v2Idx] = nx2 * invMag2;
+        vertexNormalsBuffer[v2Idx + 1] = ny2 * invMag2;
+        vertexNormalsBuffer[v2Idx + 2] = nz2 * invMag2;
       }
 
       vertexIndexBuffer[i * 3 + 2] = vMapping[idx2];
@@ -1260,6 +1266,251 @@ function drawTriangles(
         ctx.lineWidth = 0.5;
         ctx.strokeStyle = "rgb(0,0,255)";
         ctx.stroke();
+        break;
+      }
+      case 4: {
+        // SMOOTH (Gouraud Shading)
+        const light = scene.light;
+
+        const color32 = colorBuffer[idx];
+        const r = (color32 >>> 24) & 255;
+        const g = (color32 >>> 16) & 255;
+        const b = (color32 >>> 8) & 255;
+
+        // Calculate illumination at each vertex
+        let i0 = 1,
+          i1 = 1,
+          i2 = 1;
+
+        if (light) {
+          const lx = -light.transform.worldMatrix[8];
+          const ly = -light.transform.worldMatrix[9];
+          const lz = -light.transform.worldMatrix[10];
+
+          let nx0 = vertexNormalsBuffer[v0Idx];
+          let ny0 = vertexNormalsBuffer[v0Idx + 1];
+          let nz0 = vertexNormalsBuffer[v0Idx + 2];
+          i0 = Math.max(ambientLightIntensity, nx0 * lx + ny0 * ly + nz0 * lz);
+
+          let nx1 = vertexNormalsBuffer[v1Idx];
+          let ny1 = vertexNormalsBuffer[v1Idx + 1];
+          let nz1 = vertexNormalsBuffer[v1Idx + 2];
+          i1 = Math.max(ambientLightIntensity, nx1 * lx + ny1 * ly + nz1 * lz);
+
+          let nx2 = vertexNormalsBuffer[v2Idx];
+          let ny2 = vertexNormalsBuffer[v2Idx + 1];
+          let nz2 = vertexNormalsBuffer[v2Idx + 2];
+          i2 = Math.max(ambientLightIntensity, nx2 * lx + ny2 * ly + nz2 * lz);
+        }
+
+        // Calculating fog based on face centroid
+        let fogAmount = 0;
+        const depth = depthBuffer[idx];
+
+        if (
+          fogType === CameraComponent.FogType.RADIAL_FAST ||
+          fogType === CameraComponent.FogType.RADIAL
+        ) {
+          const w0x = clipGeometryBuffer[idx * 9];
+          const w0y = clipGeometryBuffer[idx * 9 + 1];
+          const w0z = clipGeometryBuffer[idx * 9 + 2];
+          const w1x = clipGeometryBuffer[idx * 9 + 3];
+          const w1y = clipGeometryBuffer[idx * 9 + 4];
+          const w1z = clipGeometryBuffer[idx * 9 + 5];
+          const w2x = clipGeometryBuffer[idx * 9 + 6];
+          const w2y = clipGeometryBuffer[idx * 9 + 7];
+          const w2z = clipGeometryBuffer[idx * 9 + 8];
+
+          const cx = (w0x + w1x + w2x) * 0.33333;
+          const cy = (w0y + w1y + w2y) * 0.33333;
+          const cz = (w0z + w1z + w2z) * 0.33333;
+
+          if (fogType === CameraComponent.FogType.RADIAL_FAST) {
+            const nearSq = fogNearPane * fogNearPane;
+            const farSq = fogFarPane * fogFarPane;
+            const invFogRangeSq = 1.0 / (farSq - nearSq);
+            const distSq = cx * cx + cy * cy + cz * cz;
+            fogAmount = (distSq - nearSq) * invFogRangeSq;
+          } else {
+            const distance = Math.sqrt(cx * cx + cy * cy + cz * cz);
+            fogAmount = (distance - fogNearPane) / (fogFarPane - fogNearPane);
+          }
+        } else if (fogType === CameraComponent.FogType.LINEAR) {
+          fogAmount = (depth - fogNearPane) / (fogFarPane - fogNearPane);
+        }
+
+        if (fogAmount > 1) fogAmount = 1;
+
+        // Base quantized colors per vertex
+        let cr0 = r * i0;
+        let cg0 = g * i0;
+        let cb0 = b * i0;
+        let cr1 = r * i1;
+        let cg1 = g * i1;
+        let cb1 = b * i1;
+        let cr2 = r * i2;
+        let cg2 = g * i2;
+        let cb2 = b * i2;
+
+        if (fogAmount > 0) {
+          const invFog = 1 - fogAmount;
+          const fr = fogColor[0] * fogAmount;
+          const fg = fogColor[1] * fogAmount;
+          const fb = fogColor[2] * fogAmount;
+          cr0 = (cr0 * invFog + fr) | 0;
+          cg0 = (cg0 * invFog + fg) | 0;
+          cb0 = (cb0 * invFog + fb) | 0;
+          cr1 = (cr1 * invFog + fr) | 0;
+          cg1 = (cg1 * invFog + fg) | 0;
+          cb1 = (cb1 * invFog + fb) | 0;
+          cr2 = (cr2 * invFog + fr) | 0;
+          cg2 = (cg2 * invFog + fg) | 0;
+          cb2 = (cb2 * invFog + fb) | 0;
+        } else {
+          cr0 |= 0;
+          cg0 |= 0;
+          cb0 |= 0;
+          cr1 |= 0;
+          cg1 |= 0;
+          cb1 |= 0;
+          cr2 |= 0;
+          cg2 |= 0;
+          cb2 |= 0;
+        }
+
+        const c16_0 =
+          ((cr0 & 0xf8) << 8) | ((cg0 & 0xfc) << 3) | ((cb0 & 0xf8) >> 3);
+        const c16_1 =
+          ((cr1 & 0xf8) << 8) | ((cg1 & 0xfc) << 3) | ((cb1 & 0xf8) >> 3);
+        const c16_2 =
+          ((cr2 & 0xf8) << 8) | ((cg2 & 0xfc) << 3) | ((cb2 & 0xf8) >> 3);
+
+        let pc0 = PALETTE_16BIT[c16_0];
+        let pc1 = PALETTE_16BIT[c16_1];
+        let pc2 = PALETTE_16BIT[c16_2];
+
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 1;
+
+        // EARLY OUT: If all quantized colors are identical, fallback to cheapest flat fill
+        if (pc0 === pc1 && pc1 === pc2) {
+          ctx.strokeStyle = ctx.fillStyle = pc0;
+          if (toStroke) ctx.stroke();
+          ctx.fill();
+          break;
+        }
+
+        // Screen space coordinates
+        let px0 = vertexBuffer[v0Idx] * halfW + halfW;
+        let py0 = vertexBuffer[v0Idx + 1] * halfH + halfH;
+        let px1 = vertexBuffer[v1Idx] * halfW + halfW;
+        let py1 = vertexBuffer[v1Idx + 1] * halfH + halfH;
+        let px2 = vertexBuffer[v2Idx] * halfW + halfW;
+        let py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
+
+        let pi0 = i0,
+          pi1 = i1,
+          pi2 = i2;
+
+        // In-place sort by intensity (ascending)
+        if (pi0 > pi1) {
+          let t;
+          t = px0;
+          px0 = px1;
+          px1 = t;
+          t = py0;
+          py0 = py1;
+          py1 = t;
+          t = pi0;
+          pi0 = pi1;
+          pi1 = t;
+          t = pc0;
+          pc0 = pc1;
+          pc1 = t;
+        }
+        if (pi1 > pi2) {
+          let t;
+          t = px1;
+          px1 = px2;
+          px2 = t;
+          t = py1;
+          py1 = py2;
+          py2 = t;
+          t = pi1;
+          pi1 = pi2;
+          pi2 = t;
+          t = pc1;
+          pc1 = pc2;
+          pc2 = t;
+        }
+        if (pi0 > pi1) {
+          let t;
+          t = px0;
+          px0 = px1;
+          px1 = t;
+          t = py0;
+          py0 = py1;
+          py1 = t;
+          t = pi0;
+          pi0 = pi1;
+          pi1 = t;
+          t = pc0;
+          pc0 = pc1;
+          pc1 = t;
+        }
+
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 1;
+
+        // If intensity difference is minimal, use flat shading
+        if (pi2 - pi0 < 0.001) {
+          ctx.strokeStyle = ctx.fillStyle = pc0;
+        } else {
+          // Precise 2D parametric mapping of Gouraud triangle gradient
+          const t_val = (pi1 - pi0) / (pi2 - pi0);
+
+          const p13x = px0 + t_val * (px2 - px0);
+          const p13y = py0 + t_val * (py2 - py0);
+
+          const dx = px1 - p13x;
+          const dy = py1 - p13y;
+
+          const gx_dir = -dy;
+          const gy_dir = dx;
+
+          const den = gx_dir * gx_dir + gy_dir * gy_dir;
+
+          let gx_end, gy_end;
+
+          if (den < 1e-6) {
+            gx_end = px2;
+            gy_end = py2;
+          } else {
+            const num = (px2 - px0) * gx_dir + (py2 - py0) * gy_dir;
+            const factor = num / den;
+            gx_end = px0 + factor * gx_dir;
+            gy_end = py0 + factor * gy_dir;
+          }
+
+          const grad = ctx.createLinearGradient(px0, py0, gx_end, gy_end);
+          grad.addColorStop(0, pc0);
+
+          let safe_t = t_val;
+          if (safe_t < 0) safe_t = 0;
+          if (safe_t > 1) safe_t = 1;
+
+          if (safe_t > 0 && safe_t < 1) {
+            grad.addColorStop(safe_t, pc1);
+          }
+          grad.addColorStop(1, pc2);
+
+          ctx.strokeStyle = ctx.fillStyle = grad;
+        }
+
+        if (toStroke) {
+          ctx.stroke();
+        }
+        ctx.fill();
         break;
       }
     }
