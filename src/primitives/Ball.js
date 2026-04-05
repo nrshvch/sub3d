@@ -60,7 +60,7 @@ function generateBallMesh(rings, sectors, radius) {
   };
 }
 
-const ballMesh = generateBallMesh(16, 16, 1);
+const ballMesh = generateBallMesh(8, 8, 8);
 
 const bounds = new Float32Array(32);
 

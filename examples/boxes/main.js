@@ -7,6 +7,7 @@ let targetCount = 500;
 
 const ball = new scaliaEngine.Ball();
 ball.meshRenderer.layer = 1;
+ball.meshRenderer.shaderType = 4;
 
 ball.transform.scale(20, 20, 20);
 ball.debug = true;
@@ -42,6 +43,7 @@ myGame.world.tickRegister({
 function createBox(){
   const child = new scaliaEngine.Box();
   child.meshRenderer.layer = 1;
+  child.meshRenderer.shaderType = 4;
   const randPos = vec3.random([], Math.random() * 20 + 20);
 
   child.transform.setPosition(randPos[0], randPos[1], randPos[2]);
