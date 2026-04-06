@@ -246,7 +246,6 @@ p.render = function (camera, viewport, stats) {
       });
     }
 
-    const toStroke = (config.layerStrokeMask & (i + 1)) === i + 1;
     const toClear = (config.layerClearMask & (i + 1)) === i + 1;
 
     drawTriangles(
@@ -258,7 +257,6 @@ p.render = function (camera, viewport, stats) {
       shaderTypeBuffer,
       l,
       0,
-      toStroke,
       toClear,
       vw,
       vh,
@@ -972,7 +970,6 @@ function destructMesh(
  * @param {Uint32Array} shaderTypeBuffer
  * @param {number} count - Number of elements in indexBuffer
  * @param {number} offset - Starting index of the triangles to draw
- * @param {boolean} toStroke - Should faces be stroked, to fix gaps?
  * @param {boolean} toClear - Should ctx be cleared before drawing?
  * @param {number} w - Canvas width
  * @param {number} h - Canvas height
@@ -998,7 +995,6 @@ function drawTriangles(
   shaderTypeBuffer,
   count,
   offset,
-  toStroke,
   toClear,
   w,
   h,
@@ -1022,8 +1018,8 @@ function drawTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  let currentLineJoin = "";
-  let currentLineWidth = -1;
+  let currentLineWidth = -1;  // -1 = unset, 1 = 1 round (normal), -2 = 0.5 miter (wireframe)
+  let currentFillStyle = -1; // -1 = unset, -2 = wireframe, -3 = gradient, number = quantized color key in PALLETE16
 
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i];
@@ -1138,17 +1134,20 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
-
-        if (currentLineJoin !== "round")
-          ctx.lineJoin = currentLineJoin = "round";
-        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
-
-        if (toStroke) {
-          ctx.stroke();
+        if (currentFillStyle !== color16) {
+          ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
+          currentFillStyle = color16;
         }
 
+        if (currentLineWidth !== 1) {
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 1;
+          currentLineWidth = 1;
+        }
+
+        ctx.stroke();
         ctx.fill();
+
         break;
       }
       case 1: {
@@ -1226,17 +1225,20 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
-
-        if (currentLineJoin !== "round")
-          ctx.lineJoin = currentLineJoin = "round";
-        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
-
-        if (toStroke) {
-          ctx.stroke();
+        if (currentFillStyle !== color16) {
+          ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
+          currentFillStyle = color16;
         }
 
+        if (currentLineWidth !== 1) {
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 1;
+          currentLineWidth = 1;
+        }
+
+        ctx.stroke();
         ctx.fill();
+
         break;
       }
       case 2: {
@@ -1254,25 +1256,36 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
-
-        if (currentLineJoin !== "round")
-          ctx.lineJoin = currentLineJoin = "round";
-        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
-
-        if (toStroke) {
-          ctx.stroke();
+        if (currentFillStyle !== color16) {
+          ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
+          currentFillStyle = color16;
         }
 
+        if (currentLineWidth !== 1) {
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 1;
+          currentLineWidth = 1;
+        }
+
+        ctx.stroke();
         ctx.fill();
+
         break;
       }
       case 3: {
-        if (currentLineJoin !== "miter")
-          ctx.lineJoin = currentLineJoin = "miter";
-        if (currentLineWidth !== 0.5) ctx.lineWidth = currentLineWidth = 0.5;
-        ctx.strokeStyle = "rgb(0,0,255)";
+        if (currentFillStyle !== -2) {
+          ctx.strokeStyle = "rgb(0,0,255)";
+          currentFillStyle = -2;
+        }
+
+        if (currentLineWidth !== -2) {
+          ctx.lineJoin = "miter";
+          ctx.lineWidth = 0.5;
+          currentLineWidth = -2;
+        }
+
         ctx.stroke();
+
         break;
       }
       case 4: {
@@ -1392,19 +1405,22 @@ function drawTriangles(
         const c16_2 =
           ((cr2 & 0xf8) << 8) | ((cg2 & 0xfc) << 3) | ((cb2 & 0xf8) >> 3);
 
-        let pc0 = PALETTE_16BIT[c16_0];
-        let pc1 = PALETTE_16BIT[c16_1];
-        let pc2 = PALETTE_16BIT[c16_2];
-
-        if (currentLineJoin !== "round")
-          ctx.lineJoin = currentLineJoin = "round";
-        if (currentLineWidth !== 1) ctx.lineWidth = currentLineWidth = 1;
+        if (currentLineWidth !== 1) {
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 1;
+          currentLineWidth = 1;
+        }
 
         // EARLY OUT: If all quantized colors are identical, fallback to cheapest flat fill
-        if (pc0 === pc1 && pc1 === pc2) {
-          ctx.strokeStyle = ctx.fillStyle = pc0;
-          if (toStroke) ctx.stroke();
+        if (c16_0 === c16_1 && c16_1 === c16_2) {
+          if (currentFillStyle !== c16_0) {
+            ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[c16_0];
+            currentFillStyle = c16_0;
+          }
+
+          ctx.stroke();
           ctx.fill();
+
           break;
         }
 
@@ -1419,6 +1435,10 @@ function drawTriangles(
         let pi0 = i0,
           pi1 = i1,
           pi2 = i2;
+
+        let pc0 = PALETTE_16BIT[c16_0];
+        let pc1 = PALETTE_16BIT[c16_1];
+        let pc2 = PALETTE_16BIT[c16_2];
 
         // In-place sort by intensity (ascending)
         if (pi0 > pi1) {
@@ -1468,8 +1488,11 @@ function drawTriangles(
         }
 
         // If intensity difference is minimal, use flat shading
-        if (pi2 - pi0 < 0.001) {
-          ctx.strokeStyle = ctx.fillStyle = pc0;
+        if (pi2 - pi0 < 0.05) {
+          if (currentFillStyle !== c16_0) {
+            ctx.strokeStyle = ctx.fillStyle = pc0;
+            currentFillStyle = c16_0;
+          }
         } else {
           // Precise 2D parametric mapping of Gouraud triangle gradient
           const t_val = (pi1 - pi0) / (pi2 - pi0);
@@ -1509,13 +1532,13 @@ function drawTriangles(
           }
           grad.addColorStop(1, pc2);
 
+          currentFillStyle = -3; //NOTE: do not remove. Is necessary for checks in other places.
           ctx.strokeStyle = ctx.fillStyle = grad;
         }
 
-        if (toStroke) {
-          ctx.stroke();
-        }
+        ctx.stroke();
         ctx.fill();
+
         break;
       }
     }
