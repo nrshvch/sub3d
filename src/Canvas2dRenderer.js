@@ -1018,7 +1018,7 @@ function drawTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  let currentLineWidth = -1;  // -1 = unset, 1 = 1 round (normal), -2 = 0.5 miter (wireframe)
+  let currentLineWidth = -1; // -1 = unset, 1 = 1 round (normal), -2 = 0.5 miter (wireframe)
   let currentFillStyle = -1; // -1 = unset, -2 = wireframe, -3 = gradient, number = quantized color key in PALLETE16
 
   for (let i = offset; i < len; i++) {
@@ -1419,7 +1419,7 @@ function drawTriangles(
           }
 
           ctx.stroke();
-          ctx.fill();
+          // ctx.fill();
 
           break;
         }
@@ -1488,11 +1488,9 @@ function drawTriangles(
         }
 
         // If intensity difference is minimal, use flat shading
-        if (pi2 - pi0 < 0.05) {
-          if (currentFillStyle !== c16_0) {
-            ctx.strokeStyle = ctx.fillStyle = pc0;
-            currentFillStyle = c16_0;
-          }
+        if (pi2 - pi0 < 0.01 && currentFillStyle !== c16_0) {
+          ctx.strokeStyle = ctx.fillStyle = pc0;
+          currentFillStyle = c16_0;
         } else {
           // Precise 2D parametric mapping of Gouraud triangle gradient
           const t_val = (pi1 - pi0) / (pi2 - pi0);
@@ -1523,13 +1521,13 @@ function drawTriangles(
           const grad = ctx.createLinearGradient(px0, py0, gx_end, gy_end);
           grad.addColorStop(0, pc0);
 
-          let safe_t = t_val;
-          if (safe_t < 0) safe_t = 0;
-          if (safe_t > 1) safe_t = 1;
-
-          if (safe_t > 0 && safe_t < 1) {
-            grad.addColorStop(safe_t, pc1);
-          }
+          // let safe_t = t_val;
+          // if (safe_t < 0) safe_t = 0;
+          // if (safe_t > 1) safe_t = 1;
+          //
+          // if (safe_t > 0 && safe_t < 1) {
+          //   grad.addColorStop(safe_t, pc1);
+          // }
           grad.addColorStop(1, pc2);
 
           currentFillStyle = -3; //NOTE: do not remove. Is necessary for checks in other places.
