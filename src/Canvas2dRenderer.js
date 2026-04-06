@@ -1419,7 +1419,7 @@ function drawTriangles(
           }
 
           ctx.stroke();
-          // ctx.fill();
+          ctx.fill();
 
           break;
         }
