@@ -27,7 +27,6 @@ export default function Canvas2dRenderer() {
   this.shaderTypeBuffer = new Uint32Array(0);
   this.faceNormalsBuffer = new Float32Array(0);
   this.vertexNormalsBuffer = new Float32Array(0);
-  this.typeBuffer = new Uint8Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
   this.layerBuffers = [];
   this.layerBufferLengths = new Uint32Array(1);
@@ -71,7 +70,7 @@ p.render = function (camera, viewport, stats) {
     vec3Cache2 = this.vec3Cache2,
     vec4Cache = this.vec4Cache,
     depthBuffer = this.depthBuffer,
-    indexBuffer = this.indexBuffer,
+    indexBuffer = this.indexBuffer,//face indices buffer
     vertexIndexBuffer = this.vertexIndexBuffer,
     vertexBuffer = this.vertexBuffer,
     clipGeometryBuffer = this.clipGeometryBuffer,
@@ -79,7 +78,6 @@ p.render = function (camera, viewport, stats) {
     shaderTypeBuffer = this.shaderTypeBuffer,
     faceNormalsBuffer = this.faceNormalsBuffer,
     vertexNormalsBuffer = this.vertexNormalsBuffer,
-    typeBuffer = this.typeBuffer,
     visibleObjectsBuffer = this.visibleObjectsBuffer,
     layerBuffers = this.layerBuffers,
     layerBufferLengths = this.layerBufferLengths,
@@ -175,43 +173,47 @@ p.render = function (camera, viewport, stats) {
     }
 
     if (depthBuffer.length < maxFacesCount) {
+      //for face ordering
       let newArr = new Float32Array(maxFacesCount);
       newArr.set(depthBuffer);
       this.depthBuffer = depthBuffer = newArr;
 
+      //for face draw order
       newArr = new Uint32Array(maxFacesCount);
       newArr.set(indexBuffer);
       this.indexBuffer = indexBuffer = newArr;
 
-      newArr = new Uint8Array(maxFacesCount);
-      newArr.set(typeBuffer);
-      this.typeBuffer = typeBuffer = newArr;
-
+      //color is per face
       newArr = new Uint32Array(maxFacesCount);
       newArr.set(colorBuffer);
       this.colorBuffer = colorBuffer = newArr;
 
+      //material is per face
       newArr = new Uint32Array(maxFacesCount);
       newArr.set(shaderTypeBuffer);
       this.shaderTypeBuffer = shaderTypeBuffer = newArr;
 
+      //stores vec3 in clip space, for every vert of a face
       newArr = new Float32Array(maxFacesCount * 9);
       newArr.set(clipGeometryBuffer);
       this.clipGeometryBuffer = clipGeometryBuffer = newArr;
 
+      //one vec3 for every face
       newArr = new Float32Array(maxFacesCount * 3);
       newArr.set(faceNormalsBuffer);
       this.faceNormalsBuffer = faceNormalsBuffer = newArr;
 
-      //TODO: this should use max verts count, not max faces count.
-      newArr = new Float32Array(maxFacesCount * 3);
+      //three vec3 normals per each vertex of a face, worst case its 3x normals per 3x face verts.
+      newArr = new Float32Array(maxFacesCount * 9);
       newArr.set(vertexNormalsBuffer);
       this.vertexNormalsBuffer = vertexNormalsBuffer = newArr;
 
-      let _vertexBuffer = new Float32Array(maxFacesCount * 9);
+      //array of vec2 to be actually drawn on screen, in worst case its 3x per every face.
+      let _vertexBuffer = new Float32Array(maxFacesCount * 6);
       _vertexBuffer.set(vertexBuffer);
       this.vertexBuffer = vertexBuffer = _vertexBuffer;
 
+      //index of 2D vertices, 1 element per vertex
       let _vertexIndexBuffer = new Uint32Array(maxFacesCount * 3);
       _vertexIndexBuffer.set(vertexIndexBuffer);
       this.vertexIndexBuffer = vertexIndexBuffer = _vertexIndexBuffer;
@@ -673,6 +675,10 @@ function destructMesh(
         idx1 = faces[f + 1],
         idx2 = faces[f + 2];
 
+      const v0 = idx0 << 2,
+        v1 = idx1 << 2,
+        v2 = idx2 << 2; // Fast multiply by 4
+
       // --- GATE 1: LAZY CLIP-SPACE TRANSFORMATION ---
       // Transform each vertex to Clip Space ONLY ONCE per mesh.
       // We use idx << 2 to store results in vec4Cache at the original index position.
@@ -688,14 +694,13 @@ function destructMesh(
         //   mat4Scratchpad2,
         // );
         // Inlined vec4TransformMat4
-        const at = idx0 << 2;
         const vx = verts[vo],
           vy = verts[vo + 1],
           vz = verts[vo + 2];
-        vec4Cache[at] = m0 * vx + m4 * vy + m8 * vz + m12;
-        vec4Cache[at + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
-        vec4Cache[at + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
-        vec4Cache[at + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
+        vec4Cache[v0] = m0 * vx + m4 * vy + m8 * vz + m12;
+        vec4Cache[v0 + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
+        vec4Cache[v0 + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
+        vec4Cache[v0 + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
         vTags[idx0] = callId;
         vMapping[idx0] = -1; // Flag: Transformed but not yet submitted to vertexBuffer
       }
@@ -712,14 +717,13 @@ function destructMesh(
         //     mat4Scratchpad2,
         // );
         // Inlined vec4TransformMat4
-        const at = idx1 << 2;
         const vx = verts[vo],
           vy = verts[vo + 1],
           vz = verts[vo + 2];
-        vec4Cache[at] = m0 * vx + m4 * vy + m8 * vz + m12;
-        vec4Cache[at + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
-        vec4Cache[at + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
-        vec4Cache[at + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
+        vec4Cache[v1] = m0 * vx + m4 * vy + m8 * vz + m12;
+        vec4Cache[v1 + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
+        vec4Cache[v1 + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
+        vec4Cache[v1 + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
         vTags[idx1] = callId;
         vMapping[idx1] = -1;
       }
@@ -736,21 +740,16 @@ function destructMesh(
         //     mat4Scratchpad2,
         // );
         // Inlined vec4TransformMat4
-        const at = idx2 << 2;
         const vx = verts[vo],
           vy = verts[vo + 1],
           vz = verts[vo + 2];
-        vec4Cache[at] = m0 * vx + m4 * vy + m8 * vz + m12;
-        vec4Cache[at + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
-        vec4Cache[at + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
-        vec4Cache[at + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
+        vec4Cache[v2] = m0 * vx + m4 * vy + m8 * vz + m12;
+        vec4Cache[v2 + 1] = m1 * vx + m5 * vy + m9 * vz + m13;
+        vec4Cache[v2 + 2] = m2 * vx + m6 * vy + m10 * vz + m14;
+        vec4Cache[v2 + 3] = m3 * vx + m7 * vy + m11 * vz + m15;
         vTags[idx2] = callId;
         vMapping[idx2] = -1;
       }
-
-      const v0 = idx0 << 2,
-        v1 = idx1 << 2,
-        v2 = idx2 << 2; // Fast multiply by 4
 
       const x0 = vec4Cache[v0],
         y0 = vec4Cache[v0 + 1],
@@ -829,13 +828,11 @@ function destructMesh(
 
       const fIdx = (f / 3) | 0;
       const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
-      const colorIndex =
+      (colorBuffer[i] =
         (mesh.colors[cIdx] << 24) |
         (mesh.colors[cIdx + 1] << 16) |
         (mesh.colors[cIdx + 2] << 8) |
-        255;
-
-      colorBuffer[i] = colorIndex;
+        255);
       shaderTypeBuffer[i] = mesh.shaderType;
 
       // --- MAPPING & VERTEX SUBMISSION ---
@@ -856,7 +853,6 @@ function destructMesh(
         );
         vertexBuffer[v0Idx] = n0x;
         vertexBuffer[v0Idx + 1] = -n0y;
-        vertexBuffer[v0Idx + 2] = colorIndex;
         vMapping[idx0] = v0Idx; // Store the buffer offset
         uniqueVertexCount++;
 
@@ -887,7 +883,6 @@ function destructMesh(
         );
         vertexBuffer[v1Idx] = n1x;
         vertexBuffer[v1Idx + 1] = -n1y;
-        vertexBuffer[v1Idx + 2] = colorIndex;
         vMapping[idx1] = v1Idx;
         uniqueVertexCount++;
 
@@ -918,7 +913,6 @@ function destructMesh(
         );
         vertexBuffer[v2Idx] = n2x;
         vertexBuffer[v2Idx + 1] = -n2y;
-        vertexBuffer[v2Idx + 2] = colorIndex;
         vMapping[idx2] = v2Idx;
         uniqueVertexCount++;
 
@@ -1022,7 +1016,9 @@ function drawTriangles(
   let currentFillStyle = -1; // -1 = unset, -2 = wireframe, -3 = gradient, number = quantized color key in PALLETE16
 
   for (let i = offset; i < len; i++) {
-    const idx = indexBuffer[i];
+    const idx = indexBuffer[i]; //take face index
+
+    //take all three vec2 indices of the face
     const v0Idx = vertexIndexBuffer[idx * 3];
     const v1Idx = vertexIndexBuffer[idx * 3 + 1];
     const v2Idx = vertexIndexBuffer[idx * 3 + 2];
@@ -1493,7 +1489,7 @@ function drawTriangles(
           currentFillStyle = c16_0;
         } else {
           // Precise 2D parametric mapping of Gouraud triangle gradient
-          const t_val = (pi1 - pi0) / (pi2 - pi0);
+          const t_val = (pi1 - pi0) / (pi2 - pi0); //TODO: possible NaN if pi0,pi1,pi2 are equal
 
           const p13x = px0 + t_val * (px2 - px0);
           const p13y = py0 + t_val * (py2 - py0);
