@@ -828,11 +828,11 @@ function destructMesh(
 
       const fIdx = (f / 3) | 0;
       const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
-      (colorBuffer[i] =
+      colorBuffer[i] =
         (mesh.colors[cIdx] << 24) |
         (mesh.colors[cIdx + 1] << 16) |
         (mesh.colors[cIdx + 2] << 8) |
-        255);
+        255;
       shaderTypeBuffer[i] = mesh.shaderType;
 
       // --- MAPPING & VERTEX SUBMISSION ---
@@ -1023,19 +1023,17 @@ function drawTriangles(
     const v1Idx = vertexIndexBuffer[idx * 3 + 1];
     const v2Idx = vertexIndexBuffer[idx * 3 + 2];
 
+    const px0 = vertexBuffer[v0Idx] * halfW + halfW;
+    const py0 = vertexBuffer[v0Idx + 1] * halfH + halfH;
+    const px1 = vertexBuffer[v1Idx] * halfW + halfW;
+    const py1 = vertexBuffer[v1Idx + 1] * halfH + halfH;
+    const px2 = vertexBuffer[v2Idx] * halfW + halfW;
+    const py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
+
     ctx.beginPath();
-    ctx.moveTo(
-      vertexBuffer[v0Idx] * halfW + halfW,
-      vertexBuffer[v0Idx + 1] * halfH + halfH,
-    );
-    ctx.lineTo(
-      vertexBuffer[v1Idx] * halfW + halfW,
-      vertexBuffer[v1Idx + 1] * halfH + halfH,
-    );
-    ctx.lineTo(
-      vertexBuffer[v2Idx] * halfW + halfW,
-      vertexBuffer[v2Idx + 1] * halfH + halfH,
-    );
+    ctx.moveTo(px0, py0);
+    ctx.lineTo(px1, py1);
+    ctx.lineTo(px2, py2);
     ctx.closePath();
 
     switch (wireframe ? 3 : shaderTypeBuffer[idx]) {
@@ -1048,6 +1046,7 @@ function drawTriangles(
         let r = (color32 >>> 24) & 255;
         let g = (color32 >>> 16) & 255;
         let b = (color32 >>> 8) & 255;
+        let intensity = 1.0;
 
         if (light) {
           const lx = -light.transform.worldMatrix[8];
@@ -1059,7 +1058,7 @@ function drawTriangles(
           const wnz = faceNormalsBuffer[idx * 3 + 2];
 
           const dot = wnx * lx + wny * ly + wnz * lz;
-          const intensity = Math.max(ambientLightIntensity, dot);
+          intensity = Math.max(ambientLightIntensity, dot);
 
           r *= intensity;
           g *= intensity;
@@ -1421,12 +1420,12 @@ function drawTriangles(
         }
 
         // Screen space coordinates
-        let px0 = vertexBuffer[v0Idx] * halfW + halfW;
-        let py0 = vertexBuffer[v0Idx + 1] * halfH + halfH;
-        let px1 = vertexBuffer[v1Idx] * halfW + halfW;
-        let py1 = vertexBuffer[v1Idx + 1] * halfH + halfH;
-        let px2 = vertexBuffer[v2Idx] * halfW + halfW;
-        let py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
+        let _px0 = px0;
+        let _py0 = py0;
+        let _px1 = px1;
+        let _py1 = py1;
+        let _px2 = px2;
+        let _py2 = py2;
 
         let pi0 = i0,
           pi1 = i1,
@@ -1439,12 +1438,12 @@ function drawTriangles(
         // In-place sort by intensity (ascending)
         if (pi0 > pi1) {
           let t;
-          t = px0;
-          px0 = px1;
-          px1 = t;
-          t = py0;
-          py0 = py1;
-          py1 = t;
+          t = _px0;
+          _px0 = _px1;
+          _px1 = t;
+          t = _py0;
+          _py0 = _py1;
+          _py1 = t;
           t = pi0;
           pi0 = pi1;
           pi1 = t;
@@ -1454,12 +1453,12 @@ function drawTriangles(
         }
         if (pi1 > pi2) {
           let t;
-          t = px1;
-          px1 = px2;
-          px2 = t;
-          t = py1;
-          py1 = py2;
-          py2 = t;
+          t = _px1;
+          _px1 = _px2;
+          _px2 = t;
+          t = _py1;
+          _py1 = _py2;
+          _py2 = t;
           t = pi1;
           pi1 = pi2;
           pi2 = t;
@@ -1469,12 +1468,12 @@ function drawTriangles(
         }
         if (pi0 > pi1) {
           let t;
-          t = px0;
-          px0 = px1;
-          px1 = t;
-          t = py0;
-          py0 = py1;
-          py1 = t;
+          t = _px0;
+          _px0 = _px1;
+          _px1 = t;
+          t = _py0;
+          _py0 = _py1;
+          _py1 = t;
           t = pi0;
           pi0 = pi1;
           pi1 = t;
@@ -1491,11 +1490,11 @@ function drawTriangles(
           // Precise 2D parametric mapping of Gouraud triangle gradient
           const t_val = (pi1 - pi0) / (pi2 - pi0); //TODO: possible NaN if pi0,pi1,pi2 are equal
 
-          const p13x = px0 + t_val * (px2 - px0);
-          const p13y = py0 + t_val * (py2 - py0);
+          const p13x = _px0 + t_val * (_px2 - _px0);
+          const p13y = _py0 + t_val * (_py2 - _py0);
 
-          const dx = px1 - p13x;
-          const dy = py1 - p13y;
+          const dx = _px1 - p13x;
+          const dy = _py1 - p13y;
 
           const gx_dir = -dy;
           const gy_dir = dx;
@@ -1505,16 +1504,16 @@ function drawTriangles(
           let gx_end, gy_end;
 
           if (den < 1e-6) {
-            gx_end = px2;
-            gy_end = py2;
+            gx_end = _px2;
+            gy_end = _py2;
           } else {
-            const num = (px2 - px0) * gx_dir + (py2 - py0) * gy_dir;
+            const num = (_px2 - _px0) * gx_dir + (_py2 - _py0) * gy_dir;
             const factor = num / den;
-            gx_end = px0 + factor * gx_dir;
-            gy_end = py0 + factor * gy_dir;
+            gx_end = _px0 + factor * gx_dir;
+            gy_end = _py0 + factor * gy_dir;
           }
 
-          const grad = ctx.createLinearGradient(px0, py0, gx_end, gy_end);
+          const grad = ctx.createLinearGradient(_px0, _py0, gx_end, gy_end);
           grad.addColorStop(0, pc0);
 
           // let safe_t = t_val;
