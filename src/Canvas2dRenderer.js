@@ -287,6 +287,9 @@ p.render = function (camera, viewport, stats) {
       camera.camera.ambientLight,
       faceNormalsBuffer,
       vertexNormalsBuffer,
+      meshIndexBuffer,
+      meshFaceIndexBuffer,
+      renderers,
       this.wireframe,
     );
 
@@ -1023,6 +1026,9 @@ function drawTriangles(
   ambientLightIntensity,
   faceNormalsBuffer,
   vertexNormalsBuffer,
+  meshIndexBuffer,
+  meshFaceIndexBuffer,
+  renderers,
   wireframe,
 ) {
   const halfW = w * 0.5,
@@ -1139,6 +1145,137 @@ function drawTriangles(
           r = (r * (1 - fogAmount) + fogColor[0] * fogAmount) | 0;
           g = (g * (1 - fogAmount) + fogColor[1] * fogAmount) | 0;
           b = (b * (1 - fogAmount) + fogColor[2] * fogAmount) | 0;
+        }
+
+        // Handle Textures
+        const mIdx = meshIndexBuffer[idx];
+        const mesh = renderers[mIdx];
+        const img = mesh.textureImage;
+
+        if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
+          const mFaceIdx = meshFaceIndexBuffer[idx];
+          const uvs = mesh.uvs;
+          // original face vertex indices from mesh
+          const ov0 = mesh.faces[mFaceIdx] * 2;
+          const ov1 = mesh.faces[mFaceIdx + 1] * 2;
+          const ov2 = mesh.faces[mFaceIdx + 2] * 2;
+
+          const U0 = uvs[ov0] * img.width;
+          const V0 = uvs[ov0 + 1] * img.height;
+          const U1 = uvs[ov1] * img.width;
+          const V1 = uvs[ov1 + 1] * img.height;
+          const U2 = uvs[ov2] * img.width;
+          const V2 = uvs[ov2 + 1] * img.height;
+
+          const delta = U0 * (V1 - V2) - V0 * (U1 - U2) + (U1 * V2 - U2 * V1);
+
+          if (Math.abs(delta) > 0.00001) {
+            const invDelta = 1 / delta;
+            const a =
+              (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+            const c =
+              (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+            const e =
+              (px0 * (U1 * V2 - U2 * V1) +
+                px1 * (U2 * V0 - U0 * V2) +
+                px2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            const b =
+              (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+            const d =
+              (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+            const f =
+              (py0 * (U1 * V2 - U2 * V1) +
+                py1 * (U2 * V0 - U0 * V2) +
+                py2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            ctx.save();
+
+            // Expand clipping path to mask native canvas antialiasing seams
+            const cx = (px0 + px1 + px2) * 0.33333;
+            const cy = (py0 + py1 + py2) * 0.33333;
+
+            const dx0 = px0 - cx;
+            const dy0 = py0 - cy;
+            //L1-norm approximation trick to avoid sqrt. Equal to const len0 = Math.sqrt(dx0*dx0 + dy0*dy0);
+            const a0 = Math.abs(dx0);
+            const b0 = Math.abs(dy0);
+            const len0 = a0 > b0 ? a0 + 0.4 * b0 : b0 + 0.4 * a0;
+            const invLen0 = len0 > 0 ? 0.6 / len0 : 0;
+            const epx0 = px0 + dx0 * invLen0;
+            const epy0 = py0 + dy0 * invLen0;
+
+            const dx1 = px1 - cx;
+            const dy1 = py1 - cy;
+            //L1-norm approximation trick to avoid sqrt. Equal to const len1 = Math.sqrt(dx1*dx1 + dy1*dy1);
+            const a1 = Math.abs(dx1);
+            const b1 = Math.abs(dy1);
+            const len1 = a1 > b1 ? a1 + 0.4 * b1 : b1 + 0.4 * a1;
+            const invLen1 = len1 > 0 ? 0.6 / len1 : 0;
+            const epx1 = px1 + dx1 * invLen1;
+            const epy1 = py1 + dy1 * invLen1;
+
+            const dx2 = px2 - cx;
+            const dy2 = py2 - cy;
+            //L1-norm approximation trick to avoid sqrt. Equal to const len2 = Math.sqrt(dx2*dx2 + dy2*dy2);
+            const a2 = Math.abs(dx2);
+            const b2 = Math.abs(dy2);
+            const len2 = a2 > b2 ? a2 + 0.4 * b2 : b2 + 0.4 * a2;
+            const invLen2 = len2 > 0 ? 0.6 / len2 : 0;
+            const epx2 = px2 + dx2 * invLen2;
+            const epy2 = py2 + dy2 * invLen2;
+
+            ctx.beginPath();
+            ctx.moveTo(epx0, epy0);
+            ctx.lineTo(epx1, epy1);
+            ctx.lineTo(epx2, epy2);
+            ctx.closePath();
+
+            ctx.clip(); // clip to the expanded triangle
+            ctx.setTransform(a, b, c, d, e, f);
+            ctx.drawImage(img, 0, 0);
+            ctx.restore();
+
+            // Overlay shading and fog
+            const shadowBlend = 1.0 - intensity * (1.0 - fogAmount);
+            if (shadowBlend > 0.01) {
+              // we can combine shadowing and fog into a solid filled triangle over the texture
+              let overlayR = 0,
+                overlayG = 0,
+                overlayB = 0;
+              let overlayAlpha = 0;
+
+              if (fogAmount > 0) {
+                // simplify: mix black shadow and fog color based on fogAmount
+                overlayR = (fogColor[0] * fogAmount) | 0;
+                overlayG = (fogColor[1] * fogAmount) | 0;
+                overlayB = (fogColor[2] * fogAmount) | 0;
+                overlayAlpha = Math.max(shadowBlend, fogAmount);
+              } else {
+                overlayAlpha = 1.0 - intensity;
+              }
+
+              if (overlayAlpha > 1) overlayAlpha = 1;
+              ctx.fillStyle = `rgba(${overlayR},${overlayG},${overlayB},${overlayAlpha.toFixed(2)})`;
+              ctx.fill();
+            }
+
+            // draw wireframe over texture if needed
+            if (currentLineWidth !== 1) {
+              ctx.lineJoin = "round";
+              ctx.lineWidth = 1;
+              currentLineWidth = 1;
+            }
+            if (currentFillStyle !== -1) {
+              // we used a custom color/alpha, invalidate currentFillStyle
+              currentFillStyle = -1;
+            }
+
+            // Note: we can stroke standard lines too to fix seams maybe
+            break;
+          }
         }
 
         // Quantize 8-bit color channels to 5-6-5 bits

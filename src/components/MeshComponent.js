@@ -23,6 +23,31 @@ p.color = null;
 
 p.colors = null;
 
+p.uvs = null;
+
+p._texture = null;
+
+p.textureImage = null;
+
+Object.defineProperty(p, "texture", {
+  get: function () {
+    return this._texture;
+  },
+  set: function (value) {
+    if (this._texture !== value) {
+      this._texture = value;
+      if (value) {
+        if (!this.textureImage) {
+          this.textureImage = new Image();
+        }
+        this.textureImage.src = value;
+      } else {
+        this.textureImage = null;
+      }
+    }
+  },
+});
+
 p.faceColors = null;
 
 p.faceNormals = null;
