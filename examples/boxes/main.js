@@ -43,7 +43,7 @@ myGame.world.tickRegister({
 function createBox(){
   const child = new scaliaEngine.Box();
   child.meshRenderer.layer = 1;
-  child.meshRenderer.shaderType = 4;
+  child.meshRenderer.shaderType = 0;
   const randPos = vec3.random([], Math.random() * 20 + 20);
 
   child.transform.setPosition(randPos[0], randPos[1], randPos[2]);
@@ -62,6 +62,10 @@ function createBox(){
     (Math.random() * 360) | 0,
     (Math.random() * 360) | 0,
   );
+
+  if (Math.random() > 0.5) {
+    child.meshRenderer.shaderType = 4;
+  }
 
   return {
       tick: (time) => {

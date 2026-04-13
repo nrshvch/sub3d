@@ -1,16 +1,19 @@
 import GameObject from "../GameObject.js";
 import MeshComponent from "../components/MeshComponent.js";
+import boxTexture from "./box.png";
 
 function generateBoxMesh(width, height, depth, segments) {
   const verts = [];
+  const uvs = [];
   const faces = [];
 
-  function getVertexIndex(x, y, z, lookup) {
+  function getVertexIndex(x, y, z, uVal, vVal, lookup) {
     // Rounding to fix floating point precision issues at corners
     const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
     if (lookup[key] !== undefined) return lookup[key];
     const index = verts.length / 3;
     verts.push(x, y, z);
+    uvs.push(uVal, vVal);
     lookup[key] = index;
     return index;
   }
@@ -49,7 +52,10 @@ function generateBoxMesh(width, height, depth, segments) {
         pos[v] = y * vDir;
         pos[w] = depthHalf;
 
-        row.push(getVertexIndex(pos[0], pos[1], pos[2], lookup));
+        const uVal = j / segments;
+        const vVal = 1.0 - i / segments; // V is typically calculated from top to bottom, but for canvas 2d an inverted V often helps or viceversa depending on coordinate system. Let's do 1-i/segments.
+
+        row.push(getVertexIndex(pos[0], pos[1], pos[2], uVal, vVal, lookup));
       }
       grid.push(row);
     }
@@ -78,6 +84,7 @@ function generateBoxMesh(width, height, depth, segments) {
 
   return {
     vertices: new Float32Array(verts),
+    uvs: new Float32Array(uvs),
     faces: new Uint16Array(faces),
   };
 }
@@ -96,9 +103,12 @@ function Box() {
   const mesh = new MeshComponent();
 
   mesh.vertices = boxMesh.vertices;
+  mesh.uvs = boxMesh.uvs;
   mesh.faces = boxMesh.faces;
   mesh.bounds = bounds;
   mesh.updateNormals();
+
+  mesh.texture = boxTexture;
 
   this.addComponent(mesh);
 }
