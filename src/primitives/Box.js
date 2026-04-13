@@ -4,9 +4,8 @@ import MeshComponent from "../components/MeshComponent.js";
 function generateBoxMesh(width, height, depth, segments) {
   const verts = [];
   const faces = [];
-  const lookup = {}; // Key: "x,y,z" | Value: index in verts array
 
-  function getVertexIndex(x, y, z) {
+  function getVertexIndex(x, y, z, lookup) {
     // Rounding to fix floating point precision issues at corners
     const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
     if (lookup[key] !== undefined) return lookup[key];
@@ -28,6 +27,8 @@ function generateBoxMesh(width, height, depth, segments) {
     depth,
     segments,
   ) {
+    const lookup = {}; // Key: "x,y,z" | Value: index in verts array
+
     const segmentWidth = width / segments;
     const segmentHeight = height / segments;
     const widthHalf = width / 2;
@@ -48,7 +49,7 @@ function generateBoxMesh(width, height, depth, segments) {
         pos[v] = y * vDir;
         pos[w] = depthHalf;
 
-        row.push(getVertexIndex(pos[0], pos[1], pos[2]));
+        row.push(getVertexIndex(pos[0], pos[1], pos[2], lookup));
       }
       grid.push(row);
     }
@@ -85,11 +86,7 @@ const boxMesh = generateBoxMesh(1, 1, 1, 1);
 
 const bounds = new Float32Array(32);
 
-MeshComponent.computeBoundsFlatArray(
-  bounds,
-  0,
-  boxMesh.vertices,
-);
+MeshComponent.computeBoundsFlatArray(bounds, 0, boxMesh.vertices);
 
 MeshComponent.computeBoundingSphere(bounds, 28, boxMesh.vertices);
 
