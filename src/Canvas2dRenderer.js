@@ -27,6 +27,8 @@ export default function Canvas2dRenderer() {
   this.shaderTypeBuffer = new Uint32Array(0);
   this.faceNormalsBuffer = new Float32Array(0);
   this.vertexNormalsBuffer = new Float32Array(0);
+  this.meshIndexBuffer = new Uint32Array(0);
+  this.meshFaceIndexBuffer = new Uint32Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
   this.layerBuffers = [];
   this.layerBufferLengths = new Uint32Array(1);
@@ -78,6 +80,8 @@ p.render = function (camera, viewport, stats) {
     shaderTypeBuffer = this.shaderTypeBuffer,
     faceNormalsBuffer = this.faceNormalsBuffer,
     vertexNormalsBuffer = this.vertexNormalsBuffer,
+    meshIndexBuffer = this.meshIndexBuffer,
+    meshFaceIndexBuffer = this.meshFaceIndexBuffer,
     visibleObjectsBuffer = this.visibleObjectsBuffer,
     layerBuffers = this.layerBuffers,
     layerBufferLengths = this.layerBufferLengths,
@@ -208,6 +212,14 @@ p.render = function (camera, viewport, stats) {
       newArr.set(vertexNormalsBuffer);
       this.vertexNormalsBuffer = vertexNormalsBuffer = newArr;
 
+      newArr = new Uint32Array(maxFacesCount);
+      newArr.set(meshIndexBuffer);
+      this.meshIndexBuffer = meshIndexBuffer = newArr;
+
+      newArr = new Uint32Array(maxFacesCount);
+      newArr.set(meshFaceIndexBuffer);
+      this.meshFaceIndexBuffer = meshFaceIndexBuffer = newArr;
+
       //array of vec2 to be actually drawn on screen, in worst case its 3x per every face.
       let _vertexBuffer = new Float32Array(maxFacesCount * 6);
       _vertexBuffer.set(vertexBuffer);
@@ -238,6 +250,8 @@ p.render = function (camera, viewport, stats) {
       vertexNormalsBuffer,
       vertexBuffer,
       vertexIndexBuffer,
+      meshIndexBuffer,
+      meshFaceIndexBuffer,
       this.vMapping,
       this.vTags,
     );
@@ -587,6 +601,8 @@ let callId = 0;
  * @param {Float32Array} vertexNormalsBuffer
  * @param {Float32Array} vertexBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
  * @param {Uint32Array} vertexIndexBuffer - Indexes of vertices in the vertexBuffer.
+ * @param {Uint32Array} meshIndexBuffer
+ * @param {Uint32Array} meshFaceIndexBuffer
  * @param {Int32Array} vMapping - Persistent buffer storing the vertexBuffer offset for the current mesh.
  * @param {Uint32Array} vTags - Persistent buffer storing the callId tag to validate vMapping entries.
  * @returns {number} The total count of processed (visible) faces.
@@ -610,6 +626,8 @@ function destructMesh(
   vertexNormalsBuffer,
   vertexBuffer,
   vertexIndexBuffer,
+  meshIndexBuffer,
+  meshFaceIndexBuffer,
   vMapping, // New: Persistent Int32Array(max_verts)
   vTags, // New: Persistent Uint32Array(max_verts)
 ) {
@@ -812,6 +830,8 @@ function destructMesh(
 
       // FILL BUFFERS
       indexBuffer[i] = i;
+      meshIndexBuffer[i] = j;
+      meshFaceIndexBuffer[i] = f;
 
       // WORLD-SPACE LIGHTING
       const fnx = faceNormals[f],
