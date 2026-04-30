@@ -1,3 +1,11 @@
+// TODO: get rid of expensive fillStyle string concat e.g. rgba(...
+// TODO: dont pass gameObjects object into drawTriangles, move lights params into typed buffers
+// TODO: in FLAT and GOURAUD shaders use rgb light for fog
+// TODO: normalize colors format to 0xFFFFF or 0xFFFFFFFF
+// TODO: consider turning layerBuffers into single types array sorted by layer index
+// TODO: move out shaders into separate files, that would inline on runtime (eval()?)
+// TODO: get rid of "strokes" filling gaps between polygons, apply same approach used for gaps textures instead
+
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
 import CameraComponent from "./components/CameraComponent.js";
@@ -73,7 +81,7 @@ p.render = function (camera, viewport, stats) {
     vec3Cache2 = this.vec3Cache2,
     vec4Cache = this.vec4Cache,
     depthBuffer = this.depthBuffer,
-    indexBuffer = this.indexBuffer,//face indices buffer
+    indexBuffer = this.indexBuffer, //face indices buffer
     vertexIndexBuffer = this.vertexIndexBuffer,
     vertexBuffer = this.vertexBuffer,
     clipGeometryBuffer = this.clipGeometryBuffer,
@@ -125,24 +133,22 @@ p.render = function (camera, viewport, stats) {
   }
 
   //worst case scenario - every go has a light
-  if(lightsIndexBuffer.length < gameObjects.length){
+  if (lightsIndexBuffer.length < gameObjects.length) {
     const _lightsIndexBuffer = lightsIndexBuffer;
-    this.lightsIndexBuffer = lightsIndexBuffer = new Uint32Array(gameObjects.length);
+    this.lightsIndexBuffer = lightsIndexBuffer = new Uint32Array(
+      gameObjects.length,
+    );
     lightsIndexBuffer.set(_lightsIndexBuffer);
   }
 
-   roughCull(
+  roughCull(
     gameObjects,
     clipSpaceMatrix,
     visibleObjectsBuffer,
-    lightsIndexBuffer
+    lightsIndexBuffer,
   );
 
-  exactCull(
-    visibleObjectsBuffer,
-    gameObjects,
-    clipSpaceMatrix,
-  );
+  exactCull(visibleObjectsBuffer, gameObjects, clipSpaceMatrix);
 
   if (layerBufferLengths.length < layersCount) {
     var _layerBufferLengths = layerBufferLengths;
@@ -151,7 +157,7 @@ p.render = function (camera, viewport, stats) {
   }
 
   //first element is length
-  const visibleObjectsBufferLen = visibleObjectsBuffer[0]+1;
+  const visibleObjectsBufferLen = visibleObjectsBuffer[0] + 1;
   // group visible object to layer buffers
   for (i = 1; i < visibleObjectsBufferLen; i++) {
     const go = gameObjects[visibleObjectsBuffer[i]];
@@ -306,7 +312,7 @@ p.render = function (camera, viewport, stats) {
       renderers,
       this.wireframe,
       lightsIndexBuffer,
-      gameObjects
+      gameObjects,
     );
 
     for (j = 0; j < renderersCount; j++) {
@@ -466,8 +472,9 @@ function roughCull(gameobjects, m, out_visibleBuffer, out_lightsIndexBuffer) {
       out_visibleBuffer[++visibleCount] = i;
     }
 
-    if(obj.light){
-      if(obj.light.type === 1){ //POINT
+    if (obj.light) {
+      if (obj.light.type === 1) {
+        //POINT
         const t = obj.transform.worldMatrix;
 
         // Sphere World Center
@@ -490,14 +497,15 @@ function roughCull(gameobjects, m, out_visibleBuffer, out_lightsIndexBuffer) {
         if (fX * wx + fY * wy + fZ * wz + fW < -rWorld) continue;
 
         out_lightsIndexBuffer[++lightsCount] = i;
-      }else{ //DIRECTIONAL
+      } else {
+        //DIRECTIONAL
         out_lightsIndexBuffer[++lightsCount] = i;
       }
     }
   }
 
   out_visibleBuffer[0] = visibleCount;
-  out_lightsIndexBuffer[0] = lightsCount
+  out_lightsIndexBuffer[0] = lightsCount;
 }
 
 /**
@@ -510,11 +518,7 @@ function roughCull(gameobjects, m, out_visibleBuffer, out_lightsIndexBuffer) {
  * @param {Array<GameObject>} gameObjects - The source array of game objects.
  * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
  */
-function exactCull(
-  out_visibilityBuffer,
-  gameObjects,
-  clipSpaceMatrix,
-) {
+function exactCull(out_visibilityBuffer, gameObjects, clipSpaceMatrix) {
   const m = clipSpaceMatrix;
   const m0 = m[0],
     m1 = m[1],
@@ -1080,7 +1084,7 @@ function drawTriangles(
   renderers,
   wireframe,
   lightsIndexBuffer,
-  gameObjects
+  gameObjects,
 ) {
   const halfW = w * 0.5,
     halfH = h * 0.5;
@@ -1160,6 +1164,7 @@ function drawTriangles(
         ig *= 0.0039215;
         ib *= 0.0039215;
 
+        // lambertian lightning
         r = (r * ir) | 0;
         g = (g * ig) | 0;
         b = (b * ib) | 0;
@@ -1529,7 +1534,7 @@ function drawTriangles(
         const g = (color32 >>> 16) & 255;
         const b = (color32 >>> 8) & 255;
 
-        const ambientLightIntensity = ambientLightRgb / 0xffffff
+        const ambientLightIntensity = ambientLightRgb / 0xffffff;
 
         let litR = (ambientLightRgb >>> 16) & 255;
         let litG = (ambientLightRgb >>> 8) & 255;
@@ -1565,9 +1570,9 @@ function drawTriangles(
           const lightGO = gameObjects[lightsIndexBuffer[l]];
           // DIRECTIONAL
           if (lightGO.light.type === 0) {
-            const lightR = ((lightGO.light.color >>> 16) & 255);
-            const lightG = ((lightGO.light.color >>> 8) & 255);
-            const lightB = (lightGO.light.color & 255);
+            const lightR = (lightGO.light.color >>> 16) & 255;
+            const lightG = (lightGO.light.color >>> 8) & 255;
+            const lightB = lightGO.light.color & 255;
 
             const lx = -lightGO.transform.worldMatrix[8];
             const ly = -lightGO.transform.worldMatrix[9];
@@ -1586,7 +1591,7 @@ function drawTriangles(
             }
 
             if (d1 > 0) {
-              i1 += d1
+              i1 += d1;
 
               ir1 += lightR * d1;
               ig1 += lightG * d1;
@@ -1594,7 +1599,7 @@ function drawTriangles(
             }
 
             if (d2 > 0) {
-              i2 += d2
+              i2 += d2;
 
               ir2 += lightR * d2;
               ig2 += lightG * d2;
@@ -1796,7 +1801,7 @@ function drawTriangles(
 
         // If intensity difference is minimal, use flat shading
         if (pi2 - pi0 < 0.01) {
-          if(currentFillStyle !== c16_0){
+          if (currentFillStyle !== c16_0) {
             ctx.strokeStyle = ctx.fillStyle = pc0;
             currentFillStyle = c16_0;
           }

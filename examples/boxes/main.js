@@ -20,16 +20,15 @@ myGame.world.tickRegister({
     }
     dt = time.now;
 
-
-    if(boxes.length < targetCount){
-      const boxesLen = boxes.length
+    if (boxes.length < targetCount) {
+      const boxesLen = boxes.length;
       for (let j = 0; j < targetCount - boxesLen; j++) {
         const box = createBox(boxes.length);
         ball.transform.addChild(box.child.transform);
         boxes.push(box);
         myGame.world.tickRegister(box);
       }
-    }else if(boxes.length > targetCount){
+    } else if (boxes.length > targetCount) {
       const i1 = boxes.length - targetCount;
       for (let i = 0; i < i1; i++) {
         const box = boxes.pop();
@@ -40,7 +39,7 @@ myGame.world.tickRegister({
   },
 });
 
-function createBox(){
+function createBox() {
   const child = new scaliaEngine.Box();
   child.meshRenderer.layer = 1;
   child.meshRenderer.shaderType = 0;
@@ -68,14 +67,14 @@ function createBox(){
   }
 
   return {
-      tick: (time) => {
-        if (dt !== null) {
-          child.transform.rotate(0, 0, 3);
-        }
-        dt = time.now;
-      },
-      child,
-    };
+    tick: (time) => {
+      if (dt !== null) {
+        child.transform.rotate(0, 0, 3);
+      }
+      dt = time.now;
+    },
+    child,
+  };
 }
 
 const boxes = [];
@@ -127,7 +126,7 @@ const debugRange = document.getElementById("debug-range");
 const debugRangeVal = document.getElementById("debug-range-value");
 
 debugRange.value = targetCount;
-debugRange.addEventListener('input', (e)=>{
+debugRange.addEventListener("input", (e) => {
   targetCount = parseInt(e.target.value);
 });
 
