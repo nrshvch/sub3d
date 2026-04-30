@@ -15,7 +15,7 @@ import Box from "./primitives/Box.js";
 import Cone from "./primitives/Cone.js";
 import Ball from "./primitives/Ball.js";
 import Canvas2dViewport from "./Canvas2dViewport.js";
-import DirectionalLight from "./DirectionalLight.js";
+import Light from "./Light.js";
 
 export default window.scaliaEngine = {
   config: config,
@@ -34,6 +34,6 @@ export default window.scaliaEngine = {
   Box: Box,
   Cone: Cone,
   Ball: Ball,
-  DirectionalLight: DirectionalLight,
+  Light: Light,
   Canvas2dViewport: Canvas2dViewport,
 };

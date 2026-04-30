@@ -30,6 +30,7 @@ export default function Canvas2dRenderer() {
   this.meshIndexBuffer = new Uint32Array(0);
   this.meshFaceIndexBuffer = new Uint32Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
+  this.lightsIndexBuffer = new Uint32Array(10);
   this.layerBuffers = [];
   this.layerBufferLengths = new Uint32Array(1);
 
@@ -83,6 +84,7 @@ p.render = function (camera, viewport, stats) {
     meshIndexBuffer = this.meshIndexBuffer,
     meshFaceIndexBuffer = this.meshFaceIndexBuffer,
     visibleObjectsBuffer = this.visibleObjectsBuffer,
+    lightsIndexBuffer = this.lightsIndexBuffer,
     layerBuffers = this.layerBuffers,
     layerBufferLengths = this.layerBufferLengths,
     mat4Scratchpad1 = this.mat4Scratchpad1,
@@ -122,15 +124,22 @@ p.render = function (camera, viewport, stats) {
     visibleObjectsBuffer.set(_visibleObjectsBuffer);
   }
 
-  const firstPassVisibleObjectsBufferLen = roughCull(
+  //worst case scenario - every go has a light
+  if(lightsIndexBuffer.length < gameObjects.length){
+    const _lightsIndexBuffer = lightsIndexBuffer;
+    this.lightsIndexBuffer = lightsIndexBuffer = new Uint32Array(gameObjects.length);
+    lightsIndexBuffer.set(_lightsIndexBuffer);
+  }
+
+   roughCull(
     gameObjects,
     clipSpaceMatrix,
     visibleObjectsBuffer,
+    lightsIndexBuffer
   );
 
-  const visibleObjectsBufferLen = exactCull(
+  exactCull(
     visibleObjectsBuffer,
-    firstPassVisibleObjectsBufferLen,
     gameObjects,
     clipSpaceMatrix,
   );
@@ -141,8 +150,10 @@ p.render = function (camera, viewport, stats) {
     layerBufferLengths.set(_layerBufferLengths);
   }
 
+  //first element is length
+  const visibleObjectsBufferLen = visibleObjectsBuffer[0]+1;
   // group visible object to layer buffers
-  for (i = 0; i < visibleObjectsBufferLen; i++) {
+  for (i = 1; i < visibleObjectsBufferLen; i++) {
     const go = gameObjects[visibleObjectsBuffer[i]];
     if (go.meshRenderer) {
       const renderer = go.meshRenderer;
@@ -294,6 +305,8 @@ p.render = function (camera, viewport, stats) {
       meshFaceIndexBuffer,
       renderers,
       this.wireframe,
+      lightsIndexBuffer,
+      gameObjects
     );
 
     for (j = 0; j < renderersCount; j++) {
@@ -325,13 +338,15 @@ p.render = function (camera, viewport, stats) {
  * Works for Perspective and Orthographic.
  * @param {Array} gameobjects - Your array of objects
  * @param {Float32Array} m - Clip-space (View-Projection) Matrix
- * @param {Uint32Array} out_visibleBuffer - Buffer to store indices
+ * @param {Uint32Array} out_visibleBuffer - Buffer to store indices. First element stores length.
+ * @param {Uint32Array} out_lightsIndexBuffer - Buffer to store light source indices. First element store length.
  * @returns {number} visibleCount
  */
-function roughCull(gameobjects, m, out_visibleBuffer) {
+function roughCull(gameobjects, m, out_visibleBuffer, out_lightsIndexBuffer) {
   let visibleCount = 0;
+  let lightsCount = 0;
 
-  // 1. Matrix Registers (Extract once)
+  // Matrix Registers (Extract once)
   const m0 = m[0],
     m1 = m[1],
     m2 = m[2],
@@ -349,7 +364,7 @@ function roughCull(gameobjects, m, out_visibleBuffer) {
     m14 = m[14],
     m15 = m[15];
 
-  // 2. Plane Registers (Extract & Normalize once)
+  // Plane Registers (Extract & Normalize once)
   // Formula: Plane = Row4 +/- Row[n]
 
   // Left
@@ -418,41 +433,71 @@ function roughCull(gameobjects, m, out_visibleBuffer) {
   fZ *= invMag;
   fW *= invMag;
 
-  // 3. Hot Loop
   const len = gameobjects.length;
   for (let i = 0; i < len; i++) {
     const obj = gameobjects[i];
-    if (!obj.meshRenderer || !obj.meshRenderer.enabled) continue;
 
-    const t = obj.transform.worldMatrix;
-    const b = obj.meshRenderer.bounds;
+    if (obj.meshRenderer && obj.meshRenderer.enabled) {
+      const t = obj.transform.worldMatrix;
+      const b = obj.meshRenderer.bounds;
 
-    // Transform Sphere Center to World
-    const lx = b[28],
-      ly = b[29],
-      lz = b[30];
-    const wx = t[0] * lx + t[4] * ly + t[8] * lz + t[12];
-    const wy = t[1] * lx + t[5] * ly + t[9] * lz + t[13];
-    const wz = t[2] * lx + t[6] * ly + t[10] * lz + t[14];
+      // Transform Sphere Center to World
+      const lx = b[28],
+        ly = b[29],
+        lz = b[30];
+      const wx = t[0] * lx + t[4] * ly + t[8] * lz + t[12];
+      const wy = t[1] * lx + t[5] * ly + t[9] * lz + t[13];
+      const wz = t[2] * lx + t[6] * ly + t[10] * lz + t[14];
 
-    // Max World Scale for Radius
-    const sX = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
-    const sY = t[4] * t[4] + t[5] * t[5] + t[6] * t[6];
-    const sZ = t[8] * t[8] + t[9] * t[9] + t[10] * t[10];
-    const rWorld = b[31] * Math.sqrt(Math.max(sX, sY, sZ));
+      // Max World Scale for Radius
+      const sX = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
+      const sY = t[4] * t[4] + t[5] * t[5] + t[6] * t[6];
+      const sZ = t[8] * t[8] + t[9] * t[9] + t[10] * t[10];
+      const rWorld = b[31] * Math.sqrt(Math.max(sX, sY, sZ));
 
-    // Sphere-Plane Dot Products (Direct Register Access)
-    if (lX * wx + lY * wy + lZ * wz + lW < -rWorld) continue;
-    if (rX * wx + rY * wy + rZ * wz + rW < -rWorld) continue;
-    if (bX * wx + bY * wy + bZ * wz + bW < -rWorld) continue;
-    if (tX * wx + tY * wy + tZ * wz + tW < -rWorld) continue;
-    if (nX * wx + nY * wy + nZ * wz + nW < -rWorld) continue;
-    if (fX * wx + fY * wy + fZ * wz + fW < -rWorld) continue;
+      // Sphere-Plane Dot Products (Direct Register Access)
+      if (lX * wx + lY * wy + lZ * wz + lW < -rWorld) continue;
+      if (rX * wx + rY * wy + rZ * wz + rW < -rWorld) continue;
+      if (bX * wx + bY * wy + bZ * wz + bW < -rWorld) continue;
+      if (tX * wx + tY * wy + tZ * wz + tW < -rWorld) continue;
+      if (nX * wx + nY * wy + nZ * wz + nW < -rWorld) continue;
+      if (fX * wx + fY * wy + fZ * wz + fW < -rWorld) continue;
 
-    out_visibleBuffer[visibleCount++] = i;
+      out_visibleBuffer[++visibleCount] = i;
+    }
+
+    if(obj.light){
+      if(obj.light.type === 1){ //POINT
+        const t = obj.transform.worldMatrix;
+
+        // Sphere World Center
+        const wx = t[12];
+        const wy = t[13];
+        const wz = t[14];
+
+        // Max World Scale for Radius
+        const sX = t[0] * t[0] + t[1] * t[1] + t[2] * t[2];
+        const sY = t[4] * t[4] + t[5] * t[5] + t[6] * t[6];
+        const sZ = t[8] * t[8] + t[9] * t[9] + t[10] * t[10];
+        const rWorld = obj.light.range * Math.sqrt(Math.max(sX, sY, sZ));
+
+        // Sphere-Plane Dot Products (Direct Register Access)
+        if (lX * wx + lY * wy + lZ * wz + lW < -rWorld) continue;
+        if (rX * wx + rY * wy + rZ * wz + rW < -rWorld) continue;
+        if (bX * wx + bY * wy + bZ * wz + bW < -rWorld) continue;
+        if (tX * wx + tY * wy + tZ * wz + tW < -rWorld) continue;
+        if (nX * wx + nY * wy + nZ * wz + nW < -rWorld) continue;
+        if (fX * wx + fY * wy + fZ * wz + fW < -rWorld) continue;
+
+        out_lightsIndexBuffer[++lightsCount] = i;
+      }else{ //DIRECTIONAL
+        out_lightsIndexBuffer[++lightsCount] = i;
+      }
+    }
   }
 
-  return visibleCount;
+  out_visibleBuffer[0] = visibleCount;
+  out_lightsIndexBuffer[0] = lightsCount
 }
 
 /**
@@ -460,16 +505,13 @@ function roughCull(gameobjects, m, out_visibleBuffer) {
  * @description Performs a second-pass AABB-Frustum intersection test using the Cohen-Sutherland
  * style Outcode algorithm. It projects the 8 corners of an object's bounding box into
  * Clip Space and culls objects where the entire volume resides outside any single frustum plane.
- * * @name Cohen-Sutherland_AABB_Culling
- * @param {Uint32Array} out_visibilityBuffer - Indices of objects surviving the first pass.
- * @param {number} firstPassCount - The number of indices currently in the buffer.
+ * @name Cohen-Sutherland_AABB_Culling
+ * @param {Uint32Array} out_visibilityBuffer - Indices of objects surviving the first pass. First element is length.
  * @param {Array<GameObject>} gameObjects - The source array of game objects.
  * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
- * @returns {number} The new count of visible objects in out_visibilityBuffer.
  */
 function exactCull(
   out_visibilityBuffer,
-  firstPassCount,
   gameObjects,
   clipSpaceMatrix,
 ) {
@@ -493,7 +535,10 @@ function exactCull(
 
   let visibleCount = 0;
 
-  for (let i = 0; i < firstPassCount; i++) {
+  //length stored in first element
+  const l = out_visibilityBuffer[0] + 1;
+
+  for (let i = 1; i < l; i++) {
     const objIdx = out_visibilityBuffer[i];
     const go = gameObjects[objIdx];
 
@@ -544,7 +589,7 @@ function exactCull(
 
       // If any bit survived, the whole box is outside that specific plane.
       if (trivialRejectMask === 0) {
-        out_visibilityBuffer[visibleCount++] = objIdx;
+        out_visibilityBuffer[++visibleCount] = objIdx;
       }
     } else {
       // Logic-only/Point fallback
@@ -564,12 +609,12 @@ function exactCull(
         cz >= -cw &&
         cz <= cw
       ) {
-        out_visibilityBuffer[visibleCount++] = objIdx;
+        out_visibilityBuffer[++visibleCount] = objIdx;
       }
     }
   }
 
-  return visibleCount;
+  out_visibilityBuffer[0] = visibleCount;
 }
 
 let callId = 0;
@@ -1027,13 +1072,15 @@ function drawTriangles(
   fogFarPane,
   scene,
   lightDirBuffer,
-  ambientLightIntensity,
+  ambientLightRgb,
   faceNormalsBuffer,
   vertexNormalsBuffer,
   meshIndexBuffer,
   meshFaceIndexBuffer,
   renderers,
   wireframe,
+  lightsIndexBuffer,
+  gameObjects
 ) {
   const halfW = w * 0.5,
     halfH = h * 0.5;
@@ -1069,31 +1116,61 @@ function drawTriangles(
     switch (wireframe ? 3 : shaderTypeBuffer[idx]) {
       case 0: {
         //FLAT (light shading + fog)
-        // Calculating face lightning
-        const light = scene.light;
 
+        // Calculating face lightning
         const color32 = colorBuffer[idx];
         let r = (color32 >>> 24) & 255;
         let g = (color32 >>> 16) & 255;
         let b = (color32 >>> 8) & 255;
-        let intensity = 1.0;
 
-        if (light) {
-          const lx = -light.transform.worldMatrix[8];
-          const ly = -light.transform.worldMatrix[9];
-          const lz = -light.transform.worldMatrix[10];
+        //TODO use rgb for fog, then remove this
+        let intensity = ambientLightRgb / 0xffffff; // cumulative added intensity from all lights
 
-          const wnx = faceNormalsBuffer[idx * 3];
-          const wny = faceNormalsBuffer[idx * 3 + 1];
-          const wnz = faceNormalsBuffer[idx * 3 + 2];
+        let ir = (ambientLightRgb >>> 16) & 255;
+        let ig = (ambientLightRgb >>> 8) & 255;
+        let ib = ambientLightRgb & 255;
 
-          const dot = wnx * lx + wny * ly + wnz * lz;
-          intensity = Math.max(ambientLightIntensity, dot);
+        const wnx = faceNormalsBuffer[idx * 3];
+        const wny = faceNormalsBuffer[idx * 3 + 1];
+        const wnz = faceNormalsBuffer[idx * 3 + 2];
 
-          r *= intensity;
-          g *= intensity;
-          b *= intensity;
+        const lightsIndexBufferLen = lightsIndexBuffer[0] + 1;
+        for (let l = 1; l < lightsIndexBufferLen; l++) {
+          const lightGO = gameObjects[lightsIndexBuffer[l]];
+          if (lightGO.light.type === 0) {
+            // DIRECTIONAL
+            const lx = -lightGO.transform.worldMatrix[8];
+            const ly = -lightGO.transform.worldMatrix[9];
+            const lz = -lightGO.transform.worldMatrix[10];
+
+            const dot = wnx * lx + wny * ly + wnz * lz;
+            if (dot > 0) {
+              //TODO use rgb for fog, then remove this
+              intensity += dot;
+
+              ir += ((lightGO.light.color >>> 16) & 255) * dot;
+              ig += ((lightGO.light.color >>> 8) & 255) * dot;
+              ib += (lightGO.light.color & 255) * dot;
+            }
+          }
         }
+
+        // 1 / 255 = 0.0039215
+        ir *= 0.0039215;
+        ig *= 0.0039215;
+        ib *= 0.0039215;
+
+        r = (r * ir) | 0;
+        g = (g * ig) | 0;
+        b = (b * ib) | 0;
+
+        // Math.min
+        r = r > 255 ? 255 : r;
+        g = g > 255 ? 255 : g;
+        b = b > 255 ? 255 : b;
+
+        //TODO use rgb for fog, then remove this
+        intensity = Math.min(intensity, 1);
 
         // Calculating fog
         const depth = depthBuffer[idx];
@@ -1262,6 +1339,7 @@ function drawTriangles(
               }
 
               if (overlayAlpha > 1) overlayAlpha = 1;
+              //TODO: fix asap. No string concatenation allowed.
               ctx.fillStyle = `rgba(${overlayR},${overlayG},${overlayB},${overlayAlpha.toFixed(2)})`;
               ctx.fill();
             }
@@ -1446,38 +1524,100 @@ function drawTriangles(
       }
       case 4: {
         // SMOOTH (Gouraud Shading)
-        const light = scene.light;
-
         const color32 = colorBuffer[idx];
         const r = (color32 >>> 24) & 255;
         const g = (color32 >>> 16) & 255;
         const b = (color32 >>> 8) & 255;
 
+        const ambientLightIntensity = ambientLightRgb / 0xffffff
+
+        let litR = (ambientLightRgb >>> 16) & 255;
+        let litG = (ambientLightRgb >>> 8) & 255;
+        let litB = ambientLightRgb & 255;
+
         // Calculate illumination at each vertex
-        let i0 = 1,
-          i1 = 1,
-          i2 = 1;
+        let i0 = ambientLightIntensity,
+          i1 = ambientLightIntensity,
+          i2 = ambientLightIntensity;
 
-        if (light) {
-          const lx = -light.transform.worldMatrix[8];
-          const ly = -light.transform.worldMatrix[9];
-          const lz = -light.transform.worldMatrix[10];
+        let ir0 = litR,
+          ig0 = litG,
+          ib0 = litB,
+          ir1 = litR,
+          ig1 = litG,
+          ib1 = litB,
+          ir2 = litR,
+          ig2 = litG,
+          ib2 = litB;
 
-          let nx0 = vertexNormalsBuffer[v0Idx];
-          let ny0 = vertexNormalsBuffer[v0Idx + 1];
-          let nz0 = vertexNormalsBuffer[v0Idx + 2];
-          i0 = Math.max(ambientLightIntensity, nx0 * lx + ny0 * ly + nz0 * lz);
+        let nx0 = vertexNormalsBuffer[v0Idx],
+          ny0 = vertexNormalsBuffer[v0Idx + 1],
+          nz0 = vertexNormalsBuffer[v0Idx + 2];
+        let nx1 = vertexNormalsBuffer[v1Idx],
+          ny1 = vertexNormalsBuffer[v1Idx + 1],
+          nz1 = vertexNormalsBuffer[v1Idx + 2];
+        let nx2 = vertexNormalsBuffer[v2Idx],
+          ny2 = vertexNormalsBuffer[v2Idx + 1],
+          nz2 = vertexNormalsBuffer[v2Idx + 2];
 
-          let nx1 = vertexNormalsBuffer[v1Idx];
-          let ny1 = vertexNormalsBuffer[v1Idx + 1];
-          let nz1 = vertexNormalsBuffer[v1Idx + 2];
-          i1 = Math.max(ambientLightIntensity, nx1 * lx + ny1 * ly + nz1 * lz);
+        const lightsIndexBufferLen = lightsIndexBuffer[0] + 1;
+        for (let l = 1; l < lightsIndexBufferLen; l++) {
+          const lightGO = gameObjects[lightsIndexBuffer[l]];
+          // DIRECTIONAL
+          if (lightGO.light.type === 0) {
+            const lightR = ((lightGO.light.color >>> 16) & 255);
+            const lightG = ((lightGO.light.color >>> 8) & 255);
+            const lightB = (lightGO.light.color & 255);
 
-          let nx2 = vertexNormalsBuffer[v2Idx];
-          let ny2 = vertexNormalsBuffer[v2Idx + 1];
-          let nz2 = vertexNormalsBuffer[v2Idx + 2];
-          i2 = Math.max(ambientLightIntensity, nx2 * lx + ny2 * ly + nz2 * lz);
+            const lx = -lightGO.transform.worldMatrix[8];
+            const ly = -lightGO.transform.worldMatrix[9];
+            const lz = -lightGO.transform.worldMatrix[10];
+
+            let d0 = nx0 * lx + ny0 * ly + nz0 * lz;
+            let d1 = nx1 * lx + ny1 * ly + nz1 * lz;
+            let d2 = nx2 * lx + ny2 * ly + nz2 * lz;
+
+            if (d0 > 0) {
+              i0 += d0;
+
+              ir0 += lightR * d0;
+              ig0 += lightG * d0;
+              ib0 += lightB * d0;
+            }
+
+            if (d1 > 0) {
+              i1 += d1
+
+              ir1 += lightR * d1;
+              ig1 += lightG * d1;
+              ib1 += lightB * d1;
+            }
+
+            if (d2 > 0) {
+              i2 += d2
+
+              ir2 += lightR * d2;
+              ig2 += lightG * d2;
+              ib2 += lightB * d2;
+            }
+          }
         }
+
+        // 1 / 255 = 0.0039215
+        ir0 *= 0.0039215;
+        ig0 *= 0.0039215;
+        ib0 *= 0.0039215;
+        ir1 *= 0.0039215;
+        ig1 *= 0.0039215;
+        ib1 *= 0.0039215;
+        ir2 *= 0.0039215;
+        ig2 *= 0.0039215;
+        ib2 *= 0.0039215;
+
+        //TODO use rgb for fog, then remove this
+        i0 = Math.min(i0, 1);
+        i1 = Math.min(i1, 1);
+        i2 = Math.min(i2, 1);
 
         // Calculating fog based on face centroid
         let fogAmount = 0;
@@ -1518,15 +1658,26 @@ function drawTriangles(
         if (fogAmount > 1) fogAmount = 1;
 
         // Base quantized colors per vertex
-        let cr0 = r * i0;
-        let cg0 = g * i0;
-        let cb0 = b * i0;
-        let cr1 = r * i1;
-        let cg1 = g * i1;
-        let cb1 = b * i1;
-        let cr2 = r * i2;
-        let cg2 = g * i2;
-        let cb2 = b * i2;
+        let cr0 = r * ir0;
+        let cg0 = g * ig0;
+        let cb0 = b * ib0;
+        let cr1 = r * ir1;
+        let cg1 = g * ig1;
+        let cb1 = b * ib1;
+        let cr2 = r * ir2;
+        let cg2 = g * ig2;
+        let cb2 = b * ib2;
+
+        // Math.min(255);
+        cr0 = cr0 > 255 ? 255 : cr0;
+        cg0 = cg0 > 255 ? 255 : cg0;
+        cb0 = cb0 > 255 ? 255 : cb0;
+        cr1 = cr1 > 255 ? 255 : cr1;
+        cg1 = cg1 > 255 ? 255 : cg1;
+        cb1 = cb1 > 255 ? 255 : cb1;
+        cr2 = cr2 > 255 ? 255 : cr2;
+        cg2 = cg2 > 255 ? 255 : cg2;
+        cb2 = cb2 > 255 ? 255 : cb2;
 
         if (fogAmount > 0) {
           const invFog = 1 - fogAmount;
