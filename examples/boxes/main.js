@@ -7,7 +7,7 @@ let targetCount = 500;
 
 const ball = new scaliaEngine.Ball();
 ball.meshRenderer.layer = 1;
-ball.meshRenderer.shaderType = 0;
+ball.meshRenderer.shaderType = 4;
 
 ball.transform.scale(20, 20, 20);
 ball.debug = true;
