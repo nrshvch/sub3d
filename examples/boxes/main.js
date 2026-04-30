@@ -7,7 +7,7 @@ let targetCount = 500;
 
 const ball = new scaliaEngine.Ball();
 ball.meshRenderer.layer = 1;
-ball.meshRenderer.shaderType = 4;
+ball.meshRenderer.shaderType = 0;
 
 ball.transform.scale(20, 20, 20);
 ball.debug = true;
@@ -90,14 +90,14 @@ cameraObject.camera.fogFarPane = 500;
 cameraObject.camera.fogNearPane = 0;
 cameraObject.camera.fogColor = new Uint8Array([140, 180, 200]);
 cameraObject.camera.bgColor = new Uint8Array([140, 180, 200]);
-cameraObject.camera.ambientLight = 0.5;
+cameraObject.camera.ambientLight = 0x444444;
 
 cameraObject.transform.setPosition(0, 0, 0);
 
 myGame.world.scene.addGameObject(cameraObject);
 
-const sun = new scaliaEngine.DirectionalLight();
-myGame.world.scene.addLightSource(sun);
+const sun = new scaliaEngine.Light();
+myGame.world.scene.addGameObject(sun);
 sun.transform.rotate(45, 0, 0);
 
 myGame.run();

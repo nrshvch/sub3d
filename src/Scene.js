@@ -10,8 +10,6 @@ var p = Scenes.prototype;
  */
 p.gameObjects = null;
 
-p.light = null;
-
 /**
  * Array with gameObjects
  * @param {GameObject} gameObject
@@ -21,10 +19,6 @@ p.addGameObject = function (gameObject) {
     gameObject.setScene(this);
 }
 
-p.addLightSource = function (gameObject) {
-    this.light = gameObject;
-    return this.addGameObject(gameObject);
-}
 
 p.removeGameObject = function (gameObject) {
   this.gameObjects[this.gameObjects.indexOf(gameObject)] = this.gameObjects[this.gameObjects.length-1];

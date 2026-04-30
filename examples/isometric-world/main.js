@@ -349,7 +349,7 @@ cameraObject.camera.fogFarPane = 2500;
 cameraObject.camera.fogNearPane = 1500;
 cameraObject.camera.fogColor = new Uint8Array([140, 180, 200]);
 cameraObject.camera.bgColor = new Uint8Array([140, 180, 200]);
-cameraObject.camera.ambientLight = 0.5;
+cameraObject.camera.ambientLight = 0x202020;
 cameraObject.transform.rotate(30, 45, 0);
 cameraObject.transform.translate(0, 0, 0);
 
@@ -433,8 +433,8 @@ document.onwheel = function (e) {
 
 myGame.world.scene.addGameObject(cameraObject);
 
-const sun = new scaliaEngine.DirectionalLight();
-myGame.world.scene.addLightSource(sun);
+const sun = new scaliaEngine.Light();
+myGame.world.scene.addGameObject(sun);
 sun.transform.rotate(45, 0, 0);
 myGame.world.tickRegister({
   tick: (time) => {
