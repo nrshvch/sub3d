@@ -1795,12 +1795,14 @@ function drawTriangles(
         }
 
         // If intensity difference is minimal, use flat shading
-        if (pi2 - pi0 < 0.01 && currentFillStyle !== c16_0) {
-          ctx.strokeStyle = ctx.fillStyle = pc0;
-          currentFillStyle = c16_0;
+        if (pi2 - pi0 < 0.01) {
+          if(currentFillStyle !== c16_0){
+            ctx.strokeStyle = ctx.fillStyle = pc0;
+            currentFillStyle = c16_0;
+          }
         } else {
           // Precise 2D parametric mapping of Gouraud triangle gradient
-          const t_val = (pi1 - pi0) / (pi2 - pi0); //TODO: possible NaN if pi0,pi1,pi2 are equal
+          const t_val = (pi1 - pi0) / (pi2 - pi0);
 
           const p13x = _px0 + t_val * (_px2 - _px0);
           const p13y = _py0 + t_val * (_py2 - _py0);
