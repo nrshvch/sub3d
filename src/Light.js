@@ -4,7 +4,7 @@ import Component from "./Component.js";
 function LightComponent() {
   Component.call(this);
   this.type = Light.Type.DIRECTIONAL; // Default to directional
-  this.color = 0xFFFFFF; // Default white light
+  this.color = 0xffffff; // Default white light
   this.range = 10;
 }
 
