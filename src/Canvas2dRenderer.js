@@ -58,7 +58,7 @@ p.mat3Scratchpad1 = new Float32Array(9);
 p.render = function (camera, viewport, stats) {
   let t0 = Date.now();
 
-  let gameObjects = camera.scene.retrieve(camera),
+  let gameObjects = camera.scene.retrieve(),
     layersCount = config.layersCount,
     vw = viewport.width,
     vh = viewport.height,
@@ -96,21 +96,24 @@ p.render = function (camera, viewport, stats) {
   let drawCalls = 0;
   let faces = 0;
 
-  if (camera.camera.fogType !== CameraComponent.FogType.NONE) {
-    const cam = camera.camera;
+  const cam = camera.camera;
+  const bgColor =
+    camera.camera.fogType !== CameraComponent.FogType.NONE
+      ? cam.fogColor
+      : cam.bgColor;
 
-    // 1. Quantize 8-bit to 5-6-5 bits
-    const qr = cam.fogColor[0] & 0xf8; // Keep 5 bits
-    const qg = cam.fogColor[1] & 0xfc; // Keep 6 bits
-    const qb = cam.fogColor[2] & 0xf8; // Keep 5 bits
+  // 1. Quantize 8-bit to 5-6-5 bits
+  const qr = bgColor[0] & 0xf8; // Keep 5 bits
+  const qg = bgColor[1] & 0xfc; // Keep 6 bits
+  const qb = bgColor[2] & 0xf8; // Keep 5 bits
 
-    // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-    const key = (qr << 8) | (qg << 3) | (qb >> 3);
+  // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+  const key = (qr << 8) | (qg << 3) | (qb >> 3);
 
-    viewport.context.fillStyle = PALETTE_16BIT[key];
-    viewport.context.fillRect(0, 0, viewport.width, viewport.height);
-  }
+  viewport.context.fillStyle = PALETTE_16BIT[key];
+  viewport.context.fillRect(0, 0, viewport.width, viewport.height);
 
+  //worst case scenario - every object is visible
   if (visibleObjectsBuffer.length < gameObjects.length) {
     const _visibleObjectsBuffer = visibleObjectsBuffer;
     this.visibleObjectsBuffer = visibleObjectsBuffer = new Uint32Array(
@@ -310,6 +313,7 @@ p.render = function (camera, viewport, stats) {
     layerBufferLengths[i] = 0;
   }
 
+  stats.totalObjects = gameObjects.length;
   stats.visibleObjects = visibleObjectsBufferLen;
   stats.drawCalls = drawCalls;
   stats.faces = faces;
