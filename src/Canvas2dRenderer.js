@@ -1,13 +1,9 @@
-// TODO: get rid of expensive fillStyle string concat e.g. rgba(...
 // TODO: dont pass gameObjects object into drawTriangles, move lights params into typed buffers
 // TODO: in FLAT and GOURAUD shaders use rgb light for fog
 // TODO: normalize colors format to 0xFFFFF or 0xFFFFFFFF
 // TODO: consider turning layerBuffers into single types array sorted by layer index
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
-// TODO: get rid of "strokes" filling gaps between polygons, apply same approach used for gaps textures instead
-// TODO: beginPath gets called twice per flat shader, once for basic path and once for expanded to compensate for visible gaps
 // TODO: use rgba instead of globalAlpha for color fill
-// TODO: lineStyle changes to miter only once for wireframe shader, but the check is done in every shader redundantly.
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
@@ -1096,8 +1092,8 @@ function drawTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  let currentLineWidth = -1; // -1 = unset, 1 = 1 round (normal), -2 = 0.5 miter (wireframe)
-  let currentFillStyle = -1; // -1 = unset, -2 = wireframe, -3 = gradient, number = quantized color key in PALLETE16
+  let prevFillStyle = -1; // -1 = unset, -2 = wireframe, -3 = gradient, number = quantized color key in PALLETE16
+  let prevStrokeStyle = -1; // -1 = unset, -2 = wireframe
 
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i]; //take face index
@@ -1114,11 +1110,37 @@ function drawTriangles(
     const px2 = vertexBuffer[v2Idx] * halfW + halfW;
     const py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
 
-    ctx.beginPath();
-    ctx.moveTo(px0, py0);
-    ctx.lineTo(px1, py1);
-    ctx.lineTo(px2, py2);
-    ctx.closePath();
+    // Calculate centroid
+    const cx = (px0 + px1 + px2) * 0.33333;
+    const cy = (py0 + py1 + py2) * 0.33333;
+
+    // Expand vertices outward from centroid to compensate for subpixel gaps
+    const dx0 = px0 - cx;
+    const dy0 = py0 - cy;
+    const a0 = Math.abs(dx0);
+    const b0 = Math.abs(dy0);
+    const len0 = a0 > b0 ? a0 + 0.4 * b0 : b0 + 0.4 * a0;
+    const invLen0 = len0 > 0 ? 0.6 / len0 : 0;
+    const epx0 = px0 + dx0 * invLen0;
+    const epy0 = py0 + dy0 * invLen0;
+
+    const dx1 = px1 - cx;
+    const dy1 = py1 - cy;
+    const a1 = Math.abs(dx1);
+    const b1 = Math.abs(dy1);
+    const len1 = a1 > b1 ? a1 + 0.4 * b1 : b1 + 0.4 * a1;
+    const invLen1 = len1 > 0 ? 0.6 / len1 : 0;
+    const epx1 = px1 + dx1 * invLen1;
+    const epy1 = py1 + dy1 * invLen1;
+
+    const dx2 = px2 - cx;
+    const dy2 = py2 - cy;
+    const a2 = Math.abs(dx2);
+    const b2 = Math.abs(dy2);
+    const len2 = a2 > b2 ? a2 + 0.4 * b2 : b2 + 0.4 * a2;
+    const invLen2 = len2 > 0 ? 0.6 / len2 : 0;
+    const epx2 = px2 + dx2 * invLen2;
+    const epy2 = py2 + dy2 * invLen2;
 
     switch (wireframe ? 3 : shaderTypeBuffer[idx]) {
       case 0: {
@@ -1251,6 +1273,7 @@ function drawTriangles(
 
           if (Math.abs(delta) > 0.00001) {
             const invDelta = 1 / delta;
+            //TODO: cant we reuse those from previous calculations?
             const a =
               (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
             const c =
@@ -1273,42 +1296,6 @@ function drawTriangles(
 
             ctx.save();
 
-            //TODO: this should be done for every shader, to avoid using stroke.
-            // Expand clipping path to mask native canvas antialiasing seams
-            const cx = (px0 + px1 + px2) * 0.33333;
-            const cy = (py0 + py1 + py2) * 0.33333;
-
-            const dx0 = px0 - cx;
-            const dy0 = py0 - cy;
-            //L1-norm approximation trick to avoid sqrt. Equal to const len0 = Math.sqrt(dx0*dx0 + dy0*dy0);
-            const a0 = Math.abs(dx0);
-            const b0 = Math.abs(dy0);
-            const len0 = a0 > b0 ? a0 + 0.4 * b0 : b0 + 0.4 * a0;
-            const invLen0 = len0 > 0 ? 0.6 / len0 : 0;
-            const epx0 = px0 + dx0 * invLen0;
-            const epy0 = py0 + dy0 * invLen0;
-
-            const dx1 = px1 - cx;
-            const dy1 = py1 - cy;
-            //L1-norm approximation trick to avoid sqrt. Equal to const len1 = Math.sqrt(dx1*dx1 + dy1*dy1);
-            const a1 = Math.abs(dx1);
-            const b1 = Math.abs(dy1);
-            const len1 = a1 > b1 ? a1 + 0.4 * b1 : b1 + 0.4 * a1;
-            const invLen1 = len1 > 0 ? 0.6 / len1 : 0;
-            const epx1 = px1 + dx1 * invLen1;
-            const epy1 = py1 + dy1 * invLen1;
-
-            const dx2 = px2 - cx;
-            const dy2 = py2 - cy;
-            //L1-norm approximation trick to avoid sqrt. Equal to const len2 = Math.sqrt(dx2*dx2 + dy2*dy2);
-            const a2 = Math.abs(dx2);
-            const b2 = Math.abs(dy2);
-            const len2 = a2 > b2 ? a2 + 0.4 * b2 : b2 + 0.4 * a2;
-            const invLen2 = len2 > 0 ? 0.6 / len2 : 0;
-            const epx2 = px2 + dx2 * invLen2;
-            const epy2 = py2 + dy2 * invLen2;
-
-            //TODO: beginPath is called for second time. Put this expanded path instead of one above (at the beginning drawTriangles)
             ctx.beginPath();
             ctx.moveTo(epx0, epy0);
             ctx.lineTo(epx1, epy1);
@@ -1335,20 +1322,11 @@ function drawTriangles(
 
             ctx.globalCompositeOperation = "multiply";
 
-            if (currentFillStyle !== color16L) {
-              ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16L];
-              currentFillStyle = color16L;
+            if (prevFillStyle !== color16L) {
+              ctx.fillStyle = PALETTE_16BIT[color16L];
+              prevFillStyle = color16L;
             }
 
-            // stroke applies a bit outside the texture, and looks weird with multiply. disabling.
-            // if (currentLineWidth !== 1) {
-            //   ctx.lineJoin = "round";
-            //   ctx.lineWidth = 1;
-            //   currentLineWidth = 1;
-            // }
-
-            // stroke applies a bit outside the texture, and looks weird with multiply. disabling.
-            // ctx.stroke();
             ctx.fill();
 
             // Restore default blending mode for the rest of the renderer
@@ -1367,19 +1345,11 @@ function drawTriangles(
               //TODO: use rgba colors instead.
               ctx.globalAlpha = fogAmount;
 
-              if (currentFillStyle !== color16F) {
-                ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16F];
-                currentFillStyle = color16F;
+              if (prevFillStyle !== color16F) {
+                ctx.fillStyle = PALETTE_16BIT[color16F];
+                prevFillStyle = color16F;
               }
 
-              if (currentLineWidth !== 1) {
-                ctx.lineJoin = "round";
-                ctx.lineWidth = 1;
-                currentLineWidth = 1;
-              }
-
-              // this stroke covers weird gaps when polygon goes off into fog. This ads some polygon outline in semi-fog though.
-              ctx.stroke();
               ctx.fill();
 
               // Reset alpha
@@ -1390,6 +1360,12 @@ function drawTriangles(
           }
         }
 
+        ctx.beginPath();
+        ctx.moveTo(epx0, epy0);
+        ctx.lineTo(epx1, epy1);
+        ctx.lineTo(epx2, epy2);
+        ctx.closePath();
+
         // Quantize 8-bit color channels to 5-6-5 bits
         const qr = r & 0xf8; // Keep 5 bits
         const qg = g & 0xfc; // Keep 6 bits
@@ -1398,18 +1374,11 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        if (currentFillStyle !== color16) {
-          ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
-          currentFillStyle = color16;
+        if (prevFillStyle !== color16) {
+          ctx.fillStyle = PALETTE_16BIT[color16];
+          prevFillStyle = color16;
         }
 
-        if (currentLineWidth !== 1) {
-          ctx.lineJoin = "round";
-          ctx.lineWidth = 1;
-          currentLineWidth = 1;
-        }
-
-        ctx.stroke();
         ctx.fill();
 
         break;
@@ -1481,6 +1450,12 @@ function drawTriangles(
           b = (b * (1 - effectiveFog) + fogColor[2] * effectiveFog) | 0;
         }
 
+        ctx.beginPath();
+        ctx.moveTo(epx0, epy0);
+        ctx.lineTo(epx1, epy1);
+        ctx.lineTo(epx2, epy2);
+        ctx.closePath();
+
         // Quantize 8-bit color channels to 5-6-5 bits
         const qr = r & 0xf8; // Keep 5 bits
         const qg = g & 0xfc; // Keep 6 bits
@@ -1489,18 +1464,11 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        if (currentFillStyle !== color16) {
-          ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
-          currentFillStyle = color16;
+        if (prevFillStyle !== color16) {
+          ctx.fillStyle = PALETTE_16BIT[color16];
+          prevFillStyle = color16;
         }
 
-        if (currentLineWidth !== 1) {
-          ctx.lineJoin = "round";
-          ctx.lineWidth = 1;
-          currentLineWidth = 1;
-        }
-
-        ctx.stroke();
         ctx.fill();
 
         break;
@@ -1512,6 +1480,12 @@ function drawTriangles(
         let g = (color32 >>> 16) & 255;
         let b = (color32 >>> 8) & 255;
 
+        ctx.beginPath();
+        ctx.moveTo(epx0, epy0);
+        ctx.lineTo(epx1, epy1);
+        ctx.lineTo(epx2, epy2);
+        ctx.closePath();
+
         // Quantize 8-bit color channels to 5-6-5 bits
         const qr = r & 0xf8; // Keep 5 bits
         const qg = g & 0xfc; // Keep 6 bits
@@ -1520,34 +1494,28 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        if (currentFillStyle !== color16) {
-          ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16];
-          currentFillStyle = color16;
+        if (prevFillStyle !== color16) {
+          ctx.fillStyle = PALETTE_16BIT[color16];
+          prevFillStyle = color16;
         }
 
-        if (currentLineWidth !== 1) {
-          ctx.lineJoin = "round";
-          ctx.lineWidth = 1;
-          currentLineWidth = 1;
-        }
-
-        ctx.stroke();
         ctx.fill();
 
         break;
       }
       case 3: {
         // WIREFRAME
-        if (currentFillStyle !== -2) {
-          ctx.strokeStyle = "rgb(0,0,255)";
-          currentFillStyle = -2;
-        }
+        ctx.beginPath();
+        ctx.moveTo(px0, py0);
+        ctx.lineTo(px1, py1);
+        ctx.lineTo(px2, py2);
+        ctx.closePath();
 
-        //TODO: line style is set to miter only once, but currentLineWidth check is done everywhere. Do and reset only once.
-        if (currentLineWidth !== -2) {
+        if (prevStrokeStyle !== -2) {
+          ctx.strokeStyle = "rgb(0,0,255)";
           ctx.lineJoin = "miter";
           ctx.lineWidth = 0.5;
-          currentLineWidth = -2;
+          prevStrokeStyle = -2;
         }
 
         ctx.stroke();
@@ -1732,20 +1700,19 @@ function drawTriangles(
         const c16_2 =
           ((cr2 & 0xf8) << 8) | ((cg2 & 0xfc) << 3) | ((cb2 & 0xf8) >> 3);
 
-        if (currentLineWidth !== 1) {
-          ctx.lineJoin = "round";
-          ctx.lineWidth = 1;
-          currentLineWidth = 1;
-        }
+        ctx.beginPath();
+        ctx.moveTo(epx0, epy0);
+        ctx.lineTo(epx1, epy1);
+        ctx.lineTo(epx2, epy2);
+        ctx.closePath();
 
         // EARLY OUT: If all quantized colors are identical, fallback to cheapest flat fill
         if (c16_0 === c16_1 && c16_1 === c16_2) {
-          if (currentFillStyle !== c16_0) {
-            ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[c16_0];
-            currentFillStyle = c16_0;
+          if (prevFillStyle !== c16_0) {
+            ctx.fillStyle = PALETTE_16BIT[c16_0];
+            prevFillStyle = c16_0;
           }
 
-          ctx.stroke();
           ctx.fill();
 
           break;
@@ -1816,9 +1783,9 @@ function drawTriangles(
 
         // If intensity difference is minimal, use flat shading
         if (pi2 - pi0 < 0.01) {
-          if (currentFillStyle !== c16_0) {
-            ctx.strokeStyle = ctx.fillStyle = pc0;
-            currentFillStyle = c16_0;
+          if (prevFillStyle !== c16_0) {
+            ctx.fillStyle = pc0;
+            prevFillStyle = c16_0;
           }
         } else {
           // Precise 2D parametric mapping of Gouraud triangle gradient
@@ -1859,11 +1826,10 @@ function drawTriangles(
           // }
           grad.addColorStop(1, pc2);
 
-          currentFillStyle = -3; //NOTE: do not remove. Resets fill style for checks in other shaders.
-          ctx.strokeStyle = ctx.fillStyle = grad;
+          prevFillStyle = -3; //NOTE: do not remove. Resets fill style for checks in other shaders.
+          ctx.fillStyle = grad;
         }
 
-        ctx.stroke();
         ctx.fill();
 
         break;
