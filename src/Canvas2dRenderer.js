@@ -4,6 +4,7 @@
 // TODO: consider turning layerBuffers into single types array sorted by layer index
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
 // TODO: use rgba instead of globalAlpha for color fill
+// TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
