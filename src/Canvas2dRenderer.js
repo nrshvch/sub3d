@@ -5,6 +5,9 @@
 // TODO: consider turning layerBuffers into single types array sorted by layer index
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
 // TODO: get rid of "strokes" filling gaps between polygons, apply same approach used for gaps textures instead
+// TODO: beginPath gets called twice per flat shader, once for basic path and once for expanded to compensate for visible gaps
+// TODO: use rgba instead of globalAlpha for color fill
+// TODO: lineStyle changes to miter only once for wireframe shader, but the check is done in every shader redundantly.
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
@@ -1051,7 +1054,7 @@ function destructMesh(
  * @param {number} fogFarPane - Far plane distance
  * @param scene
  * @param {number} lightDirBuffer - Array of a light direction in the format [x, y, z]
- * @param {number} ambientLightIntensity - Ambient light intensity
+ * @param {number} ambientLightRgb - Ambient light RGB color
  * @param {Float32Array} faceNormalsBuffer - Array of face normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
  * @param {Float32Array} vertexNormalsBuffer
  * @param {boolean} wireframe - Should faces be drawn as wireframes?
@@ -1127,9 +1130,6 @@ function drawTriangles(
         let g = (color32 >>> 16) & 255;
         let b = (color32 >>> 8) & 255;
 
-        //TODO use rgb for fog, then remove this
-        let intensity = ambientLightRgb / 0xffffff; // cumulative added intensity from all lights
-
         let ir = (ambientLightRgb >>> 16) & 255;
         let ig = (ambientLightRgb >>> 8) & 255;
         let ib = ambientLightRgb & 255;
@@ -1149,9 +1149,6 @@ function drawTriangles(
 
             const dot = wnx * lx + wny * ly + wnz * lz;
             if (dot > 0) {
-              //TODO use rgb for fog, then remove this
-              intensity += dot;
-
               ir += ((lightGO.light.color >>> 16) & 255) * dot;
               ig += ((lightGO.light.color >>> 8) & 255) * dot;
               ib += (lightGO.light.color & 255) * dot;
@@ -1173,9 +1170,6 @@ function drawTriangles(
         r = r > 255 ? 255 : r;
         g = g > 255 ? 255 : g;
         b = b > 255 ? 255 : b;
-
-        //TODO use rgb for fog, then remove this
-        intensity = Math.min(intensity, 1);
 
         // Calculating fog
         const depth = depthBuffer[idx];
@@ -1279,6 +1273,7 @@ function drawTriangles(
 
             ctx.save();
 
+            //TODO: this should be done for every shader, to avoid using stroke.
             // Expand clipping path to mask native canvas antialiasing seams
             const cx = (px0 + px1 + px2) * 0.33333;
             const cy = (py0 + py1 + py2) * 0.33333;
@@ -1313,6 +1308,7 @@ function drawTriangles(
             const epx2 = px2 + dx2 * invLen2;
             const epy2 = py2 + dy2 * invLen2;
 
+            //TODO: beginPath is called for second time. Put this expanded path instead of one above (at the beginning drawTriangles)
             ctx.beginPath();
             ctx.moveTo(epx0, epy0);
             ctx.lineTo(epx1, epy1);
@@ -1324,43 +1320,72 @@ function drawTriangles(
             ctx.drawImage(img, 0, 0);
             ctx.restore();
 
-            // Overlay shading and fog
-            const shadowBlend = 1.0 - intensity * (1.0 - fogAmount);
-            if (shadowBlend > 0.01) {
-              // we can combine shadowing and fog into a solid filled triangle over the texture
-              let overlayR = 0,
-                overlayG = 0,
-                overlayB = 0;
-              let overlayAlpha = 0;
+            // Apply RGB Lighting (Multiply)
+            const clampR = ir >= 1.0 ? 255 : (ir * 255) | 0;
+            const clampG = ig >= 1.0 ? 255 : (ig * 255) | 0;
+            const clampB = ib >= 1.0 ? 255 : (ib * 255) | 0;
 
-              if (fogAmount > 0) {
-                // simplify: mix black shadow and fog color based on fogAmount
-                overlayR = (fogColor[0] * fogAmount) | 0;
-                overlayG = (fogColor[1] * fogAmount) | 0;
-                overlayB = (fogColor[2] * fogAmount) | 0;
-                overlayAlpha = Math.max(shadowBlend, fogAmount);
-              } else {
-                overlayAlpha = 1.0 - intensity;
+            // Quantize 8-bit color channels to 5-6-5 bits
+            const qrL = clampR & 0xf8; // Keep 5 bits
+            const qgL = clampG & 0xfc; // Keep 6 bits
+            const qbL = clampB & 0xf8; // Keep 5 bits
+
+            // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+            const color16L = (qrL << 8) | (qgL << 3) | (qbL >> 3);
+
+            ctx.globalCompositeOperation = "multiply";
+
+            if (currentFillStyle !== color16L) {
+              ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16L];
+              currentFillStyle = color16L;
+            }
+
+            // stroke applies a bit outside the texture, and looks weird with multiply. disabling.
+            // if (currentLineWidth !== 1) {
+            //   ctx.lineJoin = "round";
+            //   ctx.lineWidth = 1;
+            //   currentLineWidth = 1;
+            // }
+
+            // stroke applies a bit outside the texture, and looks weird with multiply. disabling.
+            // ctx.stroke();
+            ctx.fill();
+
+            // Restore default blending mode for the rest of the renderer
+            ctx.globalCompositeOperation = "source-over";
+
+            // Apply Fog (Source-Over)
+            if (fogAmount > 0) {
+              // Quantize 8-bit color channels to 5-6-5 bits
+              const qrF = fogColor[0] & 0xf8; // Keep 5 bits
+              const qgF = fogColor[1] & 0xfc; // Keep 6 bits
+              const qbF = fogColor[2] & 0xf8; // Keep 5 bits
+
+              // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+              const color16F = (qrF << 8) | (qgF << 3) | (qbF >> 3);
+
+              //TODO: use rgba colors instead.
+              ctx.globalAlpha = fogAmount;
+
+              if (currentFillStyle !== color16F) {
+                ctx.strokeStyle = ctx.fillStyle = PALETTE_16BIT[color16F];
+                currentFillStyle = color16F;
               }
 
-              if (overlayAlpha > 1) overlayAlpha = 1;
-              //TODO: fix asap. No string concatenation allowed.
-              ctx.fillStyle = `rgba(${overlayR},${overlayG},${overlayB},${overlayAlpha.toFixed(2)})`;
+              if (currentLineWidth !== 1) {
+                ctx.lineJoin = "round";
+                ctx.lineWidth = 1;
+                currentLineWidth = 1;
+              }
+
+              // this stroke covers weird gaps when polygon goes off into fog. This ads some polygon outline in semi-fog though.
+              ctx.stroke();
               ctx.fill();
+
+              // Reset alpha
+              ctx.globalAlpha = 1.0;
             }
 
-            // draw wireframe over texture if needed
-            if (currentLineWidth !== 1) {
-              ctx.lineJoin = "round";
-              ctx.lineWidth = 1;
-              currentLineWidth = 1;
-            }
-            if (currentFillStyle !== -1) {
-              // we used a custom color/alpha, invalidate currentFillStyle
-              currentFillStyle = -1;
-            }
-
-            // Note: we can stroke standard lines too to fix seams maybe
             break;
           }
         }
@@ -1512,11 +1537,13 @@ function drawTriangles(
         break;
       }
       case 3: {
+        // WIREFRAME
         if (currentFillStyle !== -2) {
           ctx.strokeStyle = "rgb(0,0,255)";
           currentFillStyle = -2;
         }
 
+        //TODO: line style is set to miter only once, but currentLineWidth check is done everywhere. Do and reset only once.
         if (currentLineWidth !== -2) {
           ctx.lineJoin = "miter";
           ctx.lineWidth = 0.5;
@@ -1534,16 +1561,9 @@ function drawTriangles(
         const g = (color32 >>> 16) & 255;
         const b = (color32 >>> 8) & 255;
 
-        const ambientLightIntensity = ambientLightRgb / 0xffffff;
-
         let litR = (ambientLightRgb >>> 16) & 255;
         let litG = (ambientLightRgb >>> 8) & 255;
         let litB = ambientLightRgb & 255;
-
-        // Calculate illumination at each vertex
-        let i0 = ambientLightIntensity,
-          i1 = ambientLightIntensity,
-          i2 = ambientLightIntensity;
 
         let ir0 = litR,
           ig0 = litG,
@@ -1583,24 +1603,18 @@ function drawTriangles(
             let d2 = nx2 * lx + ny2 * ly + nz2 * lz;
 
             if (d0 > 0) {
-              i0 += d0;
-
               ir0 += lightR * d0;
               ig0 += lightG * d0;
               ib0 += lightB * d0;
             }
 
             if (d1 > 0) {
-              i1 += d1;
-
               ir1 += lightR * d1;
               ig1 += lightG * d1;
               ib1 += lightB * d1;
             }
 
             if (d2 > 0) {
-              i2 += d2;
-
               ir2 += lightR * d2;
               ig2 += lightG * d2;
               ib2 += lightB * d2;
@@ -1612,17 +1626,18 @@ function drawTriangles(
         ir0 *= 0.0039215;
         ig0 *= 0.0039215;
         ib0 *= 0.0039215;
+
         ir1 *= 0.0039215;
         ig1 *= 0.0039215;
         ib1 *= 0.0039215;
+
         ir2 *= 0.0039215;
         ig2 *= 0.0039215;
         ib2 *= 0.0039215;
 
-        //TODO use rgb for fog, then remove this
-        i0 = Math.min(i0, 1);
-        i1 = Math.min(i1, 1);
-        i2 = Math.min(i2, 1);
+        let i0 = Math.min(Math.max(ir0, ig0, ib0), 1);
+        let i1 = Math.min(Math.max(ir1, ig1, ib1), 1);
+        let i2 = Math.min(Math.max(ir2, ig2, ib2), 1);
 
         // Calculating fog based on face centroid
         let fogAmount = 0;
@@ -1844,7 +1859,7 @@ function drawTriangles(
           // }
           grad.addColorStop(1, pc2);
 
-          currentFillStyle = -3; //NOTE: do not remove. Is necessary for checks in other places.
+          currentFillStyle = -3; //NOTE: do not remove. Resets fill style for checks in other shaders.
           ctx.strokeStyle = ctx.fillStyle = grad;
         }
 

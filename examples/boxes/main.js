@@ -63,7 +63,7 @@ function createBox() {
   );
 
   if (Math.random() > 0.5) {
-    child.meshRenderer.shaderType = 4;
+    child.meshRenderer.texture = null;
   }
 
   return {
