@@ -121,7 +121,19 @@ const visibleObjectsEl = document.getElementById("visibleObjects");
 const facesCountEl = document.getElementById("facesCount");
 const dprEl = document.getElementById("dpr");
 
-const debugWireframeBtn = document.getElementById("debug-wireframe-btn");
+const isDebug =
+  window.location.pathname.includes("/debug") ||
+  window.location.search.includes("debug");
+
+if (isDebug) {
+  document.getElementById("debug").style.display = "block";
+}
+
+const chkbx1El = document.getElementById("chkbx_1");
+chkbx1El.addEventListener("change", (e) => {
+  renderer.wireframe = chkbx1El.checked;
+});
+
 const debugRange = document.getElementById("debug-range");
 const debugRangeVal = document.getElementById("debug-range-value");
 
@@ -130,12 +142,8 @@ debugRange.addEventListener("input", (e) => {
   targetCount = parseInt(e.target.value);
 });
 
-debugWireframeBtn.addEventListener("click", () => {
-  renderer.debug = false;
-  renderer.wireframe = !renderer.wireframe;
-});
-
 setInterval(() => {
+  if (!isDebug) return;
   const dt = viewport.lastRenderStats.dt;
   fps = dt > 0 ? (1000 / dt) | 0 : 1000;
   avgDt = avgDt === undefined ? dt : (avgDt + dt) / 2;

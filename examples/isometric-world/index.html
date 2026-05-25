@@ -39,18 +39,21 @@
         position: absolute;
         top: 10px;
         left: 10px;
-        min-width: 200px;
+        min-width: 196px;
+        max-width: 320px;
         background: #ddd;
         padding: 8px;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.6);
         color: #eeeeee;
         font-family: monospace;
         font-weight: 600;
         border-radius: 4px;
-        font-size: 32px;
+        font-size: 24px;
 
         @media (max-width: 768px) {
           font-size: 12px;
+            min-width: 96px;
+            max-width: 160px;
         }
 
         div {
@@ -71,7 +74,7 @@
   </head>
   <body>
     <canvas id="canvas"></canvas>
-    <div id="debug">
+    <div id="debug" style="display: none;">
       <div>Max. FPS <span id="maxFps"></span></div>
       <div>FPS <span id="fps"></span></div>
       <div>Objects on scene <span id="objects"></span></div>
@@ -79,8 +82,13 @@
       <div>Faces <span id="facesCount"></span></div>
       <div>Draw Calls <span id="drawCalls"></span></div>
       <div>DPR <span id="dpr"></span></div>
-      <div class="actions">
-        <button id="debug-wireframe-btn">WIREFRAME</button>
+      <div>
+        <label for="chkbx_1">Wireframe</label>
+        <input id="chkbx_1" type="checkbox" checked="checked">
+      </div>
+      <div>
+        <label for="chkbx_2">Smooth Terrain</label>
+        <input id="chkbx_2" type="checkbox" checked="checked">
       </div>
     </div>
   </body>
