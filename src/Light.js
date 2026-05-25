@@ -1,15 +1,21 @@
 import GameObject from "./GameObject.js";
 import Component from "./Component.js";
 
+Light.Type = {
+  DIRECTIONAL: 0,
+  POINT: 1,
+  SPOT: 2,
+};
+
 function LightComponent() {
   Component.call(this);
-  this.type = Light.Type.DIRECTIONAL; // Default to directional
-  this.color = 0xffffff; // Default white light
-  this.range = 10;
 }
 
 LightComponent.prototype = Object.create(Component.prototype);
 LightComponent.prototype.constructor = LightComponent;
+LightComponent.prototype.color = 0xFFFFFF;
+LightComponent.prototype.range = 10;
+LightComponent.prototype.type = Light.Type.DIRECTIONAL;
 
 LightComponent.prototype.setGameObject = function (gameObject) {
   Component.prototype.setGameObject.call(this, gameObject);
@@ -18,14 +24,8 @@ LightComponent.prototype.setGameObject = function (gameObject) {
 
 export default function Light(name) {
   GameObject.call(this, name || "light");
-  this.addComponent(new LightComponent());
+  this.addComponent(this.light = new LightComponent());
 }
-
-Light.Type = {
-  DIRECTIONAL: 0,
-  POINT: 1,
-  SPOT: 2,
-};
 
 export { LightComponent };
 
