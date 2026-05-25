@@ -35,43 +35,43 @@
         position: absolute;
         top: 10px;
         left: 10px;
-        min-width: 200px;
+          min-width: 196px;
+          max-width: 320px;
         background: #ddd;
         padding: 8px;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.6);
         color: #eeeeee;
         font-family: monospace;
         font-weight: 600;
         border-radius: 4px;
-        font-size: 32px;
+          font-size: 24px;
 
         @media (max-width: 768px) {
           font-size: 12px;
+            min-width: 96px;
+            max-width: 160px;
         }
 
         div {
           display: flex;
           gap: 16px;
           justify-content: space-between;
+            align-items: center;
         }
-      }
-
-      .actions {
-        margin-top: 8px;
-
-          button {
-              padding: 4px 8px
-          }
       }
 
       .range {
           margin-top: 8px;
       }
+
+      #debug-range {
+          width: 100%;
+      }
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
-    <div id="debug">
+    <div id="debug" style="display: none;">
       <div>Max. FPS <span id="maxFps"></span></div>
       <div>FPS <span id="fps"></span></div>
       <div>Objects on scene <span id="objects"></span></div>
@@ -83,8 +83,9 @@
         <input id="debug-range" type="range" min="0" max="10000"/>
         <span id="debug-range-value"></span>
       </div>
-      <div class="actions">
-        <button id="debug-wireframe-btn">WIREFRAME</button>
+      <div>
+        <label for="chkbx_1">Wireframe</label>
+        <input id="chkbx_1" type="checkbox" checked="checked">
       </div>
     </div>
   </body>

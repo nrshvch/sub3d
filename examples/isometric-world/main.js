@@ -11,6 +11,7 @@ var SCALE = 1.6;
 
 var terrain = new Terrain();
 terrain.meshRenderer.layer = 0;
+terrain.meshRenderer.shaderType = 0;
 terrain.transform.translate(0, 0, 0);
 terrain.transform.scale(TILE_SIZE * N * SCALE, 1, TILE_SIZE * N * SCALE);
 myGame.world.scene.addGameObject(terrain);
@@ -467,13 +468,24 @@ var visibleObjectsEl = document.getElementById("visibleObjects");
 var facesCountEl = document.getElementById("facesCount");
 var dprEl = document.getElementById("dpr");
 
-const debugWireframeBtn = document.getElementById("debug-wireframe-btn");
-debugWireframeBtn.addEventListener("click", () => {
-  renderer.debug = false;
-  renderer.wireframe = !renderer.wireframe;
+const isDebug = window.location.pathname.includes('/debug') || window.location.search.includes('debug');
+
+if (isDebug) {
+  document.getElementById("debug").style.display = "block";
+}
+
+const chkbx1El = document.getElementById("chkbx_1");
+chkbx1El.addEventListener("change", (e) => {
+  renderer.wireframe = chkbx1El.checked;
+});
+
+const chkbx2El = document.getElementById("chkbx_2");
+chkbx2El.addEventListener("change", (e) => {
+  terrain.meshRenderer.shaderType = chkbx2El.checked ? 4 : 0;
 });
 
 setInterval(() => {
+  if (!isDebug) return;
   const dt = viewport.lastRenderStats.dt;
   fps = dt > 0 ? (1000 / dt) | 0 : 1000;
   avgDt = avgDt === undefined ? dt : (avgDt + dt) / 2;
