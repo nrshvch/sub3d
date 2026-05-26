@@ -22,6 +22,7 @@ const renderAxis = debug.renderAxis;
 const PALETTE_16BIT = palette.createPalette16Bit();
 
 // Coefficient for expanding polygons to cover subpixel seams/gaps
+// For cases when stroke cannot be done, e.g. textured polys
 const EXPANSION_COEFFICIENT = 0.6;
 
 export default function Canvas2dRenderer() {
@@ -1097,8 +1098,9 @@ function drawTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  let prevFillStyle = -1; // -1 = unset, -2 = wireframe, -3 = gradient, number = quantized color key in PALLETE16
-  let prevStrokeStyle = -1; // -1 = unset, -2 = wireframe
+  let prevFillStyle = -1; // -1 = unset, number = quantized color key in PALLETE16
+  let prevStrokeStyle = -1; // -1 = unset, number = quantized color key in PALLETE16
+  let prevLineStyle = -1;
 
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i]; //take face index
@@ -1350,6 +1352,19 @@ function drawTriangles(
               //TODO: use rgba colors instead.
               ctx.globalAlpha = fogAmount;
 
+              if (prevStrokeStyle !== color16F) {
+                ctx.strokeStyle = PALETTE_16BIT[color16F];
+                prevStrokeStyle = color16F;
+              }
+
+              if (prevLineStyle !== 10) {
+                ctx.lineWidth = 1;
+                ctx.lineJoin = "miter";
+                prevLineStyle = 10;
+              }
+
+              ctx.stroke();
+
               if (prevFillStyle !== color16F) {
                 ctx.fillStyle = PALETTE_16BIT[color16F];
                 prevFillStyle = color16F;
@@ -1366,9 +1381,9 @@ function drawTriangles(
         }
 
         ctx.beginPath();
-        ctx.moveTo(epx0, epy0);
-        ctx.lineTo(epx1, epy1);
-        ctx.lineTo(epx2, epy2);
+        ctx.moveTo(px0, py0);
+        ctx.lineTo(px1, py1);
+        ctx.lineTo(px2, py2);
         ctx.closePath();
 
         // Quantize 8-bit color channels to 5-6-5 bits
@@ -1378,6 +1393,19 @@ function drawTriangles(
 
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
+
+        if (prevStrokeStyle !== color16) {
+          ctx.strokeStyle = PALETTE_16BIT[color16];
+          prevStrokeStyle = color16;
+        }
+
+        if (prevLineStyle !== 10) {
+          ctx.lineWidth = 1;
+          ctx.lineJoin = "miter";
+          prevLineStyle = 10;
+        }
+
+        ctx.stroke();
 
         if (prevFillStyle !== color16) {
           ctx.fillStyle = PALETTE_16BIT[color16];
@@ -1516,11 +1544,15 @@ function drawTriangles(
         ctx.lineTo(px2, py2);
         ctx.closePath();
 
-        if (prevStrokeStyle !== -2) {
-          ctx.strokeStyle = "rgb(0,0,255)";
-          ctx.lineJoin = "miter";
+        if (prevStrokeStyle !== 31) {
+          ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
+          prevStrokeStyle = 31;
+        }
+
+        if (prevLineStyle !== 5) {
           ctx.lineWidth = 0.5;
-          prevStrokeStyle = -2;
+          ctx.lineJoin = "miter";
+          prevLineStyle = 5;
         }
 
         ctx.stroke();
@@ -1705,18 +1737,31 @@ function drawTriangles(
         const c16_2 =
           ((cr2 & 0xf8) << 8) | ((cg2 & 0xfc) << 3) | ((cb2 & 0xf8) >> 3);
 
-        ctx.beginPath();
-        ctx.moveTo(epx0, epy0);
-        ctx.lineTo(epx1, epy1);
-        ctx.lineTo(epx2, epy2);
-        ctx.closePath();
-
         // EARLY OUT: If all quantized colors are identical, fallback to cheapest flat fill
         if (c16_0 === c16_1 && c16_1 === c16_2) {
+          ctx.beginPath();
+          ctx.moveTo(px0, py0);
+          ctx.lineTo(px1, py1);
+          ctx.lineTo(px2, py2);
+          ctx.closePath();
+
           if (prevFillStyle !== c16_0) {
             ctx.fillStyle = PALETTE_16BIT[c16_0];
             prevFillStyle = c16_0;
           }
+
+          if (prevStrokeStyle !== c16_0) {
+            ctx.strokeStyle = PALETTE_16BIT[c16_0];
+            prevStrokeStyle = c16_0;
+          }
+
+          if (prevLineStyle !== 10) {
+            ctx.lineWidth = 1;
+            ctx.lineJoin = "miter";
+            prevLineStyle = 10;
+          }
+
+          ctx.stroke();
 
           ctx.fill();
 
@@ -1788,10 +1833,31 @@ function drawTriangles(
 
         // If intensity difference is minimal, use flat shading
         if (pi2 - pi0 < 0.01) {
+          ctx.beginPath();
+          ctx.moveTo(px0, py0);
+          ctx.lineTo(px1, py1);
+          ctx.lineTo(px2, py2);
+          ctx.closePath();
+
           if (prevFillStyle !== c16_0) {
             ctx.fillStyle = pc0;
             prevFillStyle = c16_0;
           }
+
+          if (prevStrokeStyle !== c16_0) {
+            ctx.strokeStyle = pc0;
+            prevStrokeStyle = c16_0;
+          }
+
+          if (prevLineStyle !== 10) {
+            ctx.lineWidth = 1;
+            ctx.lineJoin = "miter";
+            prevLineStyle = 10;
+          }
+
+          ctx.stroke();
+
+          ctx.fill();
         } else {
           // Precise 2D parametric mapping of Gouraud triangle gradient
           const t_val = (pi1 - pi0) / (pi2 - pi0);
@@ -1831,11 +1897,17 @@ function drawTriangles(
           // }
           grad.addColorStop(1, pc2);
 
-          prevFillStyle = -3; //NOTE: do not remove. Resets fill style for checks in other shaders.
+          prevFillStyle = -1; // Resets fillStyle
           ctx.fillStyle = grad;
-        }
 
-        ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(epx0, epy0);
+          ctx.lineTo(epx1, epy1);
+          ctx.lineTo(epx2, epy2);
+          ctx.closePath();
+
+          ctx.fill();
+        }
 
         break;
       }
