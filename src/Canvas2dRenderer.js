@@ -5,6 +5,7 @@
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
 // TODO: use rgba instead of globalAlpha for color fill
 // TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
+// TODO: calculate lightning at lower fps
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
@@ -19,6 +20,9 @@ const mat4Mul = math.mat4Mul;
 const renderAxis = debug.renderAxis;
 
 const PALETTE_16BIT = palette.createPalette16Bit();
+
+// Coefficient for expanding polygons to cover subpixel seams/gaps
+const EXPANSION_COEFFICIENT = 0.6;
 
 export default function Canvas2dRenderer() {
   this.layerBuffers = [];
@@ -1121,7 +1125,7 @@ function drawTriangles(
     const a0 = Math.abs(dx0);
     const b0 = Math.abs(dy0);
     const len0 = a0 > b0 ? a0 + 0.4 * b0 : b0 + 0.4 * a0;
-    const invLen0 = len0 > 0 ? 0.6 / len0 : 0;
+    const invLen0 = len0 > 0 ? EXPANSION_COEFFICIENT / len0 : 0;
     const epx0 = px0 + dx0 * invLen0;
     const epy0 = py0 + dy0 * invLen0;
 
@@ -1130,7 +1134,7 @@ function drawTriangles(
     const a1 = Math.abs(dx1);
     const b1 = Math.abs(dy1);
     const len1 = a1 > b1 ? a1 + 0.4 * b1 : b1 + 0.4 * a1;
-    const invLen1 = len1 > 0 ? 0.6 / len1 : 0;
+    const invLen1 = len1 > 0 ? EXPANSION_COEFFICIENT / len1 : 0;
     const epx1 = px1 + dx1 * invLen1;
     const epy1 = py1 + dy1 * invLen1;
 
@@ -1139,7 +1143,7 @@ function drawTriangles(
     const a2 = Math.abs(dx2);
     const b2 = Math.abs(dy2);
     const len2 = a2 > b2 ? a2 + 0.4 * b2 : b2 + 0.4 * a2;
-    const invLen2 = len2 > 0 ? 0.6 / len2 : 0;
+    const invLen2 = len2 > 0 ? EXPANSION_COEFFICIENT / len2 : 0;
     const epx2 = px2 + dx2 * invLen2;
     const epy2 = py2 + dy2 * invLen2;
 
