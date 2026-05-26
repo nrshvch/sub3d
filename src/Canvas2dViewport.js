@@ -95,27 +95,26 @@ p.setSize = function (width, height) {
   const dpiW = width * this.dpr;
   const dpiH = height * this.dpr;
 
+  this.width = dpiW;
+  this.height = dpiH;
 
-  this.width = width;
-  this.height = height;
-
-  this.canvas.width = width;
-  this.canvas.height = height;
+  this.canvas.width = dpiW;
+  this.canvas.height = dpiH;
 
   //update viewport matrix
-  this.viewportMatrix[0] = width / 2;
-  this.viewportMatrix[5] = -height / 2;
-  this.viewportMatrix[12] = width / 2;
-  this.viewportMatrix[13] = height / 2;
+  this.viewportMatrix[0] = dpiW / 2;
+  this.viewportMatrix[5] = -dpiH / 2;
+  this.viewportMatrix[12] = dpiW / 2;
+  this.viewportMatrix[13] = dpiH / 2;
 
   //update layer sizes
   for (var i = 0; i < this.layers.length; i++) {
     var ctx = this.layers[i];
-    ctx.canvas.width = width;
-    ctx.canvas.height = height;
+    ctx.canvas.width = dpiW;
+    ctx.canvas.height = dpiH;
   }
 
-  this.camera.setup(dpiW, dpiH);
+  this.camera.setup(width, height);
 };
 
 p.getWorldToScreen = function () {

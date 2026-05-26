@@ -48,7 +48,7 @@
         font-family: monospace;
         font-weight: 600;
         border-radius: 4px;
-        font-size: 24px;
+        font-size: 20px;
 
         @media (max-width: 768px) {
           font-size: 12px;
@@ -81,14 +81,41 @@
       <div>Objects on screen <span id="visibleObjects"></span></div>
       <div>Faces <span id="facesCount"></span></div>
       <div>Draw Calls <span id="drawCalls"></span></div>
-      <div>DPR <span id="dpr"></span></div>
+      <div>
+        <label for="slider_dpr">Render Scale (<span id="dpr">1.00</span>x)</label>
+        <input id="slider_dpr" type="range" min="0.25" max="4" value="1.0" step="0.05">
+      </div>
       <div>
         <label for="chkbx_1">Wireframe</label>
         <input id="chkbx_1" type="checkbox">
       </div>
       <div>
         <label for="chkbx_2">Smooth Terrain</label>
-        <input id="chkbx_2" type="checkbox">
+        <input id="chkbx_2" type="checkbox" checked="checked">
+      </div>
+      <div>
+        <label for="slider_fog_near">Fog Near (<span id="fogNearValue">1500</span>)</label>
+        <input id="slider_fog_near" type="range" min="0" max="5000" value="1500" step="50">
+      </div>
+      <div>
+        <label for="slider_fog_far">Fog Far (<span id="fogFarValue">2500</span>)</label>
+        <input id="slider_fog_far" type="range" min="0" max="5000" value="2500" step="50">
+      </div>
+      <div>
+        <label for="slider_sun_angle">Sun Angle (<span id="sunAngleValue">0</span>°)</label>
+        <input id="slider_sun_angle" type="range" min="0" max="360" value="0" step="1">
+      </div>
+      <div>
+        <label for="color_sun">Sun Color</label>
+        <input id="color_sun" type="color" value="#ffffff">
+      </div>
+      <div>
+        <label for="color_fog">Fog Color</label>
+        <input id="color_fog" type="color" value="#8cb4c8">
+      </div>
+      <div>
+        <label for="color_ambient">Ambient Color</label>
+        <input id="color_ambient" type="color" value="#202020">
       </div>
     </div>
   </body>

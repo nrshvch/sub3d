@@ -437,14 +437,6 @@ myGame.world.scene.addGameObject(cameraObject);
 const sun = new scaliaEngine.Light();
 myGame.world.scene.addGameObject(sun);
 sun.transform.rotate(45, 0, 0);
-myGame.world.tickRegister({
-  tick: (time) => {
-    if (dt !== null) {
-      sun.transform.rotate(0, 0.1, 0, "world");
-    }
-    dt = time.now;
-  },
-});
 
 myGame.run();
 
@@ -471,7 +463,11 @@ var dprEl = document.getElementById("dpr");
 const isDebug = window.location.pathname.includes('/debug') || window.location.search.includes('debug');
 
 if (isDebug) {
-  document.getElementById("debug").style.display = "block";
+  const debugEl = document.getElementById("debug");
+  debugEl.style.display = "block";
+  debugEl.addEventListener("pointerdown", (e) => e.stopPropagation());
+  debugEl.addEventListener("pointermove", (e) => e.stopPropagation());
+  debugEl.addEventListener("pointerup", (e) => e.stopPropagation());
 }
 
 const chkbx1El = document.getElementById("chkbx_1");
@@ -482,6 +478,89 @@ chkbx1El.addEventListener("change", (e) => {
 const chkbx2El = document.getElementById("chkbx_2");
 chkbx2El.addEventListener("change", (e) => {
   terrain.meshRenderer.shaderType = chkbx2El.checked ? 4 : 0;
+});
+
+const sliderFogNearEl = document.getElementById("slider_fog_near");
+const fogNearValueEl = document.getElementById("fogNearValue");
+const sliderFogFarEl = document.getElementById("slider_fog_far");
+const fogFarValueEl = document.getElementById("fogFarValue");
+
+function updateFog(nearVal, farVal) {
+  cameraObject.camera.fogNearPane = nearVal;
+  cameraObject.camera.fogFarPane = farVal;
+  cameraObject.camera.farClippingPane = farVal;
+
+  sliderFogNearEl.value = nearVal;
+  sliderFogFarEl.value = farVal;
+
+  fogNearValueEl.innerText = nearVal;
+  fogFarValueEl.innerText = farVal;
+}
+
+sliderFogNearEl.addEventListener("input", (e) => {
+  let nearVal = parseInt(e.target.value, 10);
+  let farVal = parseInt(sliderFogFarEl.value, 10);
+  if (nearVal > farVal) {
+    farVal = nearVal;
+  }
+  updateFog(nearVal, farVal);
+});
+
+sliderFogFarEl.addEventListener("input", (e) => {
+  let farVal = parseInt(e.target.value, 10);
+  let nearVal = parseInt(sliderFogNearEl.value, 10);
+  if (farVal < nearVal) {
+    nearVal = farVal;
+  }
+  updateFog(nearVal, farVal);
+});
+
+const sliderSunAngleEl = document.getElementById("slider_sun_angle");
+const sunAngleValueEl = document.getElementById("sunAngleValue");
+const colorSunEl = document.getElementById("color_sun");
+
+sliderSunAngleEl.addEventListener("input", (e) => {
+  const angleVal = parseInt(e.target.value, 10);
+  scaliaEngine.glMatrix.mat4.identity(sun.transform.local);
+  sun.transform.rotate(angleVal,0, 0);
+  sunAngleValueEl.innerText = angleVal;
+});
+
+colorSunEl.addEventListener("input", (e) => {
+  const hex = e.target.value;
+  const colorInt = parseInt(hex.substring(1), 16);
+  sun.light.color = colorInt;
+});
+
+const colorFogEl = document.getElementById("color_fog");
+const colorAmbientEl = document.getElementById("color_ambient");
+
+colorFogEl.addEventListener("input", (e) => {
+  const hex = e.target.value;
+  const r = parseInt(hex.substring(1, 3), 16);
+  const g = parseInt(hex.substring(3, 5), 16);
+  const b = parseInt(hex.substring(5, 7), 16);
+  cameraObject.camera.fogColor[0] = r;
+  cameraObject.camera.fogColor[1] = g;
+  cameraObject.camera.fogColor[2] = b;
+  cameraObject.camera.bgColor[0] = r;
+  cameraObject.camera.bgColor[1] = g;
+  cameraObject.camera.bgColor[2] = b;
+});
+
+colorAmbientEl.addEventListener("input", (e) => {
+  const hex = e.target.value;
+  const colorInt = parseInt(hex.substring(1), 16);
+  cameraObject.camera.ambientLight = colorInt;
+});
+
+const sliderDprEl = document.getElementById("slider_dpr");
+sliderDprEl.value = viewport.dpr;
+sliderDprEl.addEventListener("input", (e) => {
+  const val = parseFloat(e.target.value);
+  viewport.dpr = val;
+  viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+  dprEl.innerText = val.toFixed(2);
 });
 
 setInterval(() => {
@@ -496,5 +575,5 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
-  dprEl.innerText = window.devicePixelRatio;
+  dprEl.innerText = viewport.dpr.toFixed(2);
 }, 100);
