@@ -1,4 +1,4 @@
-# Boxes Example
+# Earth demo
 
 You can run it locally:
 - `npm i`
