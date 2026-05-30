@@ -3,7 +3,7 @@ import Component from "../Component.js";
 export default function Mesh() {
   Component.call(this);
 
-  this.colors = new Uint8Array([0, 0, 255]);
+  this.colors = new Uint32Array([0x0000FF]);
   this.faceColors = new Uint32Array([0]);
 }
 

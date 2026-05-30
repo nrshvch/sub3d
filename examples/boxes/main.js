@@ -50,7 +50,7 @@ function createBox() {
   const r = (Math.random() * 255) | 0;
   const g = (Math.random() * 255) | 0;
   const b = (Math.random() * 255) | 0;
-  child.meshRenderer.colors = new Uint8Array([r, g, b]);
+  child.meshRenderer.colors = new Uint32Array([(r << 16) | (g << 8) | b]);
 
   const size = (Math.random() * 2.5) | 0;
 
@@ -87,8 +87,8 @@ cameraObject.camera.nearClippingPane = -500;
 cameraObject.camera.fogType = scaliaEngine.CameraComponent.FogType.LINEAR;
 cameraObject.camera.fogFarPane = 500;
 cameraObject.camera.fogNearPane = 0;
-cameraObject.camera.fogColor = new Uint8Array([140, 180, 200]);
-cameraObject.camera.bgColor = new Uint8Array([140, 180, 200]);
+cameraObject.camera.fogColor = 0x8CB4C8;
+cameraObject.camera.bgColor = 0x8CB4C8;
 cameraObject.camera.ambientLight = 0x444444;
 
 cameraObject.transform.setPosition(0, 0, 0);
