@@ -1,5 +1,4 @@
 // TODO: dont pass gameObjects object into drawTriangles, move lights params into typed buffers
-// TODO: in FLAT and GOURAUD shaders use rgb light for fog
 // TODO: consider turning layerBuffers into single types array sorted by layer index
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
 // TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
