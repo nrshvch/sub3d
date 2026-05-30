@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=0"
+    />
+    <title></title>
+    <script type="module" src="main.js"></script>
+    <style>
+      * {
+        padding: 0px;
+        margin: 0px;
+        border: 0px;
+      }
+
+      html {
+        height: 100%;
+        overflow-y: scroll;
+      }
+
+      body {
+        height: 100%;
+      }
+
+      #canvas {
+        display: block;
+        height: 100%;
+        width: 100%;
+        position: relative;
+          background: url("./milky_way.jpg");
+      }
+
+      #debug {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+          min-width: 196px;
+          max-width: 320px;
+        background: #ddd;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #eeeeee;
+        font-family: monospace;
+        font-weight: 600;
+        border-radius: 4px;
+          font-size: 24px;
+
+        @media (max-width: 768px) {
+          font-size: 12px;
+            min-width: 96px;
+            max-width: 160px;
+        }
+
+        div {
+          display: flex;
+          gap: 16px;
+          justify-content: space-between;
+            align-items: center;
+        }
+      }
+
+      .range {
+          margin-top: 8px;
+      }
+
+      #debug-range {
+          width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div id="debug" style="display: none;">
+      <div>Max. FPS <span id="maxFps"></span></div>
+      <div>FPS <span id="fps"></span></div>
+      <div>Objects on scene <span id="objects"></span></div>
+      <div>Objects on screen <span id="visibleObjects"></span></div>
+      <div>Faces <span id="facesCount"></span></div>
+      <div>Draw Calls <span id="drawCalls"></span></div>
+      <div>DPR <span id="dpr"></span></div>
+      <div class="range">
+        <input id="debug-range" type="range" min="0" max="10000"/>
+        <span id="debug-range-value"></span>
+      </div>
+      <div>
+        <label for="chkbx_1">Wireframe</label>
+        <input id="chkbx_1" type="checkbox">
+      </div>
+    </div>
+  </body>
+</html>
