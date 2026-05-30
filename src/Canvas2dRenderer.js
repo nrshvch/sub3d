@@ -115,20 +115,24 @@ p.render = function (camera, viewport, stats) {
       ? cam.fogColor
       : cam.bgColor;
 
-  const bgR = bgColorInt >>> 16;
-  const bgG = (bgColorInt >>> 8) & 255;
-  const bgB = bgColorInt & 255;
+  if(cam.bgColor !== -1){
+    const bgR = bgColorInt >>> 16;
+    const bgG = (bgColorInt >>> 8) & 255;
+    const bgB = bgColorInt & 255;
 
-  // 1. Quantize 8-bit to 5-6-5 bits
-  const qr = bgR & 0xf8; // Keep 5 bits
-  const qg = bgG & 0xfc; // Keep 6 bits
-  const qb = bgB & 0xf8; // Keep 5 bits
+    // 1. Quantize 8-bit to 5-6-5 bits
+    const qr = bgR & 0xf8; // Keep 5 bits
+    const qg = bgG & 0xfc; // Keep 6 bits
+    const qb = bgB & 0xf8; // Keep 5 bits
 
-  // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-  const key = (qr << 8) | (qg << 3) | (qb >> 3);
+    // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+    const key = (qr << 8) | (qg << 3) | (qb >> 3);
 
-  viewport.context.fillStyle = PALETTE_16BIT[key];
-  viewport.context.fillRect(0, 0, viewport.width, viewport.height);
+    viewport.context.fillStyle = PALETTE_16BIT[key];
+    viewport.context.fillRect(0, 0, viewport.width, viewport.height);
+  }else{
+    viewport.context.clearRect(0, 0, viewport.width, viewport.height);
+  }
 
   //worst case scenario - every object is visible
   if (visibleObjectsBuffer.length < gameObjects.length) {
