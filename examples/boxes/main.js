@@ -146,7 +146,7 @@ debugRange.addEventListener("input", (e) => {
 setInterval(() => {
   if (!isDebug) return;
   const dt = viewport.lastRenderStats.dt;
-  fps = dt > 0 ? (1000 / dt) | 0 : 1000;
+  fps = viewport.lastRenderStats.fps;
   avgDt = avgDt === undefined ? dt : (avgDt + dt) / 2;
   maxFps = Math.max(maxFps, fps);
   fpsEl.innerText = fps;
@@ -155,6 +155,6 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
-  dprEl.innerText = window.devicePixelRatio;
+  dprEl.innerText = viewport.dpr.toFixed(2);
   debugRangeVal.innerText = targetCount;
 }, 100);

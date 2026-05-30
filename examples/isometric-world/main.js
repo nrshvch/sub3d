@@ -567,7 +567,7 @@ sliderDprEl.addEventListener("input", (e) => {
 setInterval(() => {
   if (!isDebug) return;
   const dt = viewport.lastRenderStats.dt;
-  fps = dt > 0 ? (1000 / dt) | 0 : 1000;
+  fps = viewport.lastRenderStats.fps;
   avgDt = avgDt === undefined ? dt : (avgDt + dt) / 2;
   maxFps = Math.max(maxFps, fps);
   fpsEl.innerText = fps;
