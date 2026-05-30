@@ -365,6 +365,12 @@ myGame.world.tickRegister({
       var d = Date.now() - dt;
 
       cameraObject.transform.rotate(0, d / 1000, 0, "world");
+
+      const chkbxAutoCycleEl = document.getElementById("chkbx_auto_cycle");
+      if (chkbxAutoCycleEl && chkbxAutoCycleEl.checked) {
+        currentAngle = (currentAngle + (CYCLE_SPEED * d) / 1000) % 360;
+        updateDaylightCycle(currentAngle);
+      }
     }
 
     dt = time.now;
@@ -502,6 +508,7 @@ function updateFog(nearVal, farVal) {
 }
 
 sliderFogNearEl.addEventListener("input", (e) => {
+  if (chkbxAutoCycleEl) chkbxAutoCycleEl.checked = false;
   let nearVal = parseInt(e.target.value, 10);
   let farVal = parseInt(sliderFogFarEl.value, 10);
   if (nearVal > farVal) {
@@ -511,6 +518,7 @@ sliderFogNearEl.addEventListener("input", (e) => {
 });
 
 sliderFogFarEl.addEventListener("input", (e) => {
+  if (chkbxAutoCycleEl) chkbxAutoCycleEl.checked = false;
   let farVal = parseInt(e.target.value, 10);
   let nearVal = parseInt(sliderFogNearEl.value, 10);
   if (farVal < nearVal) {
@@ -524,13 +532,14 @@ const sunAngleValueEl = document.getElementById("sunAngleValue");
 const colorSunEl = document.getElementById("color_sun");
 
 sliderSunAngleEl.addEventListener("input", (e) => {
+  if (chkbxAutoCycleEl) chkbxAutoCycleEl.checked = false;
   const angleVal = parseInt(e.target.value, 10);
-  scaliaEngine.glMatrix.mat4.identity(sun.transform.local);
-  sun.transform.rotate(angleVal,0, 0);
-  sunAngleValueEl.innerText = angleVal;
+  currentAngle = angleVal;
+  updateDaylightCycle(angleVal);
 });
 
 colorSunEl.addEventListener("input", (e) => {
+  if (chkbxAutoCycleEl) chkbxAutoCycleEl.checked = false;
   const hex = e.target.value;
   const colorInt = parseInt(hex.substring(1), 16);
   sun.light.color = colorInt;
@@ -540,6 +549,7 @@ const colorFogEl = document.getElementById("color_fog");
 const colorAmbientEl = document.getElementById("color_ambient");
 
 colorFogEl.addEventListener("input", (e) => {
+  if (chkbxAutoCycleEl) chkbxAutoCycleEl.checked = false;
   const hex = e.target.value;
   const r = parseInt(hex.substring(1, 3), 16);
   const g = parseInt(hex.substring(3, 5), 16);
@@ -550,6 +560,7 @@ colorFogEl.addEventListener("input", (e) => {
 });
 
 colorAmbientEl.addEventListener("input", (e) => {
+  if (chkbxAutoCycleEl) chkbxAutoCycleEl.checked = false;
   const hex = e.target.value;
   const colorInt = parseInt(hex.substring(1), 16);
   cameraObject.camera.ambientLight = colorInt;
@@ -563,6 +574,111 @@ sliderDprEl.addEventListener("input", (e) => {
   viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
   dprEl.innerText = val.toFixed(2);
 });
+
+// --- Day/Night Cycle Simulation ---
+const chkbxAutoCycleEl = document.getElementById("chkbx_auto_cycle");
+let currentAngle = 45; // Start at morning/afternoon angle
+const CYCLE_SPEED = 6.0; // degrees per second (60 seconds for a full 360-degree loop)
+
+const keyframes = [
+  { angle: 0, sunColor: [160, 70, 60], ambientColor: [35, 30, 38], fogColor: [140, 100, 120], fogNear: 800, fogFar: 1800 },
+  { angle: 15, sunColor: [150, 150, 140], ambientColor: [55, 65, 80], fogColor: [140, 180, 200], fogNear: 1500, fogFar: 2500 },
+  { angle: 90, sunColor: [140, 150, 175], ambientColor: [55, 70, 95], fogColor: [140, 180, 200], fogNear: 1500, fogFar: 2500 },
+  { angle: 165, sunColor: [150, 150, 140], ambientColor: [55, 65, 80], fogColor: [140, 180, 200], fogNear: 1500, fogFar: 2500 },
+  { angle: 180, sunColor: [150, 65, 50], ambientColor: [35, 28, 35], fogColor: [100, 70, 100], fogNear: 800, fogFar: 1800 },
+  { angle: 210, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: 500, fogFar: 1500 },
+  { angle: 270, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: 500, fogFar: 1500 },
+  { angle: 330, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: 500, fogFar: 1500 },
+  { angle: 360, sunColor: [160, 70, 60], ambientColor: [35, 30, 38], fogColor: [140, 100, 120], fogNear: 800, fogFar: 1800 }
+];
+
+function getInterpolatedCycle(angle) {
+  angle = ((angle % 360) + 360) % 360;
+
+  let lower = keyframes[0];
+  let upper = keyframes[keyframes.length - 1];
+  for (let i = 0; i < keyframes.length - 1; i++) {
+    if (angle >= keyframes[i].angle && angle <= keyframes[i + 1].angle) {
+      lower = keyframes[i];
+      upper = keyframes[i + 1];
+      break;
+    }
+  }
+
+  const range = upper.angle - lower.angle;
+  const t = range === 0 ? 0 : (angle - lower.angle) / range;
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const lerpColor = (c1, c2, t) => [
+    Math.round(lerp(c1[0], c2[0], t)),
+    Math.round(lerp(c1[1], c2[1], t)),
+    Math.round(lerp(c1[2], c2[2], t))
+  ];
+
+  const sunColor = lerpColor(lower.sunColor, upper.sunColor, t);
+  const ambientColor = lerpColor(lower.ambientColor, upper.ambientColor, t);
+  const fogColor = lerpColor(lower.fogColor, upper.fogColor, t);
+  const fogNear = Math.round(lerp(lower.fogNear, upper.fogNear, t));
+  const fogFar = Math.round(lerp(lower.fogFar, upper.fogFar, t));
+
+  return {
+    sunColor: (sunColor[0] << 16) | (sunColor[1] << 8) | sunColor[2],
+    ambientColor: (ambientColor[0] << 16) | (ambientColor[1] << 8) | ambientColor[2],
+    fogColor: (fogColor[0] << 16) | (fogColor[1] << 8) | fogColor[2],
+    fogNear,
+    fogFar
+  };
+}
+
+function updateDaylightCycle(angle) {
+  const state = getInterpolatedCycle(angle);
+
+  // Update light transform rotation using a continuous triangle wave
+  // Sweeps from 20 to 160 during the day, and back from 160 to 20 at night
+  let lightAngle;
+  if (angle <= 180) {
+    lightAngle = 20 + (angle / 180) * 140;
+  } else {
+    lightAngle = 160 - ((angle - 180) / 180) * 140;
+  }
+  scaliaEngine.glMatrix.mat4.identity(sun.transform.local);
+  sun.transform.rotate(lightAngle, 0, 0);
+
+  // Update engine states
+  sun.light.color = state.sunColor;
+  cameraObject.camera.ambientLight = state.ambientColor;
+  cameraObject.camera.fogColor = state.fogColor;
+  cameraObject.camera.bgColor = state.fogColor;
+  cameraObject.camera.fogNearPane = state.fogNear;
+  cameraObject.camera.fogFarPane = state.fogFar;
+  cameraObject.camera.farClippingPane = state.fogFar;
+
+  // Update UI inputs
+  if (sliderSunAngleEl) {
+    sliderSunAngleEl.value = Math.round(angle);
+    sunAngleValueEl.innerText = Math.round(angle);
+  }
+  if (colorSunEl) {
+    colorSunEl.value = "#" + state.sunColor.toString(16).padStart(6, "0");
+  }
+  if (colorAmbientEl) {
+    colorAmbientEl.value = "#" + state.ambientColor.toString(16).padStart(6, "0");
+  }
+  if (colorFogEl) {
+    colorFogEl.value = "#" + state.fogColor.toString(16).padStart(6, "0");
+  }
+  if (sliderFogNearEl) {
+    sliderFogNearEl.value = state.fogNear;
+    fogNearValueEl.innerText = state.fogNear;
+  }
+  if (sliderFogFarEl) {
+    sliderFogFarEl.value = state.fogFar;
+    fogFarValueEl.innerText = state.fogFar;
+  }
+}
+
+// Initial update to synchronize the cycle at start
+updateDaylightCycle(currentAngle);
 
 setInterval(() => {
   if (!isDebug) return;
