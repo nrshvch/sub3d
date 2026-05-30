@@ -3,15 +3,17 @@ import MeshComponent from "../components/MeshComponent.js";
 
 function generateBallMesh(rings, sectors, radius) {
   const verts = [];
+  const uvs = [];
   const faces = [];
   const lookup = {};
 
-  function getVertexIndex(x, y, z) {
-    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+  function getVertexIndex(x, y, z, u, v) {
+    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)},${u.toFixed(5)},${v.toFixed(5)}`;
     if (lookup[key] !== undefined) return lookup[key];
 
     const index = verts.length / 3;
     verts.push(x, y, z);
+    uvs.push(u, v);
     lookup[key] = index;
     return index;
   }
@@ -29,7 +31,11 @@ function generateBallMesh(rings, sectors, radius) {
       const x = Math.cos(theta) * sinPhi * radius;
       const y = cosPhi * radius;
       const z = Math.sin(theta) * sinPhi * radius;
-      row.push(getVertexIndex(x, y, z));
+
+      const u = s / sectors;
+      const v = 1.0 - r / rings;
+
+      row.push(getVertexIndex(x, y, z, u, v));
     }
     grid.push(row);
   }
@@ -56,6 +62,7 @@ function generateBallMesh(rings, sectors, radius) {
 
   return {
     vertices: new Float32Array(verts),
+    uvs: new Float32Array(uvs),
     faces: new Uint16Array(faces),
   };
 }
@@ -73,6 +80,7 @@ function Ball() {
 
   const mesh = new MeshComponent(this);
   mesh.vertices = ballMesh.vertices;
+  mesh.uvs = ballMesh.uvs;
   mesh.faces = ballMesh.faces;
   mesh.bounds = bounds;
   mesh.updateNormals();
