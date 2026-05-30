@@ -1849,6 +1849,245 @@ function drawTriangles(
 
         if (fogAmount > 1) fogAmount = 1;
 
+        // Handle Textures
+        const mIdx = meshIndexBuffer[idx];
+        const mesh = renderers[mIdx];
+        const img = mesh.textureImage;
+
+        if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
+          const mFaceIdx = meshFaceIndexBuffer[idx];
+          const uvs = mesh.uvs;
+          // original face vertex indices from mesh
+          const ov0 = mesh.faces[mFaceIdx] * 2;
+          const ov1 = mesh.faces[mFaceIdx + 1] * 2;
+          const ov2 = mesh.faces[mFaceIdx + 2] * 2;
+
+          const U0 = uvs[ov0] * img.width;
+          const V0 = uvs[ov0 + 1] * img.height;
+          const U1 = uvs[ov1] * img.width;
+          const V1 = uvs[ov1 + 1] * img.height;
+          const U2 = uvs[ov2] * img.width;
+          const V2 = uvs[ov2 + 1] * img.height;
+
+          const delta = U0 * (V1 - V2) - V0 * (U1 - U2) + (U1 * V2 - U2 * V1);
+
+          if (Math.abs(delta) > 0.00001) {
+            const invDelta = 1 / delta;
+            const a =
+              (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+            const c =
+              (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+            const e =
+              (px0 * (U1 * V2 - U2 * V1) +
+                px1 * (U2 * V0 - U0 * V2) +
+                px2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            const b =
+              (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+            const d =
+              (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+            const f =
+              (py0 * (U1 * V2 - U2 * V1) +
+                py1 * (U2 * V0 - U0 * V2) +
+                py2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            ctx.save();
+
+            ctx.beginPath();
+            ctx.moveTo(epx0, epy0);
+            ctx.lineTo(epx1, epy1);
+            ctx.lineTo(epx2, epy2);
+            ctx.closePath();
+
+            ctx.clip(); // clip to the expanded triangle
+            ctx.setTransform(a, b, c, d, e, f);
+            ctx.drawImage(img, 0, 0);
+            ctx.restore();
+
+            // Calculate vertex lighting color keys (clamped and quantized to 5-6-5)
+            const lr0 = ir0 >= 1.0 ? 255 : (ir0 * 255) | 0;
+            const lg0 = ig0 >= 1.0 ? 255 : (ig0 * 255) | 0;
+            const lb0 = ib0 >= 1.0 ? 255 : (ib0 * 255) | 0;
+
+            const lr1 = ir1 >= 1.0 ? 255 : (ir1 * 255) | 0;
+            const lg1 = ig1 >= 1.0 ? 255 : (ig1 * 255) | 0;
+            const lb1 = ib1 >= 1.0 ? 255 : (ib1 * 255) | 0;
+
+            const lr2 = ir2 >= 1.0 ? 255 : (ir2 * 255) | 0;
+            const lg2 = ig2 >= 1.0 ? 255 : (ig2 * 255) | 0;
+            const lb2 = ib2 >= 1.0 ? 255 : (ib2 * 255) | 0;
+
+            const l16_0 = ((lr0 & 0xf8) << 8) | ((lg0 & 0xfc) << 3) | ((lb0 & 0xf8) >> 3);
+            const l16_1 = ((lr1 & 0xf8) << 8) | ((lg1 & 0xfc) << 3) | ((lb1 & 0xf8) >> 3);
+            const l16_2 = ((lr2 & 0xf8) << 8) | ((lg2 & 0xfc) << 3) | ((lb2 & 0xf8) >> 3);
+
+            let _px0 = px0;
+            let _py0 = py0;
+            let _px1 = px1;
+            let _py1 = py1;
+            let _px2 = px2;
+            let _py2 = py2;
+
+            let pi0 = i0,
+              pi1 = i1,
+              pi2 = i2;
+
+            let _l16_0 = l16_0;
+            let _l16_1 = l16_1;
+            let _l16_2 = l16_2;
+
+            // In-place sort by intensity (ascending)
+            if (pi0 > pi1) {
+              let t;
+              t = _px0;
+              _px0 = _px1;
+              _px1 = t;
+              t = _py0;
+              _py0 = _py1;
+              _py1 = t;
+              t = pi0;
+              pi0 = pi1;
+              pi1 = t;
+              t = _l16_0;
+              _l16_0 = _l16_1;
+              _l16_1 = t;
+            }
+            if (pi1 > pi2) {
+              let t;
+              t = _px1;
+              _px1 = _px2;
+              _px2 = t;
+              t = _py1;
+              _py1 = _py2;
+              _py2 = t;
+              t = pi1;
+              pi1 = pi2;
+              pi2 = t;
+              t = _l16_1;
+              _l16_1 = _l16_2;
+              _l16_2 = t;
+            }
+            if (pi0 > pi1) {
+              let t;
+              t = _px0;
+              _px0 = _px1;
+              _px1 = t;
+              t = _py0;
+              _py0 = _py1;
+              _py1 = t;
+              t = pi0;
+              pi0 = pi1;
+              pi1 = t;
+              t = _l16_0;
+              _l16_0 = _l16_1;
+              _l16_1 = t;
+            }
+
+            ctx.globalCompositeOperation = "multiply";
+
+            // If intensity difference is minimal, use flat lighting overlay
+            if (pi2 - pi0 < 0.01 || (_l16_0 === _l16_1 && _l16_1 === _l16_2)) {
+              if (prevFillStyle !== _l16_0) {
+                ctx.fillStyle = PALETTE_16BIT[_l16_0];
+                prevFillStyle = _l16_0;
+              }
+
+              ctx.beginPath();
+              ctx.moveTo(epx0, epy0);
+              ctx.lineTo(epx1, epy1);
+              ctx.lineTo(epx2, epy2);
+              ctx.closePath();
+              ctx.fill();
+            } else {
+              // Precise 2D parametric mapping of Gouraud light gradient
+              const t_val = (pi1 - pi0) / (pi2 - pi0);
+
+              const p13x = _px0 + t_val * (_px2 - _px0);
+              const p13y = _py0 + t_val * (_py2 - _py0);
+
+              const dx = _px1 - p13x;
+              const dy = _py1 - p13y;
+
+              const gx_dir = -dy;
+              const gy_dir = dx;
+
+              const den = gx_dir * gx_dir + gy_dir * gy_dir;
+
+              let gx_end, gy_end;
+
+              if (den < 1e-6) {
+                gx_end = _px2;
+                gy_end = _py2;
+              } else {
+                const num = (_px2 - _px0) * gx_dir + (_py2 - _py0) * gy_dir;
+                const factor = num / den;
+                gx_end = _px0 + factor * gx_dir;
+                gy_end = _py0 + factor * gy_dir;
+              }
+
+              const lightGrad = ctx.createLinearGradient(_px0, _py0, gx_end, gy_end);
+              lightGrad.addColorStop(0, PALETTE_16BIT[_l16_0]);
+              lightGrad.addColorStop(1, PALETTE_16BIT[_l16_2]);
+
+              prevFillStyle = -1; // Resets fillStyle cache
+              ctx.fillStyle = lightGrad;
+
+              ctx.beginPath();
+              ctx.moveTo(epx0, epy0);
+              ctx.lineTo(epx1, epy1);
+              ctx.lineTo(epx2, epy2);
+              ctx.closePath();
+
+              ctx.fill();
+            }
+
+            ctx.globalCompositeOperation = "source-over";
+
+            // Apply Fog (Source-Over)
+            if (fogAmount > 0) {
+              const fogR = fogColor >>> 16;
+              const fogG = (fogColor >>> 8) & 255;
+              const fogB = fogColor & 255;
+              // Quantize 8-bit color channels to 5-6-5 bits
+              const qrF = fogR & 0xf8; // Keep 5 bits
+              const qgF = fogG & 0xfc; // Keep 6 bits
+              const qbF = fogB & 0xf8; // Keep 5 bits
+
+              // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+              const color16F = (qrF << 8) | (qgF << 3) | (qbF >> 3);
+
+              ctx.globalAlpha = fogAmount;
+
+              if (prevStrokeStyle !== color16F) {
+                ctx.strokeStyle = PALETTE_16BIT[color16F];
+                prevStrokeStyle = color16F;
+              }
+
+              if (prevLineStyle !== 10) {
+                ctx.lineWidth = 1;
+                ctx.lineJoin = "miter";
+                prevLineStyle = 10;
+              }
+
+              ctx.stroke();
+
+              if (prevFillStyle !== color16F) {
+                ctx.fillStyle = PALETTE_16BIT[color16F];
+                prevFillStyle = color16F;
+              }
+
+              ctx.fill();
+
+              // Reset alpha
+              ctx.globalAlpha = 1.0;
+            }
+
+            break;
+          }
+        }
+
         // Base quantized colors per vertex
         let cr0 = r * ir0;
         let cg0 = g * ig0;
