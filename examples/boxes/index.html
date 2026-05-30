@@ -64,7 +64,7 @@
           margin-top: 8px;
       }
 
-      #debug-range {
+      input[type="range"] {
           width: 100%;
       }
     </style>
@@ -80,8 +80,8 @@
       <div>Draw Calls <span id="drawCalls"></span></div>
       <div>DPR <span id="dpr"></span></div>
       <div class="range">
+        <label for="debug-range">Target count (<span id="debug-range-value"></span>)</label>
         <input id="debug-range" type="range" min="0" max="10000"/>
-        <span id="debug-range-value"></span>
       </div>
       <div>
         <label for="chkbx_1">Wireframe</label>
