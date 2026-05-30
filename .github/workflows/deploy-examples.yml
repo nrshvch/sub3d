@@ -36,6 +36,18 @@ jobs:
           npm install
           npx vite build --base=/sub3d/examples/isometric-world/ --outDir=../../dist/examples/isometric-world
 
+      - name: Build Earth Example
+        run: |
+          cd examples/earth
+          npm install
+          npx vite build --base=/sub3d/examples/earth/ --outDir=../../dist/examples/earth
+
+      - name: Build Cubes-2013 Example
+        run: |
+          cd examples/cubes-2013
+          npm install
+          npx vite
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
