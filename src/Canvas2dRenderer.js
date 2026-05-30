@@ -1789,9 +1789,9 @@ function drawTriangles(
           pi1 = i1,
           pi2 = i2;
 
-        let pc0 = PALETTE_16BIT[c16_0];
-        let pc1 = PALETTE_16BIT[c16_1];
-        let pc2 = PALETTE_16BIT[c16_2];
+        let _c16_0 = c16_0;
+        let _c16_1 = c16_1;
+        let _c16_2 = c16_2;
 
         // In-place sort by intensity (ascending)
         if (pi0 > pi1) {
@@ -1805,9 +1805,9 @@ function drawTriangles(
           t = pi0;
           pi0 = pi1;
           pi1 = t;
-          t = pc0;
-          pc0 = pc1;
-          pc1 = t;
+          t = _c16_0;
+          _c16_0 = _c16_1;
+          _c16_1 = t;
         }
         if (pi1 > pi2) {
           let t;
@@ -1820,9 +1820,9 @@ function drawTriangles(
           t = pi1;
           pi1 = pi2;
           pi2 = t;
-          t = pc1;
-          pc1 = pc2;
-          pc2 = t;
+          t = _c16_1;
+          _c16_1 = _c16_2;
+          _c16_2 = t;
         }
         if (pi0 > pi1) {
           let t;
@@ -1835,9 +1835,9 @@ function drawTriangles(
           t = pi0;
           pi0 = pi1;
           pi1 = t;
-          t = pc0;
-          pc0 = pc1;
-          pc1 = t;
+          t = _c16_0;
+          _c16_0 = _c16_1;
+          _c16_1 = t;
         }
 
         // If intensity difference is minimal, use flat shading
@@ -1848,14 +1848,14 @@ function drawTriangles(
           ctx.lineTo(px2, py2);
           ctx.closePath();
 
-          if (prevFillStyle !== c16_0) {
-            ctx.fillStyle = pc0;
-            prevFillStyle = c16_0;
+          if (prevFillStyle !== _c16_0) {
+            ctx.fillStyle = PALETTE_16BIT[_c16_0];
+            prevFillStyle = _c16_0;
           }
 
-          if (prevStrokeStyle !== c16_0) {
-            ctx.strokeStyle = pc0;
-            prevStrokeStyle = c16_0;
+          if (prevStrokeStyle !== _c16_0) {
+            ctx.strokeStyle = PALETTE_16BIT[_c16_0];
+            prevStrokeStyle = _c16_0;
           }
 
           if (prevLineStyle !== 10) {
@@ -1895,16 +1895,16 @@ function drawTriangles(
           }
 
           const grad = ctx.createLinearGradient(_px0, _py0, gx_end, gy_end);
-          grad.addColorStop(0, pc0);
+          grad.addColorStop(0, PALETTE_16BIT[_c16_0]);
 
           // let safe_t = t_val;
           // if (safe_t < 0) safe_t = 0;
           // if (safe_t > 1) safe_t = 1;
           //
           // if (safe_t > 0 && safe_t < 1) {
-          //   grad.addColorStop(safe_t, pc1);
+          //   grad.addColorStop(safe_t, PALETTE_16BIT[_c16_1]);
           // }
-          grad.addColorStop(1, pc2);
+          grad.addColorStop(1, PALETTE_16BIT[_c16_2]);
 
           prevFillStyle = -1; // Resets fillStyle
           ctx.fillStyle = grad;
