@@ -1489,6 +1489,106 @@ function drawTriangles(
           b = (b * (1 - effectiveFog) + fogB * effectiveFog) | 0;
         }
 
+        // Handle Textures
+        const mIdx = meshIndexBuffer[idx];
+        const mesh = renderers[mIdx];
+        const img = mesh.textureImage;
+
+        if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
+          const mFaceIdx = meshFaceIndexBuffer[idx];
+          const uvs = mesh.uvs;
+          // original face vertex indices from mesh
+          const ov0 = mesh.faces[mFaceIdx] * 2;
+          const ov1 = mesh.faces[mFaceIdx + 1] * 2;
+          const ov2 = mesh.faces[mFaceIdx + 2] * 2;
+
+          const U0 = uvs[ov0] * img.width;
+          const V0 = uvs[ov0 + 1] * img.height;
+          const U1 = uvs[ov1] * img.width;
+          const V1 = uvs[ov1 + 1] * img.height;
+          const U2 = uvs[ov2] * img.width;
+          const V2 = uvs[ov2 + 1] * img.height;
+
+          const delta = U0 * (V1 - V2) - V0 * (U1 - U2) + (U1 * V2 - U2 * V1);
+
+          if (Math.abs(delta) > 0.00001) {
+            const invDelta = 1 / delta;
+            const a =
+              (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+            const c =
+              (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+            const e =
+              (px0 * (U1 * V2 - U2 * V1) +
+                px1 * (U2 * V0 - U0 * V2) +
+                px2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            const b =
+              (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+            const d =
+              (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+            const f =
+              (py0 * (U1 * V2 - U2 * V1) +
+                py1 * (U2 * V0 - U0 * V2) +
+                py2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            ctx.save();
+
+            ctx.beginPath();
+            ctx.moveTo(epx0, epy0);
+            ctx.lineTo(epx1, epy1);
+            ctx.lineTo(epx2, epy2);
+            ctx.closePath();
+
+            ctx.clip(); // clip to the expanded triangle
+            ctx.setTransform(a, b, c, d, e, f);
+            ctx.drawImage(img, 0, 0);
+            ctx.restore();
+
+            // Apply Fog (Source-Over)
+            if (effectiveFog > 0) {
+              const fogR = fogColor >>> 16;
+              const fogG = (fogColor >>> 8) & 255;
+              const fogB = fogColor & 255;
+              // Quantize 8-bit color channels to 5-6-5 bits
+              const qrF = fogR & 0xf8; // Keep 5 bits
+              const qgF = fogG & 0xfc; // Keep 6 bits
+              const qbF = fogB & 0xf8; // Keep 5 bits
+
+              // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+              const color16F = (qrF << 8) | (qgF << 3) | (qbF >> 3);
+
+              ctx.globalAlpha = effectiveFog;
+
+              if (prevStrokeStyle !== color16F) {
+                ctx.strokeStyle = PALETTE_16BIT[color16F];
+                prevStrokeStyle = color16F;
+              }
+
+              if (prevLineStyle !== 10) {
+                ctx.lineWidth = 1;
+                ctx.lineJoin = "miter";
+                prevLineStyle = 10;
+              }
+
+              ctx.stroke();
+
+              if (prevFillStyle !== color16F) {
+                ctx.fillStyle = PALETTE_16BIT[color16F];
+                prevFillStyle = color16F;
+              }
+
+              ctx.fill();
+
+              // Reset alpha
+              ctx.globalAlpha = 1.0;
+            }
+
+            break;
+          }
+        }
+
         ctx.beginPath();
         ctx.moveTo(epx0, epy0);
         ctx.lineTo(epx1, epy1);
@@ -1518,6 +1618,67 @@ function drawTriangles(
         let r = color32 >>> 16;
         let g = (color32 >>> 8) & 255;
         let b = color32 & 255;
+
+        // Handle Textures
+        const mIdx = meshIndexBuffer[idx];
+        const mesh = renderers[mIdx];
+        const img = mesh.textureImage;
+
+        if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
+          const mFaceIdx = meshFaceIndexBuffer[idx];
+          const uvs = mesh.uvs;
+          // original face vertex indices from mesh
+          const ov0 = mesh.faces[mFaceIdx] * 2;
+          const ov1 = mesh.faces[mFaceIdx + 1] * 2;
+          const ov2 = mesh.faces[mFaceIdx + 2] * 2;
+
+          const U0 = uvs[ov0] * img.width;
+          const V0 = uvs[ov0 + 1] * img.height;
+          const U1 = uvs[ov1] * img.width;
+          const V1 = uvs[ov1 + 1] * img.height;
+          const U2 = uvs[ov2] * img.width;
+          const V2 = uvs[ov2 + 1] * img.height;
+
+          const delta = U0 * (V1 - V2) - V0 * (U1 - U2) + (U1 * V2 - U2 * V1);
+
+          if (Math.abs(delta) > 0.00001) {
+            const invDelta = 1 / delta;
+            const a =
+              (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+            const c =
+              (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+            const e =
+              (px0 * (U1 * V2 - U2 * V1) +
+                px1 * (U2 * V0 - U0 * V2) +
+                px2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            const b =
+              (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+            const d =
+              (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+            const f =
+              (py0 * (U1 * V2 - U2 * V1) +
+                py1 * (U2 * V0 - U0 * V2) +
+                py2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            ctx.save();
+
+            ctx.beginPath();
+            ctx.moveTo(epx0, epy0);
+            ctx.lineTo(epx1, epy1);
+            ctx.lineTo(epx2, epy2);
+            ctx.closePath();
+
+            ctx.clip(); // clip to the expanded triangle
+            ctx.setTransform(a, b, c, d, e, f);
+            ctx.drawImage(img, 0, 0);
+            ctx.restore();
+
+            break;
+          }
+        }
 
         ctx.beginPath();
         ctx.moveTo(epx0, epy0);
