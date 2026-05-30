@@ -1,9 +1,7 @@
 // TODO: dont pass gameObjects object into drawTriangles, move lights params into typed buffers
 // TODO: in FLAT and GOURAUD shaders use rgb light for fog
-// TODO: normalize colors format to 0xFFFFF or 0xFFFFFFFF
 // TODO: consider turning layerBuffers into single types array sorted by layer index
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
-// TODO: use rgba instead of globalAlpha for color fill
 // TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
 // TODO: calculate lightning at lower fps
 
@@ -112,15 +110,19 @@ p.render = function (camera, viewport, stats) {
   let faces = 0;
 
   const cam = camera.camera;
-  const bgColor =
+  const bgColorInt =
     camera.camera.fogType !== CameraComponent.FogType.NONE
       ? cam.fogColor
       : cam.bgColor;
 
+  const bgR = bgColorInt >>> 16;
+  const bgG = (bgColorInt >>> 8) & 255;
+  const bgB = bgColorInt & 255;
+
   // 1. Quantize 8-bit to 5-6-5 bits
-  const qr = bgColor[0] & 0xf8; // Keep 5 bits
-  const qg = bgColor[1] & 0xfc; // Keep 6 bits
-  const qb = bgColor[2] & 0xf8; // Keep 5 bits
+  const qr = bgR & 0xf8; // Keep 5 bits
+  const qg = bgG & 0xfc; // Keep 6 bits
+  const qb = bgB & 0xf8; // Keep 5 bits
 
   // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
   const key = (qr << 8) | (qg << 3) | (qb >> 3);
@@ -909,11 +911,7 @@ function destructMesh(
 
       const fIdx = (f / 3) | 0;
       const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
-      colorBuffer[i] =
-        (mesh.colors[cIdx] << 24) |
-        (mesh.colors[cIdx + 1] << 16) |
-        (mesh.colors[cIdx + 2] << 8) |
-        255;
+      colorBuffer[i] = mesh.colors[cIdx];
       shaderTypeBuffer[i] = mesh.shaderType;
 
       // --- MAPPING & VERTEX SUBMISSION ---
@@ -1155,9 +1153,9 @@ function drawTriangles(
 
         // Calculating face lightning
         const color32 = colorBuffer[idx];
-        let r = (color32 >>> 24) & 255;
-        let g = (color32 >>> 16) & 255;
-        let b = (color32 >>> 8) & 255;
+        let r = color32 >>> 16;
+        let g = (color32 >>> 8) & 255;
+        let b = color32 & 255;
 
         let ir = (ambientLightRgb >>> 16) & 255;
         let ig = (ambientLightRgb >>> 8) & 255;
@@ -1251,9 +1249,12 @@ function drawTriangles(
 
         // Blend the mesh color with the fog color
         if (fogAmount > 0) {
-          r = (r * (1 - fogAmount) + fogColor[0] * fogAmount) | 0;
-          g = (g * (1 - fogAmount) + fogColor[1] * fogAmount) | 0;
-          b = (b * (1 - fogAmount) + fogColor[2] * fogAmount) | 0;
+          const fogR = fogColor >>> 16;
+          const fogG = (fogColor >>> 8) & 255;
+          const fogB = fogColor & 255;
+          r = (r * (1 - fogAmount) + fogR * fogAmount) | 0;
+          g = (g * (1 - fogAmount) + fogG * fogAmount) | 0;
+          b = (b * (1 - fogAmount) + fogB * fogAmount) | 0;
         }
 
         // Handle Textures
@@ -1341,15 +1342,17 @@ function drawTriangles(
 
             // Apply Fog (Source-Over)
             if (fogAmount > 0) {
+              const fogR = fogColor >>> 16;
+              const fogG = (fogColor >>> 8) & 255;
+              const fogB = fogColor & 255;
               // Quantize 8-bit color channels to 5-6-5 bits
-              const qrF = fogColor[0] & 0xf8; // Keep 5 bits
-              const qgF = fogColor[1] & 0xfc; // Keep 6 bits
-              const qbF = fogColor[2] & 0xf8; // Keep 5 bits
+              const qrF = fogR & 0xf8; // Keep 5 bits
+              const qgF = fogG & 0xfc; // Keep 6 bits
+              const qbF = fogB & 0xf8; // Keep 5 bits
 
               // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
               const color16F = (qrF << 8) | (qgF << 3) | (qbF >> 3);
 
-              //TODO: use rgba colors instead.
               ctx.globalAlpha = fogAmount;
 
               if (prevStrokeStyle !== color16F) {
@@ -1419,9 +1422,9 @@ function drawTriangles(
       case 1: {
         //EMISSIVE (no light shading, just fog)
         const color32 = colorBuffer[idx];
-        let r = (color32 >>> 24) & 255;
-        let g = (color32 >>> 16) & 255;
-        let b = (color32 >>> 8) & 255;
+        let r = color32 >>> 16;
+        let g = (color32 >>> 8) & 255;
+        let b = color32 & 255;
 
         // Calculating fog
         const depth = depthBuffer[idx];
@@ -1478,9 +1481,12 @@ function drawTriangles(
 
         // Blend the mesh color with the fog color
         if (effectiveFog > 0) {
-          r = (r * (1 - effectiveFog) + fogColor[0] * effectiveFog) | 0;
-          g = (g * (1 - effectiveFog) + fogColor[1] * effectiveFog) | 0;
-          b = (b * (1 - effectiveFog) + fogColor[2] * effectiveFog) | 0;
+          const fogR = fogColor >>> 16;
+          const fogG = (fogColor >>> 8) & 255;
+          const fogB = fogColor & 255;
+          r = (r * (1 - effectiveFog) + fogR * effectiveFog) | 0;
+          g = (g * (1 - effectiveFog) + fogG * effectiveFog) | 0;
+          b = (b * (1 - effectiveFog) + fogB * effectiveFog) | 0;
         }
 
         ctx.beginPath();
@@ -1509,9 +1515,9 @@ function drawTriangles(
       case 2: {
         // UNLIT (no light shading, no fog, just mesh color)
         const color32 = colorBuffer[idx];
-        let r = (color32 >>> 24) & 255;
+        let r = color32 >>> 16;
         let g = (color32 >>> 16) & 255;
-        let b = (color32 >>> 8) & 255;
+        let b = color32 & 255;
 
         ctx.beginPath();
         ctx.moveTo(epx0, epy0);
@@ -1562,11 +1568,11 @@ function drawTriangles(
       case 4: {
         // SMOOTH (Gouraud Shading)
         const color32 = colorBuffer[idx];
-        const r = (color32 >>> 24) & 255;
-        const g = (color32 >>> 16) & 255;
-        const b = (color32 >>> 8) & 255;
+        const r = color32 >>> 16;
+        const g = (color32 >>> 8) & 255;
+        const b = color32 & 255;
 
-        let litR = (ambientLightRgb >>> 16) & 255;
+        let litR = ambientLightRgb >>> 16;
         let litG = (ambientLightRgb >>> 8) & 255;
         let litB = ambientLightRgb & 255;
 
@@ -1595,7 +1601,7 @@ function drawTriangles(
           const lightGO = gameObjects[lightsIndexBuffer[l]];
           // DIRECTIONAL
           if (lightGO.light.type === 0) {
-            const lightR = (lightGO.light.color >>> 16) & 255;
+            const lightR = lightGO.light.color >>> 16;
             const lightG = (lightGO.light.color >>> 8) & 255;
             const lightB = lightGO.light.color & 255;
 
@@ -1706,9 +1712,12 @@ function drawTriangles(
 
         if (fogAmount > 0) {
           const invFog = 1 - fogAmount;
-          const fr = fogColor[0] * fogAmount;
-          const fg = fogColor[1] * fogAmount;
-          const fb = fogColor[2] * fogAmount;
+          const fogR = fogColor >>> 16;
+          const fogG = (fogColor >>> 8) & 255;
+          const fogB = fogColor & 255;
+          const fr = fogR * fogAmount;
+          const fg = fogG * fogAmount;
+          const fb = fogB * fogAmount;
           cr0 = (cr0 * invFog + fr) | 0;
           cg0 = (cg0 * invFog + fg) | 0;
           cb0 = (cb0 * invFog + fb) | 0;

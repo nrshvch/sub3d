@@ -10,21 +10,11 @@ function generateApartmentMesh() {
   const lookup = {};
 
   const palette = [
-    70,
-    70,
-    70, // 0: Grey (Basement/Stairs)
-    140,
-    50,
-    50, // 3: Brick Red
-    40,
-    40,
-    45, // 6: Roof & Guardband
-    100,
-    150,
-    200, // 9: Windows
-    50,
-    40,
-    30, // 12: Door
+    0x464646, // 0: Grey (Basement/Stairs)
+    0x8C3232, // 1: Brick Red
+    0x28282D, // 2: Roof & Guardband
+    0x6496C8, // 3: Windows
+    0x32281E, // 4: Door
   ];
 
   function getVertexIndex(x, y, z) {
@@ -71,26 +61,26 @@ function generateApartmentMesh() {
   addQuad([0.5, 0, 0.5], [0.5, 0, -0.5], [0.5, b, -0.5], [0.5, b, 0.5], 0); // Right
 
   // --- 2. MAIN WALLS (Brick - Fixed Winding) ---
-  addQuad([-0.5, b, 0.5], [0.5, b, 0.5], [0.5, h, 0.5], [-0.5, h, 0.5], 3); // Front
+  addQuad([-0.5, b, 0.5], [0.5, b, 0.5], [0.5, h, 0.5], [-0.5, h, 0.5], 1); // Front
   addQuad(
     [0.5, b, -0.5],
     [-0.5, b, -0.5],
     [-0.5, h, -0.5],
     [0.5, h, -0.5],
-    3,
+    1,
   ); // Back
   addQuad(
     [-0.5, b, -0.5],
     [-0.5, b, 0.5],
     [-0.5, h, 0.5],
     [-0.5, h, -0.5],
-    3,
+    1,
   ); // Left
-  addQuad([0.5, b, 0.5], [0.5, b, -0.5], [0.5, h, -0.5], [0.5, h, 0.5], 3); // Right
+  addQuad([0.5, b, 0.5], [0.5, b, -0.5], [0.5, h, -0.5], [0.5, h, 0.5], 1); // Right
 
   // --- 3. ROOF TOP & LIPS (Dark) ---
   // Top surface (CCW viewed from above)
-  addQuad([-0.5, h, 0.5], [0.5, h, 0.5], [0.5, h, -0.5], [-0.5, h, -0.5], 6);
+  addQuad([-0.5, h, 0.5], [0.5, h, 0.5], [0.5, h, -0.5], [-0.5, h, -0.5], 2);
 
   const lip = 0.1;
   addQuad(
@@ -98,28 +88,28 @@ function generateApartmentMesh() {
     [0.5, h, 0.5],
     [0.5, h + lip, 0.5],
     [-0.5, h + lip, 0.5],
-    6,
+    2,
   ); // Front Lip
   addQuad(
     [0.5, h, -0.5],
     [-0.5, h, -0.5],
     [-0.5, h + lip, -0.5],
     [0.5, h + lip, -0.5],
-    6,
+    2,
   ); // Back Lip
   addQuad(
     [-0.5, h, -0.5],
     [-0.5, h, 0.5],
     [-0.5, h + lip, 0.5],
     [-0.5, h + lip, -0.5],
-    6,
+    2,
   ); // Left Lip
   addQuad(
     [0.5, h, 0.5],
     [0.5, h, -0.5],
     [0.5, h + lip, -0.5],
     [0.5, h + lip, 0.5],
-    6,
+    2,
   ); // Right Lip
 
   // --- 4. STAIRS (Grey - Fixed Winding) ---
@@ -236,7 +226,7 @@ function generateApartmentMesh() {
     [0.12, b, zO],
     [0.12, b + 0.45, zO],
     [-0.12, b + 0.45, zO],
-    12,
+    4,
   );
 
   [0.7, 1.3].forEach((y) => {
@@ -245,14 +235,14 @@ function generateApartmentMesh() {
       [-0.15, y, zO],
       [-0.15, y + 0.3, zO],
       [-0.35, y + 0.3, zO],
-      9,
+      3,
     );
     addQuad(
       [0.15, y, zO],
       [0.35, y, zO],
       [0.35, y + 0.3, zO],
       [0.15, y + 0.3, zO],
-      9,
+      3,
     );
 
     //side window
@@ -261,7 +251,7 @@ function generateApartmentMesh() {
       [0.51, y, -0.1],
       [0.51, y + 0.3, -0.1],
       [0.51, y + 0.3, 0.1],
-      9,
+      3,
     );
   });
 
@@ -269,7 +259,7 @@ function generateApartmentMesh() {
     vertices: new Float32Array(verts),
     faces: new Uint16Array(faces),
     faceColors: new Uint32Array(faceColors),
-    colors: new Uint8Array(palette),
+    colors: new Uint32Array(palette),
   };
 }
 

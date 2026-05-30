@@ -39,9 +39,9 @@ CameraComponent.prototype.farClippingPane = 1000;
 CameraComponent.prototype.fogType = FogType.LINEAR;
 CameraComponent.prototype.fogNearPane = 250;
 CameraComponent.prototype.fogFarPane = 750;
-CameraComponent.prototype.fogColor = new Uint8Array([150,150,150]);
-
-CameraComponent.prototype.ambientLight = 0.5;
+CameraComponent.prototype.fogColor = 0x969696;
+CameraComponent.prototype.bgColor = 0x969696;
+CameraComponent.prototype.ambientLight = 0x808080;
 
 CameraComponent.prototype.setup = function (width, height) {
 

@@ -193,11 +193,13 @@ for (var x = 0; x < N; x++) {
       verts[ey] = (Math.random() * 2 - 1) * 2;
 
       const colorIdx = colors.length;
-      colors.push(0, 0, 200);
+      colors.push(0x0000C8);
       faceColors.push(colorIdx, colorIdx, colorIdx, colorIdx);
     } else if (Math.min(h_ay, h_by, h_cy, h_dy) <= 0) {
       const coastColorIdx = colors.length;
-      colors.push(Math.random() * 20 + 200, Math.random() * 20 + 200, 0);
+      const cr = (Math.random() * 20 + 200) | 0;
+      const cg = (Math.random() * 20 + 200) | 0;
+      colors.push((cr << 16) | (cg << 8));
 
       //coast
       const h_ey = (verts[ey] = getTTDMidpoint(
@@ -210,7 +212,7 @@ for (var x = 0; x < N; x++) {
       //if is partially water (has water faces)
       if (h_ey === 0) {
         const waterColorIdx = colors.length;
-        colors.push(0, 0, 200);
+        colors.push(0x0000C8);
 
         //test every face for being a water
         faceColors.push(h_ay === h_by ? waterColorIdx : coastColorIdx);
@@ -221,7 +223,8 @@ for (var x = 0; x < N; x++) {
         //if is partially grass (has grass faces)
       } else {
         const grassColorIdx = colors.length;
-        colors.push(0, Math.random() * 20 + 200, 0);
+        const gg = (Math.random() * 20 + 200) | 0;
+        colors.push(gg << 8);
 
         //test every face for being a grass
         faceColors.push(
@@ -241,12 +244,13 @@ for (var x = 0; x < N; x++) {
       //ground
       verts[ey] = getTTDMidpoint(verts[ay], verts[by], verts[cy], verts[dy]);
       const colorIdx = colors.length;
-      colors.push(0, Math.random() * 20 + 200, 0);
+      const gg = (Math.random() * 20 + 200) | 0;
+      colors.push(gg << 8);
       faceColors.push(colorIdx, colorIdx, colorIdx, colorIdx);
     }
   }
 }
-terrain.meshRenderer.colors = new Uint8Array(colors);
+terrain.meshRenderer.colors = new Uint32Array(colors);
 terrain.meshRenderer.faceColors = new Uint32Array(faceColors);
 
 const simplifiedMesh = Terrain.simplifyExistingGridMesh(
@@ -287,7 +291,7 @@ for (var i = 0; i < N; i++) {
 
     if (Math.random() > 0.6 && Math.min(h_00, h_10, h_11, h_01) > 0) {
       var tree = new Tree();
-      tree.meshRenderer.colors = new Uint8Array([0, 100, 0]);
+      tree.meshRenderer.colors = new Uint32Array([0x006400]);
       tree.meshRenderer.layer = 1;
 
       const u = 0.25 + Math.random() * 0.5;
@@ -348,8 +352,8 @@ cameraObject.camera.nearClippingPane = -2500;
 cameraObject.camera.fogType = scaliaEngine.CameraComponent.FogType.RADIAL;
 cameraObject.camera.fogFarPane = 2500;
 cameraObject.camera.fogNearPane = 1500;
-cameraObject.camera.fogColor = new Uint8Array([140, 180, 200]);
-cameraObject.camera.bgColor = new Uint8Array([140, 180, 200]);
+cameraObject.camera.fogColor = 0x8CB4C8;
+cameraObject.camera.bgColor = 0x8CB4C8;
 cameraObject.camera.ambientLight = 0x202020;
 cameraObject.transform.rotate(30, 45, 0);
 cameraObject.transform.translate(0, 0, 0);
@@ -540,12 +544,9 @@ colorFogEl.addEventListener("input", (e) => {
   const r = parseInt(hex.substring(1, 3), 16);
   const g = parseInt(hex.substring(3, 5), 16);
   const b = parseInt(hex.substring(5, 7), 16);
-  cameraObject.camera.fogColor[0] = r;
-  cameraObject.camera.fogColor[1] = g;
-  cameraObject.camera.fogColor[2] = b;
-  cameraObject.camera.bgColor[0] = r;
-  cameraObject.camera.bgColor[1] = g;
-  cameraObject.camera.bgColor[2] = b;
+  const colorInt = (r << 16) | (g << 8) | b;
+  cameraObject.camera.fogColor = colorInt;
+  cameraObject.camera.bgColor = colorInt;
 });
 
 colorAmbientEl.addEventListener("input", (e) => {
