@@ -60,7 +60,7 @@ myGame.world.scene.addGameObject(cameraObject);
 
 const sun = new scaliaEngine.Light();
 myGame.world.scene.addGameObject(sun);
-sun.transform.rotate(0, 315, 0);
+sun.transform.rotate(0, 240, 0);
 
 let dt = null;
 myGame.world.tickRegister({
@@ -127,7 +127,7 @@ sliderDprEl.addEventListener("input", (e) => {
 setInterval(() => {
   if (!isDebug) return;
   const dt = viewport.lastRenderStats.dt;
-  fps = dt > 0 ? (1000 / dt) | 0 : 1000;
+  fps = viewport.lastRenderStats.fps;
   avgDt = avgDt === undefined ? dt : (avgDt + dt) / 2;
   maxFps = Math.max(maxFps, fps);
   fpsEl.innerText = fps;

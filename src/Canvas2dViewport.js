@@ -33,15 +33,36 @@ export default function Canvas2dViewport(camera, canvas) {
     viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
   });
 
+  this.lastRenderStats = {
+    dt: 0,
+    fps: 0,
+    frameTime: 0
+  };
+
+  let lastFrameTime = performance.now();
+  let frameCount = 0;
+  let lastFpsTime = performance.now();
+
   const self = this;
   this.startRenderLoop = function tick() {
     requestAnimationFrame(() => {
+      const now = performance.now();
+      const delta = now - lastFrameTime;
+      lastFrameTime = now;
+
+      frameCount++;
+      if (now - lastFpsTime >= 500) {
+        self.lastRenderStats.fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+        frameCount = 0;
+        lastFpsTime = now;
+      }
+
+      self.lastRenderStats.frameTime = delta;
+
       self.render();
       requestAnimationFrame(tick);
     });
   };
-
-  this.lastRenderStats = {};
 }
 
 var p = Canvas2dViewport.prototype;
