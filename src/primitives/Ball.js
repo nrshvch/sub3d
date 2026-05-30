@@ -67,21 +67,32 @@ function generateBallMesh(rings, sectors, radius) {
   };
 }
 
-const ballMesh = generateBallMesh(8, 8, 8);
 
-const bounds = new Float32Array(32);
 
-MeshComponent.computeBoundsFlatArray(bounds, 0, ballMesh.vertices);
+function generateBall(rings = 8, sectors = 8, radius = 8) {
+  const ballMesh = generateBallMesh(rings, sectors, radius);
 
-MeshComponent.computeBoundingSphere(bounds, 28, ballMesh.vertices);
+  const bounds = new Float32Array(32);
 
-function Ball() {
+  MeshComponent.computeBoundsFlatArray(bounds, 0, ballMesh.vertices);
+
+  MeshComponent.computeBoundingSphere(bounds, 28, ballMesh.vertices);
+
+  return [
+    ballMesh.vertices,
+    ballMesh.faces,
+    ballMesh.uvs,
+    bounds,
+  ]
+}
+
+function Ball(vertices, faces, uvs, bounds) {
   GameObject.call(this);
 
   const mesh = new MeshComponent(this);
-  mesh.vertices = ballMesh.vertices;
-  mesh.uvs = ballMesh.uvs;
-  mesh.faces = ballMesh.faces;
+  mesh.vertices = vertices;
+  mesh.faces = faces;
+  mesh.uvs = uvs;
   mesh.bounds = bounds;
   mesh.updateNormals();
 
@@ -89,5 +100,7 @@ function Ball() {
 }
 
 Ball.prototype = Object.create(GameObject.prototype);
+
+Ball.generate = generateBall;
 
 export default Ball;
