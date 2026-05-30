@@ -33,7 +33,7 @@ function generateBallMesh(rings, sectors, radius) {
       const z = Math.sin(theta) * sinPhi * radius;
 
       const u = s / sectors;
-      const v = 1.0 - r / rings;
+      const v = r / rings;
 
       row.push(getVertexIndex(x, y, z, u, v));
     }
