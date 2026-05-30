@@ -79,10 +79,9 @@
       <div>Objects on screen <span id="visibleObjects"></span></div>
       <div>Faces <span id="facesCount"></span></div>
       <div>Draw Calls <span id="drawCalls"></span></div>
-      <div>DPR <span id="dpr"></span></div>
-      <div class="range">
-        <input id="debug-range" type="range" min="0" max="10000"/>
-        <span id="debug-range-value"></span>
+      <div>
+        <label for="slider_dpr">Render Scale (<span id="dpr">1.00</span>x)</label>
+        <input id="slider_dpr" type="range" min="0.25" max="4" value="1.0" step="0.05">
       </div>
       <div>
         <label for="chkbx_1">Wireframe</label>
