@@ -5,7 +5,6 @@ import moonTexture from "./2k_moon.jpg";
 
 const myGame = new scaliaEngine.Game();
 
-let targetCount = 10;
 
 const EARTH_TO_MOON_RATIO = 3.7;
 const EARTH_RADIUS = 300;
@@ -112,12 +111,19 @@ chkbx1El.addEventListener("change", (e) => {
   renderer.wireframe = chkbx1El.checked;
 });
 
-const debugRange = document.getElementById("debug-range");
-const debugRangeVal = document.getElementById("debug-range-value");
 
-debugRange.value = targetCount;
-debugRange.addEventListener("input", (e) => {
-  targetCount = parseInt(e.target.value);
+const sliderDprEl = document.getElementById("slider_dpr");
+sliderDprEl.value = viewport.dpr;
+sliderDprEl.addEventListener("input", (e) => {
+  const val = parseFloat(e.target.value);
+  console.log("DPR slider input event:", val);
+  try {
+    viewport.dpr = val;
+    viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+    dprEl.innerText = val.toFixed(2);
+  } catch (err) {
+    console.error("DPR slider input error:", err);
+  }
 });
 
 setInterval(() => {
@@ -132,6 +138,5 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
-  dprEl.innerText = window.devicePixelRatio;
-  debugRangeVal.innerText = targetCount;
+  dprEl.innerText = viewport.dpr.toFixed(2);
 }, 100);
