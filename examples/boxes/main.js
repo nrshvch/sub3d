@@ -6,7 +6,7 @@ const myGame = new scaliaEngine.Game();
 
 let targetCount = 500;
 
-const ball = new scaliaEngine.Ball();
+const ball = new scaliaEngine.Ball(...scaliaEngine.Ball.generate());
 ball.meshRenderer.layer = 1;
 ball.meshRenderer.shaderType = 4;
 
