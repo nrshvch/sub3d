@@ -1,6 +1,5 @@
 import GameObject from "../GameObject.js";
 import MeshComponent from "../components/MeshComponent.js";
-import boxTexture from "./box.png";
 
 function generateBoxMesh(width, height, depth, segments) {
   const verts = [];
@@ -107,8 +106,6 @@ function Box() {
   mesh.faces = boxMesh.faces;
   mesh.bounds = bounds;
   mesh.updateNormals();
-
-  mesh.texture = boxTexture;
 
   this.addComponent(mesh);
 }

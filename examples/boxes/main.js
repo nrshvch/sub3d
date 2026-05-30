@@ -1,5 +1,6 @@
 import scaliaEngine from "sub3d";
 import { vec3 } from "gl-matrix";
+import boxTexture from "./box.png";
 
 const myGame = new scaliaEngine.Game();
 
@@ -63,7 +64,7 @@ function createBox() {
   );
 
   if (Math.random() > 0.5) {
-    child.meshRenderer.texture = null;
+    child.meshRenderer.texture = boxTexture;
   }
 
   return {
