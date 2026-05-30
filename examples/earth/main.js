@@ -50,7 +50,7 @@ function createMoon() {
 
 const cameraObject = (window.camera = new scaliaEngine.Camera());
 cameraObject.camera.fogType = scaliaEngine.CameraComponent.FogType.NONE;
-cameraObject.camera.ambientLight = 0x333333
+cameraObject.camera.ambientLight = 0x111111
 cameraObject.camera.farClippingPane = 1000;
 cameraObject.camera.nearClippingPane = -1000;
 
@@ -60,7 +60,7 @@ myGame.world.scene.addGameObject(cameraObject);
 
 const sun = new scaliaEngine.Light();
 myGame.world.scene.addGameObject(sun);
-sun.transform.rotate(0, 0, 0);
+sun.transform.rotate(0, 315, 0);
 
 let dt = null;
 myGame.world.tickRegister({
@@ -68,9 +68,7 @@ myGame.world.tickRegister({
     if (dt !== null) {
       cameraObject.transform.rotate(0, 2, 0, 0);
 
-      earth.transform.rotate(1, 4, 1 / 4, "world");
-
-      sun.transform.rotate(0, 10, 0);
+      sun.transform.rotate(0, 3, 0);
     }
     dt = time.now;
   },
