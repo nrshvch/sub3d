@@ -1516,7 +1516,7 @@ function drawTriangles(
         // UNLIT (no light shading, no fog, just mesh color)
         const color32 = colorBuffer[idx];
         let r = color32 >>> 16;
-        let g = (color32 >>> 16) & 255;
+        let g = (color32 >>> 8) & 255;
         let b = color32 & 255;
 
         ctx.beginPath();
