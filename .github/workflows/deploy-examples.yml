@@ -42,6 +42,13 @@ jobs:
           npm install
           npx vite build --base=/sub3d/examples/earth/ --outDir=../../dist/examples/earth
 
+      - name: Copy Examples Index and Assets
+        run: |
+          mkdir -p dist/examples
+          cp examples/index.html dist/examples/
+          cp -r examples/cubes-2013 dist/examples/
+          cp examples/*.png dist/examples/ || true
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
