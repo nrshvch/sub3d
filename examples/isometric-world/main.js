@@ -469,6 +469,7 @@ var objectsEl = document.getElementById("objects");
 var visibleObjectsEl = document.getElementById("visibleObjects");
 var facesCountEl = document.getElementById("facesCount");
 var dprEl = document.getElementById("dpr");
+var systemDprEl = document.getElementById("system_dpr");
 
 const isDebug = window.location.pathname.includes('/debug') || window.location.search.includes('debug');
 
@@ -478,6 +479,9 @@ if (isDebug) {
   debugEl.addEventListener("pointerdown", (e) => e.stopPropagation());
   debugEl.addEventListener("pointermove", (e) => e.stopPropagation());
   debugEl.addEventListener("pointerup", (e) => e.stopPropagation());
+  if (systemDprEl) {
+    systemDprEl.innerText = viewport.dpr.toFixed(2);
+  }
 }
 
 const chkbx1El = document.getElementById("chkbx_1");
@@ -567,10 +571,10 @@ colorAmbientEl.addEventListener("input", (e) => {
 });
 
 const sliderDprEl = document.getElementById("slider_dpr");
-sliderDprEl.value = viewport.dpr;
+sliderDprEl.value = viewport.scale;
 sliderDprEl.addEventListener("input", (e) => {
   const val = parseFloat(e.target.value);
-  viewport.dpr = val;
+  viewport.scale = val;
   viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
   dprEl.innerText = val.toFixed(2);
 });
@@ -692,5 +696,5 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
-  dprEl.innerText = viewport.dpr.toFixed(2);
+  dprEl.innerText = viewport.scale.toFixed(2);
 }, 100);
