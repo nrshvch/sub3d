@@ -73,6 +73,7 @@ var p = Canvas2dViewport.prototype;
 p.size = null;
 
 p.dpr = 1;
+p.scale = 1;
 p.width = null;
 p.height = null;
 
@@ -113,8 +114,9 @@ p.render = function () {
  * @constructor
  */
 p.setSize = function (width, height) {
-  const dpiW = width * this.dpr;
-  const dpiH = height * this.dpr;
+  const pixelRatio = this.dpr * this.scale;
+  const dpiW = width * pixelRatio;
+  const dpiH = height * pixelRatio;
 
   this.width = dpiW;
   this.height = dpiH;
@@ -135,7 +137,7 @@ p.setSize = function (width, height) {
     ctx.canvas.height = dpiH;
   }
 
-  this.camera.setup(width, height);
+  this.camera.setup(width * this.dpr, height * this.dpr);
 };
 
 p.getWorldToScreen = function () {

@@ -1744,7 +1744,7 @@ function Re() {
     1
   ]);
 }
-var gn = Re.prototype = Object.create(yn.prototype), wr = new Float32Array([0, 0, 0]), zr = new Float32Array(16);
+var gn = Re.prototype = Object.create(yn.prototype), wr = new Float32Array([0, 0, 0]), Ar = new Float32Array(16);
 gn.constructor = Re;
 gn.local = null;
 gn.worldMatrix = null;
@@ -1773,11 +1773,11 @@ gn.removeParent = function() {
   this.parent = null;
 };
 gn.translate = function(n, r, e, t) {
-  wr[0] = n, wr[1] = r, wr[2] = e, t === "world" ? (Ze(zr), Ne(zr, zr, wr), je(this.local, zr, this.local)) : Ne(this.local, this.local, wr);
+  wr[0] = n, wr[1] = r, wr[2] = e, t === "world" ? (Ze(Ar), Ne(Ar, Ar, wr), je(this.local, Ar, this.local)) : Ne(this.local, this.local, wr);
 };
 gn.rotate = function(n, r, e, t) {
   var s = Math.PI / 180, a = C1;
-  t === "world" ? (a.identity(zr), a.rotateZ(zr, zr, e * s), a.rotateY(zr, zr, r * s), a.rotateX(zr, zr, n * s), je(this.local, zr, this.local)) : (a.rotateZ(this.local, this.local, e * s), a.rotateY(this.local, this.local, r * s), a.rotateX(this.local, this.local, n * s));
+  t === "world" ? (a.identity(Ar), a.rotateZ(Ar, Ar, e * s), a.rotateY(Ar, Ar, r * s), a.rotateX(Ar, Ar, n * s), je(this.local, Ar, this.local)) : (a.rotateZ(this.local, this.local, e * s), a.rotateY(this.local, this.local, r * s), a.rotateX(this.local, this.local, n * s));
 };
 gn.getLocalToWorld = function() {
   return this.dirtyL === !0 && (this.parent === null ? this.worldMatrix.set(this.local) : je(this.worldMatrix, this.parent.getLocalToWorld(), this.local)), this.worldMatrix;
@@ -1816,25 +1816,25 @@ gn.updateWorldMatrix = function(n = !1) {
 function dr(n) {
   this.instanceId = dr.prototype.instanceId++, this.components = [], this.transform = this.addComponent(new Re()), this.name = n || "gameObject";
 }
-var Ar = dr.prototype;
-Ar.instanceId = 0;
-Ar.name = null;
-Ar.layer = 0;
-Ar.scene = null;
-Ar.world = null;
-Ar.transform = null;
-Ar.components = null;
-Ar.componentsCount = 0;
-Ar.setScene = function(n) {
+var qr = dr.prototype;
+qr.instanceId = 0;
+qr.name = null;
+qr.layer = 0;
+qr.scene = null;
+qr.world = null;
+qr.transform = null;
+qr.components = null;
+qr.componentsCount = 0;
+qr.setScene = function(n) {
   this.scene = n;
 };
-Ar.addComponent = function(n) {
+qr.addComponent = function(n) {
   return this.components[this.componentsCount++] = n, n.setGameObject(this), n;
 };
-Ar.removeComponent = function(n) {
+qr.removeComponent = function(n) {
   n.unsetGameObject();
 };
-Ar.getComponent = function(n) {
+qr.getComponent = function(n) {
   for (var r = 0; r < this.components.length; r++) {
     var e = this.components[r];
     if (e instanceof n)
@@ -2590,16 +2590,16 @@ function F2(n, r, e, t, s, a, i, c, l, h, f, v, o, M, d, m, y, p, z, w, x, b, g,
         for (let W = 1; W < B; W++) {
           const Zn = L[$[W]];
           if (Zn.light.type === 0) {
-            const $r = Zn.light.color >>> 16, br = Zn.light.color >>> 8 & 255, xr = Zn.light.color & 255, qn = -Zn.transform.worldMatrix[8], Tn = -Zn.transform.worldMatrix[9], Jn = -Zn.transform.worldMatrix[10];
+            const br = Zn.light.color >>> 16, zr = Zn.light.color >>> 8 & 255, xr = Zn.light.color & 255, qn = -Zn.transform.worldMatrix[8], Tn = -Zn.transform.worldMatrix[9], Jn = -Zn.transform.worldMatrix[10];
             let Nn = sn * qn + Mn * Tn + In * Jn, Sn = dn * qn + G * Tn + U * Jn, On = ln * qn + an * Tn + on * Jn;
-            Nn > 0 && (zn += $r * Nn, Mr += br * Nn, Vn += xr * Nn), Sn > 0 && (xn += $r * Sn, tr += br * Sn, en += xr * Sn), On > 0 && (lr += $r * On, Fn += br * On, K += xr * On);
+            Nn > 0 && (zn += br * Nn, Mr += zr * Nn, Vn += xr * Nn), Sn > 0 && (xn += br * Sn, tr += zr * Sn, en += xr * Sn), On > 0 && (lr += br * On, Fn += zr * On, K += xr * On);
           }
         }
         zn *= 39215e-7, Mr *= 39215e-7, Vn *= 39215e-7, xn *= 39215e-7, tr *= 39215e-7, en *= 39215e-7, lr *= 39215e-7, Fn *= 39215e-7, K *= 39215e-7;
         let $n = Math.min(Math.max(zn, Mr, Vn), 1), hn = Math.min(Math.max(xn, tr, en), 1), fn = Math.min(Math.max(lr, Fn, K), 1), u = 0;
         const Dn = o[S];
         if (M === nn.FogType.RADIAL_FAST || M === nn.FogType.RADIAL) {
-          const W = v[S * 9], Zn = v[S * 9 + 1], $r = v[S * 9 + 2], br = v[S * 9 + 3], xr = v[S * 9 + 4], qn = v[S * 9 + 5], Tn = v[S * 9 + 6], Jn = v[S * 9 + 7], Nn = v[S * 9 + 8], Sn = (W + br + Tn) * 0.33333, On = (Zn + xr + Jn) * 0.33333, Br = ($r + qn + Nn) * 0.33333;
+          const W = v[S * 9], Zn = v[S * 9 + 1], br = v[S * 9 + 2], zr = v[S * 9 + 3], xr = v[S * 9 + 4], qn = v[S * 9 + 5], Tn = v[S * 9 + 6], Jn = v[S * 9 + 7], Nn = v[S * 9 + 8], Sn = (W + zr + Tn) * 0.33333, On = (Zn + xr + Jn) * 0.33333, Br = (br + qn + Nn) * 0.33333;
           if (M === nn.FogType.RADIAL_FAST) {
             const gr = m * m, Pe = 1 / (y * y - gr);
             u = (Sn * Sn + On * On + Br * Br - gr) * Pe;
@@ -2609,7 +2609,7 @@ function F2(n, r, e, t, s, a, i, c, l, h, f, v, o, M, d, m, y, p, z, w, x, b, g,
         u > 1 && (u = 1);
         const pr = g[S], jn = R[pr], C = jn.textureImage;
         if (C && C.complete && C.naturalWidth > 0 && jn.uvs) {
-          const W = j[S], Zn = jn.uvs, $r = jn.faces[W] * 2, br = jn.faces[W + 1] * 2, xr = jn.faces[W + 2] * 2, qn = Zn[$r] * C.width, Tn = Zn[$r + 1] * C.height, Jn = Zn[br] * C.width, Nn = Zn[br + 1] * C.height, Sn = Zn[xr] * C.width, On = Zn[xr + 1] * C.height, Br = qn * (Nn - On) - Tn * (Jn - Sn) + (Jn * On - Sn * Nn);
+          const W = j[S], Zn = jn.uvs, br = jn.faces[W] * 2, zr = jn.faces[W + 1] * 2, xr = jn.faces[W + 2] * 2, qn = Zn[br] * C.width, Tn = Zn[br + 1] * C.height, Jn = Zn[zr] * C.width, Nn = Zn[zr + 1] * C.height, Sn = Zn[xr] * C.width, On = Zn[xr + 1] * C.height, Br = qn * (Nn - On) - Tn * (Jn - Sn) + (Jn * On - Sn * Nn);
           if (Math.abs(Br) > 1e-5) {
             const gr = 1 / Br, h1 = (Y * (Nn - On) + rn * (On - Tn) + E * (Tn - Nn)) * gr, Pe = (Y * (Sn - Jn) + rn * (qn - Sn) + E * (Jn - qn)) * gr, f1 = (Y * (Jn * On - Sn * Nn) + rn * (Sn * Tn - qn * On) + E * (qn * Nn - Jn * Tn)) * gr, Ut = (N * (Nn - On) + tn * (On - Tn) + _ * (Tn - Nn)) * gr, Vt = (N * (Sn - Jn) + tn * (qn - Sn) + _ * (Jn - qn)) * gr, Nt = (N * (Jn * On - Sn * Nn) + tn * (Sn * Tn - qn * On) + _ * (qn * Nn - Jn * Tn)) * gr;
             n.save(), n.beginPath(), n.moveTo(bn, Yn), n.lineTo(pn, nr), n.lineTo(yr, mr), n.closePath(), n.clip(), n.setTransform(h1, Ut, Pe, Vt, f1, Nt), n.drawImage(C, 0, 0), n.restore();
@@ -2650,7 +2650,7 @@ function F2(n, r, e, t, s, a, i, c, l, h, f, v, o, M, d, m, y, p, z, w, x, b, g,
         }
         let k = wn * zn, Q = kn * Mr, J = En * Vn, Rn = wn * xn, Xn = kn * tr, Ln = En * en, hr = wn * lr, Dr = kn * Fn, Wr = En * K;
         if (k = k > 255 ? 255 : k, Q = Q > 255 ? 255 : Q, J = J > 255 ? 255 : J, Rn = Rn > 255 ? 255 : Rn, Xn = Xn > 255 ? 255 : Xn, Ln = Ln > 255 ? 255 : Ln, hr = hr > 255 ? 255 : hr, Dr = Dr > 255 ? 255 : Dr, Wr = Wr > 255 ? 255 : Wr, u > 0) {
-          const W = 1 - u, Zn = d >>> 16, $r = d >>> 8 & 255, br = d & 255, xr = Zn * u, qn = $r * u, Tn = br * u;
+          const W = 1 - u, Zn = d >>> 16, br = d >>> 8 & 255, zr = d & 255, xr = Zn * u, qn = br * u, Tn = zr * u;
           k = k * W + xr | 0, Q = Q * W + qn | 0, J = J * W + Tn | 0, Rn = Rn * W + xr | 0, Xn = Xn * W + qn | 0, Ln = Ln * W + Tn | 0, hr = hr * W + xr | 0, Dr = Dr * W + qn | 0, Wr = Wr * W + Tn | 0;
         } else
           k |= 0, Q |= 0, J |= 0, Rn |= 0, Xn |= 0, Ln |= 0, hr |= 0, Dr |= 0, Wr |= 0;
@@ -2675,7 +2675,7 @@ function F2(n, r, e, t, s, a, i, c, l, h, f, v, o, M, d, m, y, p, z, w, x, b, g,
         if (de - fr < 0.01)
           n.beginPath(), n.moveTo(Y, N), n.lineTo(rn, tn), n.lineTo(E, _), n.closePath(), T !== Ir && (n.fillStyle = Wn[Ir], T = Ir), Z !== Ir && (n.strokeStyle = Wn[Ir], Z = Ir), V !== 10 && (n.lineWidth = 1, n.lineJoin = "miter", V = 10), n.stroke(), n.fill();
         else {
-          const W = (_r - fr) / (de - fr), Zn = Or + W * (ur - Or), $r = Fr + W * (ne - Fr), br = Cr - Zn, qn = -(Ur - $r), Tn = br, Jn = qn * qn + Tn * Tn;
+          const W = (_r - fr) / (de - fr), Zn = Or + W * (ur - Or), br = Fr + W * (ne - Fr), zr = Cr - Zn, qn = -(Ur - br), Tn = zr, Jn = qn * qn + Tn * Tn;
           let Nn, Sn;
           if (Jn < 1e-6)
             Nn = ur, Sn = ne;
@@ -2715,31 +2715,32 @@ function Ct(n, r) {
     });
   };
 }
-var qr = Ct.prototype;
-qr.size = null;
-qr.dpr = 1;
-qr.width = null;
-qr.height = null;
-qr.viewportMatrix = null;
-qr.camera = null;
-qr.canvas = null;
-qr.context = null;
-qr.start = function() {
+var $r = Ct.prototype;
+$r.size = null;
+$r.dpr = 1;
+$r.scale = 1;
+$r.width = null;
+$r.height = null;
+$r.viewportMatrix = null;
+$r.camera = null;
+$r.canvas = null;
+$r.context = null;
+$r.start = function() {
   this.setSize(this.canvas.offsetWidth, this.canvas.offsetHeight), this.startRenderLoop();
 };
-qr.render = function() {
+$r.render = function() {
   this.camera !== null && this.renderer.render(this.camera.gameObject, this, this.lastRenderStats);
 };
-qr.setSize = function(n, r) {
-  const e = n * this.dpr, t = r * this.dpr;
-  this.width = e, this.height = t, this.canvas.width = e, this.canvas.height = t, this.viewportMatrix[0] = e / 2, this.viewportMatrix[5] = -t / 2, this.viewportMatrix[12] = e / 2, this.viewportMatrix[13] = t / 2;
-  for (var s = 0; s < this.layers.length; s++) {
-    var a = this.layers[s];
-    a.canvas.width = e, a.canvas.height = t;
+$r.setSize = function(n, r) {
+  const e = this.dpr * this.scale, t = n * e, s = r * e;
+  this.width = t, this.height = s, this.canvas.width = t, this.canvas.height = s, this.viewportMatrix[0] = t / 2, this.viewportMatrix[5] = -s / 2, this.viewportMatrix[12] = t / 2, this.viewportMatrix[13] = s / 2;
+  for (var a = 0; a < this.layers.length; a++) {
+    var i = this.layers[a];
+    i.canvas.width = t, i.canvas.height = s;
   }
-  this.camera.setup(n, r);
+  this.camera.setup(n * this.dpr, r * this.dpr);
 };
-qr.getWorldToScreen = function() {
+$r.getWorldToScreen = function() {
   return m1(
     this.worldToScreenMatrix,
     this.viewportMatrix,

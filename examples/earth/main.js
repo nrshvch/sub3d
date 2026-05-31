@@ -95,6 +95,7 @@ const objectsEl = document.getElementById("objects");
 const visibleObjectsEl = document.getElementById("visibleObjects");
 const facesCountEl = document.getElementById("facesCount");
 const dprEl = document.getElementById("dpr");
+const systemDprEl = document.getElementById("system_dpr");
 
 const isDebug =
   window.location.pathname.includes("/debug") ||
@@ -102,6 +103,9 @@ const isDebug =
 
 if (isDebug) {
   document.getElementById("debug").style.display = "block";
+  if (systemDprEl) {
+    systemDprEl.innerText = viewport.dpr.toFixed(2);
+  }
 }
 
 const chkbx1El = document.getElementById("chkbx_1");
@@ -111,16 +115,16 @@ chkbx1El.addEventListener("change", (e) => {
 
 
 const sliderDprEl = document.getElementById("slider_dpr");
-sliderDprEl.value = viewport.dpr;
+sliderDprEl.value = viewport.scale;
 sliderDprEl.addEventListener("input", (e) => {
   const val = parseFloat(e.target.value);
-  console.log("DPR slider input event:", val);
+  console.log("Scale slider input event:", val);
   try {
-    viewport.dpr = val;
+    viewport.scale = val;
     viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
     dprEl.innerText = val.toFixed(2);
   } catch (err) {
-    console.error("DPR slider input error:", err);
+    console.error("Scale slider input error:", err);
   }
 });
 
@@ -136,5 +140,5 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
-  dprEl.innerText = viewport.dpr.toFixed(2);
+  dprEl.innerText = viewport.scale.toFixed(2);
 }, 100);
