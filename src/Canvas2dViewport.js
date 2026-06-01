@@ -19,6 +19,8 @@ export default function Canvas2dViewport(camera, canvas) {
 
   this.camera = camera;
 
+  this.scale = 1.0;
+
   //generate layers
   this.layers = [];
   for (var i = 0; i < config.layersCount; i++) {
@@ -72,8 +74,7 @@ var p = Canvas2dViewport.prototype;
  */
 p.size = null;
 
-p.dpr = 1;
-p.scale = 1;
+p.scale = 1.0;
 p.width = null;
 p.height = null;
 
@@ -114,9 +115,8 @@ p.render = function () {
  * @constructor
  */
 p.setSize = function (width, height) {
-  const pixelRatio = this.dpr * this.scale;
-  const dpiW = width * pixelRatio;
-  const dpiH = height * pixelRatio;
+  const dpiW = width * this.scale;
+  const dpiH = height * this.scale;
 
   this.width = dpiW;
   this.height = dpiH;
@@ -137,7 +137,7 @@ p.setSize = function (width, height) {
     ctx.canvas.height = dpiH;
   }
 
-  this.camera.setup(width * this.dpr, height * this.dpr);
+  this.camera.setup(width, height);
 };
 
 p.getWorldToScreen = function () {

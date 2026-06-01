@@ -23,6 +23,7 @@ export default function CameraComponent(transform) {
         [0, 0, 0],
         [0, 0, 0]
     ];
+    this.zoom = 1.0;
 }
 
 CameraComponent.prototype = Object.create(Component.prototype);
@@ -44,15 +45,17 @@ CameraComponent.prototype.bgColor = -1;
 CameraComponent.prototype.ambientLight = 0x808080;
 
 CameraComponent.prototype.setup = function (width, height) {
+    const w = width / this.zoom;
+    const h = height / this.zoom;
 
     //update frustum size
     this.frustumSize = [
-        [-width / 2, -height / 2, 0],
-        [width / 2, height / 2, length]
+        [-w / 2, -h / 2, 0],
+        [w / 2, h / 2, this.farClippingPane]
     ];
 
     //update projection matrix
-    glMatrix.mat4.ortho(this.projectionMatrix, -width / 2, width / 2, -height / 2, height / 2, this.nearClippingPane, this.farClippingPane);
+    glMatrix.mat4.ortho(this.projectionMatrix, -w / 2, w / 2, -h / 2, h / 2, this.nearClippingPane, this.farClippingPane);
 }
 
 CameraComponent.prototype.setGameObject = function (gameObject) {

@@ -450,11 +450,13 @@ sun.transform.rotate(45, 0, 0);
 
 myGame.run();
 
+cameraObject.camera.zoom = 1.0;
+
 const viewport = new scaliaEngine.Canvas2dViewport(
   camera.camera,
   document.getElementById("canvas"),
 );
-viewport.dpr = window.devicePixelRatio;
+viewport.scale = window.devicePixelRatio || 1;
 viewport.start();
 
 window.myGame = myGame;
@@ -468,7 +470,8 @@ var drawCallsEl = document.getElementById("drawCalls");
 var objectsEl = document.getElementById("objects");
 var visibleObjectsEl = document.getElementById("visibleObjects");
 var facesCountEl = document.getElementById("facesCount");
-var dprEl = document.getElementById("dpr");
+var scaleValEl = document.getElementById("scale_val");
+var zoomValEl = document.getElementById("zoom_val");
 var systemDprEl = document.getElementById("system_dpr");
 
 const isDebug = window.location.pathname.includes('/debug') || window.location.search.includes('debug');
@@ -480,8 +483,24 @@ if (isDebug) {
   debugEl.addEventListener("pointermove", (e) => e.stopPropagation());
   debugEl.addEventListener("pointerup", (e) => e.stopPropagation());
   if (systemDprEl) {
-    systemDprEl.innerText = viewport.dpr.toFixed(2);
+    systemDprEl.innerText = (window.devicePixelRatio || 1).toFixed(2);
   }
+}
+
+const toggleBtn = document.getElementById("toggle_debug_btn");
+if (toggleBtn) {
+  toggleBtn.innerText = isDebug ? "Close Debug" : "Open Debug";
+  toggleBtn.addEventListener("click", () => {
+    if (isDebug) {
+      let search = window.location.search.replace(/[?&]debug(=[^&]*)?/, "");
+      if (search.startsWith("&")) search = "?" + search.substring(1);
+      let pathname = window.location.pathname.replace(/\/debug$/, "");
+      window.location.href = pathname + search + window.location.hash;
+    } else {
+      const sep = window.location.search ? "&" : "?";
+      window.location.href = window.location.pathname + window.location.search + sep + "debug" + window.location.hash;
+    }
+  });
 }
 
 const chkbx1El = document.getElementById("chkbx_1");
@@ -570,14 +589,29 @@ colorAmbientEl.addEventListener("input", (e) => {
   cameraObject.camera.ambientLight = colorInt;
 });
 
-const sliderDprEl = document.getElementById("slider_dpr");
-sliderDprEl.value = viewport.scale;
-sliderDprEl.addEventListener("input", (e) => {
-  const val = parseFloat(e.target.value);
-  viewport.scale = val;
-  viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
-  dprEl.innerText = val.toFixed(2);
-});
+const sliderScaleEl = document.getElementById("slider_scale");
+if (sliderScaleEl) {
+  sliderScaleEl.value = viewport.scale;
+  if (scaleValEl) scaleValEl.innerText = viewport.scale.toFixed(2);
+  sliderScaleEl.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    viewport.scale = val;
+    viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+    if (scaleValEl) scaleValEl.innerText = val.toFixed(2);
+  });
+}
+
+const sliderZoomEl = document.getElementById("slider_zoom");
+if (sliderZoomEl) {
+  sliderZoomEl.value = cameraObject.camera.zoom;
+  if (zoomValEl) zoomValEl.innerText = cameraObject.camera.zoom.toFixed(2);
+  sliderZoomEl.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    cameraObject.camera.zoom = val;
+    viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+    if (zoomValEl) zoomValEl.innerText = val.toFixed(2);
+  });
+}
 
 // --- Day/Night Cycle Simulation ---
 const chkbxAutoCycleEl = document.getElementById("chkbx_auto_cycle");
@@ -696,5 +730,4 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
-  dprEl.innerText = viewport.scale.toFixed(2);
 }, 100);

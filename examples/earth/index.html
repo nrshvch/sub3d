@@ -34,7 +34,7 @@
 
       #debug {
         position: absolute;
-        top: 10px;
+        top: 60px;
         left: 10px;
           min-width: 196px;
           max-width: 320px;
@@ -64,9 +64,38 @@
       input[type="range"] {
           width: 100%;
       }
+
+      #toggle_debug_btn {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        padding: 8px 16px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #eeeeee;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        font-family: monospace;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
+        transition: background 0.2s, border-color 0.2s;
+      }
+      #toggle_debug_btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        border-color: rgba(255, 255, 255, 0.4);
+      }
+      @media (max-width: 768px) {
+        #toggle_debug_btn {
+          font-size: 12px;
+          padding: 6px 12px;
+        }
+      }
     </style>
   </head>
   <body>
+    <button id="toggle_debug_btn">Open Debug</button>
     <canvas id="canvas"></canvas>
     <div id="debug" style="display: none;">
       <div>Max. FPS <span id="maxFps"></span></div>
@@ -75,10 +104,14 @@
       <div>Objects on screen <span id="visibleObjects"></span></div>
       <div>Faces <span id="facesCount"></span></div>
       <div>Draw Calls <span id="drawCalls"></span></div>
-      <div>DPR <span id="system_dpr"></span></div>
+      <div>System DPR <span id="system_dpr"></span></div>
       <div>
-        <label for="slider_dpr">Render Scale (<span id="dpr">1.00</span>x)</label>
-        <input id="slider_dpr" type="range" min="0.25" max="4" value="1.0" step="0.05">
+        <label for="slider_scale">Scaling (<span id="scale_val">1.00</span>x)</label>
+        <input id="slider_scale" type="range" min="0.25" max="4" value="1.0" step="0.25">
+      </div>
+      <div>
+        <label for="slider_zoom">Zoom (<span id="zoom_val">2.00</span>x)</label>
+        <input id="slider_zoom" type="range" min="0.1" max="3" value="2.0" step="0.05">
       </div>
       <div>
         <label for="chkbx_1">Wireframe</label>
