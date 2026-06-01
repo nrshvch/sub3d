@@ -76,11 +76,15 @@ myGame.world.tickRegister({
 
 myGame.run();
 
+const camera = cameraObject;
+camera.camera.zoom = 1.0;
+
 const viewport = new scaliaEngine.Canvas2dViewport(
   camera.camera,
   document.getElementById("canvas"),
 );
-viewport.dpr = window.devicePixelRatio;
+
+viewport.scale = window.devicePixelRatio || 1;
 viewport.start();
 
 const renderer = viewport.renderer;
@@ -94,7 +98,8 @@ const drawCallsEl = document.getElementById("drawCalls");
 const objectsEl = document.getElementById("objects");
 const visibleObjectsEl = document.getElementById("visibleObjects");
 const facesCountEl = document.getElementById("facesCount");
-const dprEl = document.getElementById("dpr");
+const scaleValEl = document.getElementById("scale_val");
+const zoomValEl = document.getElementById("zoom_val");
 const systemDprEl = document.getElementById("system_dpr");
 
 const isDebug =
@@ -104,8 +109,24 @@ const isDebug =
 if (isDebug) {
   document.getElementById("debug").style.display = "block";
   if (systemDprEl) {
-    systemDprEl.innerText = viewport.dpr.toFixed(2);
+    systemDprEl.innerText = (window.devicePixelRatio || 1).toFixed(2);
   }
+}
+
+const toggleBtn = document.getElementById("toggle_debug_btn");
+if (toggleBtn) {
+  toggleBtn.innerText = isDebug ? "Close Debug" : "Open Debug";
+  toggleBtn.addEventListener("click", () => {
+    if (isDebug) {
+      let search = window.location.search.replace(/[?&]debug(=[^&]*)?/, "");
+      if (search.startsWith("&")) search = "?" + search.substring(1);
+      let pathname = window.location.pathname.replace(/\/debug$/, "");
+      window.location.href = pathname + search + window.location.hash;
+    } else {
+      const sep = window.location.search ? "&" : "?";
+      window.location.href = window.location.pathname + window.location.search + sep + "debug" + window.location.hash;
+    }
+  });
 }
 
 const chkbx1El = document.getElementById("chkbx_1");
@@ -113,20 +134,37 @@ chkbx1El.addEventListener("change", (e) => {
   renderer.wireframe = chkbx1El.checked;
 });
 
+const sliderScaleEl = document.getElementById("slider_scale");
+if (sliderScaleEl) {
+  sliderScaleEl.value = viewport.scale;
+  if (scaleValEl) scaleValEl.innerText = viewport.scale.toFixed(2);
+  sliderScaleEl.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    try {
+      viewport.scale = val;
+      viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+      if (scaleValEl) scaleValEl.innerText = val.toFixed(2);
+    } catch (err) {
+      console.error("Scale slider input error:", err);
+    }
+  });
+}
 
-const sliderDprEl = document.getElementById("slider_dpr");
-sliderDprEl.value = viewport.scale;
-sliderDprEl.addEventListener("input", (e) => {
-  const val = parseFloat(e.target.value);
-  console.log("Scale slider input event:", val);
-  try {
-    viewport.scale = val;
-    viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
-    dprEl.innerText = val.toFixed(2);
-  } catch (err) {
-    console.error("Scale slider input error:", err);
-  }
-});
+const sliderZoomEl = document.getElementById("slider_zoom");
+if (sliderZoomEl) {
+  sliderZoomEl.value = camera.camera.zoom;
+  if (zoomValEl) zoomValEl.innerText = camera.camera.zoom.toFixed(2);
+  sliderZoomEl.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    try {
+      camera.camera.zoom = val;
+      viewport.setSize(viewport.canvas.offsetWidth, viewport.canvas.offsetHeight);
+      if (zoomValEl) zoomValEl.innerText = val.toFixed(2);
+    } catch (err) {
+      console.error("Zoom slider input error:", err);
+    }
+  });
+}
 
 setInterval(() => {
   if (!isDebug) return;
@@ -140,5 +178,4 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
-  dprEl.innerText = viewport.scale.toFixed(2);
 }, 100);
