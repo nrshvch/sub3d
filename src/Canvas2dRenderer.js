@@ -178,6 +178,8 @@ p.render = function (camera, viewport, stats) {
     }
   }
 
+  let totalSortTime = 0;
+
   // render layer one-by-one
   for (i = 0; i < layersCount; i++) {
     ctx = viewport.layers[i];
@@ -287,9 +289,11 @@ p.render = function (camera, viewport, stats) {
     );
 
     if ((config.depthSortingMask & (i + 1)) === i + 1) {
+      const sortStart = performance.now();
       indexBuffer.subarray(0, l).sort(function (a, b) {
         return depthBuffer[b] - depthBuffer[a];
       });
+      totalSortTime += performance.now() - sortStart;
     }
 
     const toClear = (config.layerClearMask & (i + 1)) === i + 1;
@@ -346,6 +350,7 @@ p.render = function (camera, viewport, stats) {
   stats.visibleObjects = visibleObjectsBufferLen;
   stats.drawCalls = drawCalls;
   stats.faces = faces;
+  stats.sortTime = totalSortTime;
   stats.dt = Date.now() - t0;
 };
 

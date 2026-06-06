@@ -470,6 +470,7 @@ var drawCallsEl = document.getElementById("drawCalls");
 var objectsEl = document.getElementById("objects");
 var visibleObjectsEl = document.getElementById("visibleObjects");
 var facesCountEl = document.getElementById("facesCount");
+var sortTimeEl = document.getElementById("sortTime");
 var scaleValEl = document.getElementById("scale_val");
 var zoomValEl = document.getElementById("zoom_val");
 var systemDprEl = document.getElementById("system_dpr");
@@ -730,4 +731,5 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
+  sortTimeEl.innerText = viewport.lastRenderStats.sortTime;
 }, 100);
