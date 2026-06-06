@@ -38,7 +38,8 @@ export default function Canvas2dViewport(camera, canvas) {
   this.lastRenderStats = {
     dt: 0,
     fps: 0,
-    frameTime: 0
+    frameTime: 0,
+    sortTime: 0
   };
 
   let lastFrameTime = performance.now();
