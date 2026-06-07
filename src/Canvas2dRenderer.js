@@ -10,6 +10,7 @@ import CameraComponent from "./components/CameraComponent.js";
 import * as math from "./math.js";
 import * as palette from "./palette.js";
 import * as debug from "./debug.js";
+import radixSort from "./radixSort.js";
 
 const computeNormalMatrix = MeshComponent.computeNormalMatrix;
 const vec3TransformMat4 = math.vec3TransformMat4;
@@ -35,6 +36,7 @@ export default function Canvas2dRenderer() {
   this.clipGeometryBuffer = new Float32Array(0);
   this.colorBuffer = new Uint32Array(0);
   this.shaderTypeBuffer = new Uint32Array(0);
+  this.shaderPassBuffer = new Uint8Array(0);
   this.faceNormalsBuffer = new Float32Array(0);
   this.vertexNormalsBuffer = new Float32Array(0);
   this.meshIndexBuffer = new Uint32Array(0);
@@ -55,6 +57,8 @@ export default function Canvas2dRenderer() {
 
   this.vMapping = new Int32Array(0);
   this.vTags = new Uint32Array(0);
+  this.tempIndexBuffer = new Uint32Array(0);
+  this.counters = new Uint32Array(256);
 }
 
 var p = Canvas2dRenderer.prototype;
@@ -89,6 +93,7 @@ p.render = function (camera, viewport, stats) {
     clipGeometryBuffer = this.clipGeometryBuffer,
     colorBuffer = this.colorBuffer,
     shaderTypeBuffer = this.shaderTypeBuffer,
+    shaderPassBuffer = this.shaderPassBuffer,
     faceNormalsBuffer = this.faceNormalsBuffer,
     vertexNormalsBuffer = this.vertexNormalsBuffer,
     meshIndexBuffer = this.meshIndexBuffer,
@@ -103,7 +108,9 @@ p.render = function (camera, viewport, stats) {
     cameraLocalMatrix = camera.transform.getWorldToLocal(),
     clipSpaceMatrix = camera.camera.getClipSpaceMatrix(),
     vMapping = this.vMapping,
-    vTags = this.vTags;
+    vTags = this.vTags,
+    tempIndexBuffer = this.tempIndexBuffer,
+    counters = this.counters;
 
   let drawCalls = 0;
   let faces = 0;
@@ -219,6 +226,10 @@ p.render = function (camera, viewport, stats) {
       newArr.set(indexBuffer);
       this.indexBuffer = indexBuffer = newArr;
 
+      newArr = new Uint32Array(maxFacesCount);
+      newArr.set(tempIndexBuffer);
+      this.tempIndexBuffer = tempIndexBuffer = newArr;
+
       //color is per face
       newArr = new Uint32Array(maxFacesCount);
       newArr.set(colorBuffer);
@@ -228,6 +239,10 @@ p.render = function (camera, viewport, stats) {
       newArr = new Uint32Array(maxFacesCount);
       newArr.set(shaderTypeBuffer);
       this.shaderTypeBuffer = shaderTypeBuffer = newArr;
+
+      newArr = new Uint8Array(maxFacesCount);
+      newArr.set(shaderPassBuffer);
+      this.shaderPassBuffer = shaderPassBuffer = newArr;
 
       //stores vec3 in clip space, for every vert of a face
       newArr = new Float32Array(maxFacesCount * 9);
@@ -272,6 +287,7 @@ p.render = function (camera, viewport, stats) {
       depthBuffer,
       colorBuffer,
       shaderTypeBuffer,
+      shaderPassBuffer,
       clipGeometryBuffer,
       cameraLocalMatrix,
       clipSpaceMatrix,
@@ -290,9 +306,11 @@ p.render = function (camera, viewport, stats) {
 
     if ((config.depthSortingMask & (i + 1)) === i + 1) {
       const sortStart = performance.now();
-      indexBuffer.subarray(0, l).sort(function (a, b) {
-        return depthBuffer[b] - depthBuffer[a];
-      });
+      // TODO: Consider merging passes by packing multiple keys/attributes into a single 32-bit integer
+      // to reduce radix sorting passes. E.g., we could pack local face indices together with mesh
+      // references (meshIndex), and utilize a single 32-bit number for both by employing dynamic bit
+      // budgeting (allocating bits dynamically based on active mesh count and max face count per mesh).
+      radixSort(indexBuffer, tempIndexBuffer, depthBuffer, meshIndexBuffer, shaderPassBuffer, counters, l, cam.nearClippingPane, cam.farClippingPane);
       totalSortTime += performance.now() - sortStart;
     }
 
@@ -661,19 +679,20 @@ let callId = 0;
  * @param {Uint32Array} indexBuffer - Array to store sequential face indices for sorting.
  * @param {Float32Array} depthBuffer - Stores the average camera-space Z-depth per face.
  * @param {Uint32Array} colorBuffer - Stores the packed RGBA face colors.
- * @param {Uint32Array} shaderTypeBuffer
+ * @param {Uint32Array} shaderTypeBuffer - Parallel array storing the shader type ID for each face.
+ * @param {Uint8Array} shaderPassBuffer - Parallel array storing the shader pass index for each face.
  * @param {Float32Array} clipGeometryBuffer - Stores Camera-Space positions for lighting/fog.
  * @param {Float32Array} cameraLocalMatrix - The 4x4 World-to-Local (View) matrix.
  * @param {Float32Array} clipSpaceMatrix - The 4x4 View-Projection matrix.
  * @param {Float32Array} mat4Scratchpad1 - Reusable matrix for Model-View calculations.
  * @param {Float32Array} mat4Scratchpad2 - Reusable matrix for Model-View-Projection (MVP).
- * @param {Float32Array} mat3Scratchpad1 - Reusable matrix 9-element (3x3)
- * @param {Float32Array} faceNormalsBuffer
- * @param {Float32Array} vertexNormalsBuffer
+ * @param {Float32Array} mat3Scratchpad1 - Reusable matrix 9-element (3x3).
+ * @param {Float32Array} faceNormalsBuffer - Buffer storing face normal vectors.
+ * @param {Float32Array} vertexNormalsBuffer - Buffer storing vertex normal vectors.
  * @param {Float32Array} vertexBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
  * @param {Uint32Array} vertexIndexBuffer - Indexes of vertices in the vertexBuffer.
- * @param {Uint32Array} meshIndexBuffer
- * @param {Uint32Array} meshFaceIndexBuffer
+ * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
+ * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
  * @param {Int32Array} vMapping - Persistent buffer storing the vertexBuffer offset for the current mesh.
  * @param {Uint32Array} vTags - Persistent buffer storing the callId tag to validate vMapping entries.
  * @returns {number} The total count of processed (visible) faces.
@@ -687,6 +706,7 @@ function destructMesh(
   depthBuffer,
   colorBuffer,
   shaderTypeBuffer,
+  shaderPassBuffer,
   clipGeometryBuffer,
   cameraLocalMatrix,
   clipSpaceMatrix,
@@ -921,6 +941,7 @@ function destructMesh(
       const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
       colorBuffer[i] = mesh.colors[cIdx];
       shaderTypeBuffer[i] = mesh.shaderType;
+      shaderPassBuffer[i] = 0; // default to shader pass 0
 
       // --- MAPPING & VERTEX SUBMISSION ---
       // Only unique vertices should be stored.

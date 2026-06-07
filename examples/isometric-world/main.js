@@ -10,7 +10,7 @@ var N = 100;
 var SCALE = 1.6;
 
 var terrain = new Terrain();
-terrain.meshRenderer.layer = 0;
+terrain.meshRenderer.layer = 1;
 terrain.meshRenderer.shaderType = 0;
 terrain.transform.translate(0, 0, 0);
 terrain.transform.scale(TILE_SIZE * N * SCALE, 1, TILE_SIZE * N * SCALE);
