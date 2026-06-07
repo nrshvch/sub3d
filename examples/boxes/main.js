@@ -123,6 +123,7 @@ const drawCallsEl = document.getElementById("drawCalls");
 const objectsEl = document.getElementById("objects");
 const visibleObjectsEl = document.getElementById("visibleObjects");
 const facesCountEl = document.getElementById("facesCount");
+const sortTimeEl = document.getElementById("sortTime");
 const scaleValEl = document.getElementById("scale_val");
 const zoomValEl = document.getElementById("zoom_val");
 const systemDprEl = document.getElementById("system_dpr");
@@ -211,5 +212,6 @@ setInterval(() => {
   objectsEl.innerText = viewport.lastRenderStats.totalObjects;
   visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
   facesCountEl.innerText = viewport.lastRenderStats.faces;
+  sortTimeEl.innerText = viewport.lastRenderStats.sortTime.toFixed(2);
   debugRangeVal.innerText = targetCount;
 }, 100);
