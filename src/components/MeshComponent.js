@@ -5,11 +5,18 @@ export default function Mesh() {
 
   this.colors = new Uint32Array([0x0000FF]);
   this.faceColors = new Uint32Array([0]);
+  this.depthBias = 0;
 }
 
 var p = (Mesh.prototype = Object.create(Component.prototype));
 
 p.constructor = Mesh;
+
+/**
+ * Constant depth offset added to all faces of the mesh.
+ * @type {number}
+ */
+p.depthBias = 0;
 
 p.layer = 0;
 

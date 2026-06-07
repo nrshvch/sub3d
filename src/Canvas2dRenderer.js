@@ -734,6 +734,9 @@ function destructMesh(
 
     const W = mesh.gameObject.transform.worldMatrix;
 
+    // Precalculate mesh sorting bias once per mesh (constant bias)
+    const depthBias = mesh.depthBias || 0;
+
     // MVP (Clip Space) and MV (Camera Space) - Calculated once per mesh
     mat4Mul(mat4Scratchpad2, clipSpaceMatrix, W);
     // MV = cameraLocalMatrix * W
@@ -1049,7 +1052,7 @@ function destructMesh(
       clipGeometryBuffer[cgIdx + 7] = vec3Cache2[v2c + 1];
       const v2z = (clipGeometryBuffer[cgIdx + 8] = vec3Cache2[v2c + 2]);
 
-      depthBuffer[i] = (v0z + v1z + v2z) * 0.33333;
+      depthBuffer[i] = (v0z + v1z + v2z) * 0.33333 + depthBias;
 
       const fnIdx = i * 3;
       faceNormalsBuffer[fnIdx] = wnx * invMag;

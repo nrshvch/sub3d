@@ -10,7 +10,7 @@ var N = 100;
 var SCALE = 1.6;
 
 var terrain = new Terrain();
-terrain.meshRenderer.layer = 1;
+terrain.meshRenderer.layer = 0;
 terrain.meshRenderer.shaderType = 0;
 terrain.transform.translate(0, 0, 0);
 terrain.transform.scale(TILE_SIZE * N * SCALE, 1, TILE_SIZE * N * SCALE);
@@ -292,7 +292,8 @@ for (var i = 0; i < N; i++) {
     if (Math.random() > 0.6 && Math.min(h_00, h_10, h_11, h_01) > 0) {
       var tree = new Tree();
       tree.meshRenderer.colors = new Uint32Array([0x006400]);
-      tree.meshRenderer.layer = 1;
+      tree.meshRenderer.layer = 0;
+      tree.meshRenderer.depthBias = -16;
 
       const u = 0.25 + Math.random() * 0.5;
       const v = 0.25 + Math.random() * 0.5;
