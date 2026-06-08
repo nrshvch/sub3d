@@ -35,7 +35,7 @@ export default function Canvas2dRenderer() {
   this.indexBuffer = new Uint32Array(0);
   this.clipGeometryBuffer = new Float32Array(0);
   this.colorBuffer = new Uint32Array(0);
-  this.shaderTypeBuffer = new Uint32Array(0);
+  this.shaderTypeBuffer = new Uint8Array(0);
   this.shaderPassBuffer = new Uint8Array(0);
   this.faceNormalsBuffer = new Float32Array(0);
   this.vertexNormalsBuffer = new Float32Array(0);
@@ -121,7 +121,7 @@ p.render = function (camera, viewport, stats) {
       ? cam.fogColor
       : cam.bgColor;
 
-  if(cam.bgColor !== -1){
+  if (cam.bgColor !== -1) {
     const bgR = bgColorInt >>> 16;
     const bgG = (bgColorInt >>> 8) & 255;
     const bgB = bgColorInt & 255;
@@ -136,7 +136,7 @@ p.render = function (camera, viewport, stats) {
 
     viewport.context.fillStyle = PALETTE_16BIT[key];
     viewport.context.fillRect(0, 0, viewport.width, viewport.height);
-  }else{
+  } else {
     viewport.context.clearRect(0, 0, viewport.width, viewport.height);
   }
 
@@ -236,7 +236,7 @@ p.render = function (camera, viewport, stats) {
       this.colorBuffer = colorBuffer = newArr;
 
       //material is per face
-      newArr = new Uint32Array(maxFacesCount);
+      newArr = new Uint8Array(maxFacesCount);
       newArr.set(shaderTypeBuffer);
       this.shaderTypeBuffer = shaderTypeBuffer = newArr;
 
@@ -1072,7 +1072,7 @@ function destructMesh(
  * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
  * @param {Uint32Array} indexBuffer - Depth-sorted array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
  * @param {Uint32Array} colorBuffer - Array of face 32-bit color index
- * @param {Uint32Array} shaderTypeBuffer
+ * @param {Uint8Array} shaderTypeBuffer - Parallel array storing the packed shader type and pass ID for each face.
  * @param {number} count - Number of elements in indexBuffer
  * @param {number} offset - Starting index of the triangles to draw
  * @param {boolean} toClear - Should ctx be cleared before drawing?
@@ -1088,8 +1088,13 @@ function destructMesh(
  * @param {number} lightDirBuffer - Array of a light direction in the format [x, y, z]
  * @param {number} ambientLightRgb - Ambient light RGB color
  * @param {Float32Array} faceNormalsBuffer - Array of face normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
- * @param {Float32Array} vertexNormalsBuffer
+ * @param {Float32Array} vertexNormalsBuffer - Array of vertex normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
+ * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
+ * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
+ * @param {Array} renderers - List of MeshComponents.
  * @param {boolean} wireframe - Should faces be drawn as wireframes?
+ * @param {Uint32Array} lightsIndexBuffer - Indices of active lights.
+ * @param {Object} gameObjects - Dictionary of game objects in the scene.
  */
 function drawTriangles(
   ctx,
