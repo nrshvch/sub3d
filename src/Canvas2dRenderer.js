@@ -3,6 +3,8 @@
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
 // TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
 // TODO: calculate lightning at lower fps
+// TODO: Allow passing multiple shader. Limiting shader to handling just one pass, has higher chance of compiler optimizing the shader.
+// TODO: add profiling of different pipeline steps
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
