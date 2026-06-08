@@ -36,6 +36,8 @@ p._texture = null;
 
 p.textureImage = null;
 
+p.shaderType = 0;
+
 Object.defineProperty(p, "texture", {
   get: function () {
     return this._texture;
