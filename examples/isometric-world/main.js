@@ -1,6 +1,7 @@
 import scaliaEngine from "sub3d";
 import Noise from "./noise.js";
 import TreePool from "./TreePool.js";
+import RockPool from "./RockPool.js";
 import TerrainPool from "./TerrainPool.js";
 import TileGroup from "./TileGroup.js";
 import CameraController from "./CameraController.js";
@@ -17,6 +18,7 @@ const GROUP_WORLD_SIZE = GROUP_TILES * TILE_WORLD_SIZE;
 
 // Instantiate the pools to prevent GC overhead during panning
 const treePool = new TreePool();
+const rockPool = new RockPool();
 const terrainPool = new TerrainPool(GROUP_TILES);
 
 // Noise generator initialization (with identical seed table to original demo)
@@ -151,6 +153,7 @@ const centerGroup = new TileGroup(
   noise,
   terrainPool,
   treePool,
+  rockPool,
   TILE_SIZE,
   SCALE,
   cameraController.isWireframe,
@@ -270,6 +273,7 @@ myGame.world.tickRegister({
         noise,
         terrainPool,
         treePool,
+        rockPool,
         TILE_SIZE,
         SCALE,
         cameraController.isWireframe,
