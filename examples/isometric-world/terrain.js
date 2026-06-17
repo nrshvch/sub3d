@@ -4,11 +4,11 @@ const GameObject = scaliaEngine.GameObject;
 const MeshComponent = scaliaEngine.MeshComponent;
 
 /**
- * Simplifies an existing subdivided grid mesh.
+ * Simplifies an existing subdivided grid mesh by collapsing flat, uniform tiles.
  * @param {Float32Array} vertices - Existing vertex buffer [x,y,z...]
  * @param {Uint32Array} faces - Existing face index buffer
  * @param {Uint32Array} faceColors - Map of face index to color index
- * @param {number} segments - The grid resolution (e.g., 50 for 50x50 cells)
+ * @param {number} segments - The grid resolution (e.g., 30 for 30x30 cells)
  */
 export function simplifyExistingGridMesh(vertices, faces, faceColors, segments) {
   const row = segments + 1;
@@ -116,7 +116,10 @@ export function simplifyExistingGridMesh(vertices, faces, faceColors, segments) 
   };
 }
 
-function generateTerrainMesh(width, height, segments) {
+/**
+ * Generates a flat 2D grid terrain mesh with a central vertex per tile.
+ */
+export function generateTerrainMesh(width, height, segments) {
   const verts = [];
   const faces = [];
 
@@ -151,8 +154,7 @@ function generateTerrainMesh(width, height, segments) {
       const cz = (verts[tl * 3 + 2] + verts[bl * 3 + 2]) * 0.5;
       verts.push(cx, 0, cz);
 
-      // 4 Triangles with reversed winding (Clockwise -> Counter-Clockwise or vice versa)
-      // Swapping the 2nd and 3rd arguments:
+      // 4 Triangles with reversed winding
       faces.push(tl, centerVertIdx, tr); // Top
       faces.push(tr, centerVertIdx, br); // Right
       faces.push(br, centerVertIdx, bl); // Bottom
@@ -168,31 +170,46 @@ function generateTerrainMesh(width, height, segments) {
   };
 }
 
-const terrainMesh = generateTerrainMesh(1, 1, 100);
+// Cache for mesh templates to avoid regenerating base vertex structures
+const meshCache = {};
 
-const bounds = new Float32Array(32);
+function getCachedTerrainMesh(segments) {
+  if (!meshCache[segments]) {
+    const meshData = generateTerrainMesh(1, 1, segments);
+    const bounds = new Float32Array(32);
+    MeshComponent.computeBoundsFlatArray(bounds, 0, meshData.vertices);
+    MeshComponent.computeBoundingSphere(bounds, 28, meshData.vertices);
+    meshCache[segments] = { meshData, bounds };
+  }
+  return meshCache[segments];
+}
 
-MeshComponent.computeBoundsFlatArray(bounds, 0, terrainMesh.vertices);
-
-MeshComponent.computeBoundingSphere(bounds, 28, terrainMesh.vertices);
-
-export default function Terrain() {
+/**
+ * Terrain GameObject class.
+ * @param {number} segments - Grid segment resolution (e.g. 30)
+ * @constructor
+ */
+export default function Terrain(segments = 30) {
   GameObject.call(this);
 
+  const cached = getCachedTerrainMesh(segments);
   const mesh = new MeshComponent(this);
 
-  mesh.faces = terrainMesh.faces;
-
-  mesh.vertices = terrainMesh.vertices;
-
-  mesh.bounds = bounds;
-
+  // Allocate a fresh copy of the base vertices array for this terrain instance
+  // so its heights can be modified independently.
+  mesh.vertices = new Float32Array(cached.meshData.vertices);
+  mesh.faces = cached.meshData.faces;
+  mesh.bounds = cached.bounds;
   mesh.updateNormals();
 
   this.addComponent(mesh);
+
+  // Store shortcut reference for direct access
+  this.meshRenderer = mesh;
 }
 
 Terrain.prototype = Object.create(GameObject.prototype);
+Terrain.prototype.constructor = Terrain;
 
 Terrain.simplifyExistingGridMesh = simplifyExistingGridMesh;
-
+Terrain.getCachedTerrainMesh = getCachedTerrainMesh;

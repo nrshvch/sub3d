@@ -7,6 +7,7 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title></title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script type="module" src="main.js"></script>
     <style>
       * {
@@ -98,6 +99,58 @@
   <body>
     <button id="toggle_debug_btn">Open Debug</button>
     <canvas id="canvas"></canvas>
+
+    <!-- Glassmorphic Premium Control Dock (Tailwind CSS styled) -->
+    <div id="control-dock" class="fixed bottom-0 md:bottom-6 left-0 md:left-1/2 md:-translate-x-1/2 w-full md:w-auto flex flex-wrap md:flex-nowrap items-center justify-around md:justify-start gap-4 bg-slate-900/75 backdrop-blur-xl border-t border-white/10 md:border md:rounded-2xl px-5 py-3 shadow-2xl z-50 text-white font-sans text-xs select-none pointer-events-auto transition-all duration-300 hover:bg-slate-900/80 hover:border-white/20">
+      <!-- Rotation Control -->
+      <div class="flex flex-col items-center gap-1.5 w-24">
+        <label for="dock_rotation" class="text-[9px] font-semibold tracking-wider text-slate-400 uppercase select-none">Rotate (<span id="dock_rot_val" class="font-bold text-white">45</span>°)</label>
+        <input id="dock_rotation" type="range" min="0" max="360" value="45" class="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hover:bg-white/30 transition-colors duration-150">
+      </div>
+      
+      <div class="hidden md:block w-px h-8 bg-white/10"></div>
+      
+      <!-- Zoom Control -->
+      <div class="flex flex-col items-center gap-1.5 w-24">
+        <label for="dock_zoom" class="text-[9px] font-semibold tracking-wider text-slate-400 uppercase select-none">Zoom (<span id="dock_zoom_val" class="font-bold text-white">1.00</span>x)</label>
+        <input id="dock_zoom" type="range" min="0.1" max="3" value="1.00" step="0.05" class="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hover:bg-white/30 transition-colors duration-150">
+      </div>
+      
+      <div class="hidden md:block w-px h-8 bg-white/10"></div>
+
+      <!-- Current Position Indicator -->
+      <div class="flex flex-col items-center min-w-[70px] leading-tight">
+        <span class="text-[9px] font-semibold tracking-wider text-slate-400 uppercase select-none">Position</span>
+        <span id="dock_coords_val" class="text-xs font-bold text-emerald-400 select-none">0.0, 0.0</span>
+      </div>
+
+      <div class="hidden md:block w-px h-8 bg-white/10"></div>
+
+      <!-- Current Time Indicator -->
+      <div class="flex flex-col items-center min-w-[50px] leading-tight">
+        <span class="text-[9px] font-semibold tracking-wider text-slate-400 uppercase select-none">Time</span>
+        <span id="dock_time_val" class="text-xs font-bold text-sky-400 select-none">07:00</span>
+      </div>
+
+      <!-- Cycle Speed Control -->
+      <div class="flex flex-col items-center gap-1.5 w-24">
+        <label for="dock_speed" class="text-[9px] font-semibold tracking-wider text-slate-400 uppercase select-none">Speed (<span id="dock_speed_val" class="font-bold text-white">1</span>x)</label>
+        <input id="dock_speed" type="range" min="1" max="10" value="1" step="1" class="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white hover:bg-white/30 transition-colors duration-150">
+      </div>
+
+      <div class="hidden md:block w-px h-8 bg-white/10"></div>
+
+      <!-- Smooth Shading Switch -->
+      <div class="flex items-center gap-2">
+        <label class="relative inline-flex items-center cursor-pointer select-none">
+          <input id="dock_smooth" type="checkbox" class="sr-only peer">
+          <div class="w-8 h-4 bg-white/20 rounded-full peer peer-focus:outline-none peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"></div>
+        </label>
+        <span class="text-[9px] font-semibold tracking-wider text-slate-400 uppercase select-none">Smooth</span>
+      </div>
+    </div>
+
+    <!-- Technical Renderer Debug Menu (General items retained) -->
     <div id="debug" style="display: none;">
       <div>Max. FPS <span id="maxFps"></span></div>
       <div>FPS <span id="fps"></span></div>
@@ -120,14 +173,6 @@
         <input id="chkbx_1" type="checkbox">
       </div>
       <div>
-        <label for="chkbx_2">Smooth Terrain</label>
-        <input id="chkbx_2" type="checkbox" checked="checked">
-      </div>
-      <div>
-        <label for="chkbx_auto_cycle">Auto Day/Night</label>
-        <input id="chkbx_auto_cycle" type="checkbox" checked="checked">
-      </div>
-      <div>
         <label for="slider_fog_near">Fog Near (<span id="fogNearValue">1500</span>)</label>
         <input id="slider_fog_near" type="range" min="0" max="5000" value="1500" step="50">
       </div>
@@ -136,8 +181,12 @@
         <input id="slider_fog_far" type="range" min="0" max="5000" value="2500" step="50">
       </div>
       <div>
-        <label for="slider_sun_angle">Sun Angle (<span id="sunAngleValue">0</span>°)</label>
-        <input id="slider_sun_angle" type="range" min="0" max="360" value="0" step="1">
+        <label for="slider_clip_near">Clip Near (<span id="clipNearValue">-2500</span>)</label>
+        <input id="slider_clip_near" type="range" min="-5000" max="5000" value="-2500" step="50">
+      </div>
+      <div>
+        <label for="slider_clip_far">Clip Far (<span id="clipFarValue">2500</span>)</label>
+        <input id="slider_clip_far" type="range" min="0" max="10000" value="2500" step="50">
       </div>
       <div>
         <label for="color_sun">Sun Color</label>
