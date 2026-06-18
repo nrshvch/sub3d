@@ -12,7 +12,8 @@ var myGame = new scaliaEngine.Game();
 // Tile and world scaling parameters
 const TILE_SIZE = 45.255;
 const TILE_WORLD_SIZE = TILE_SIZE;
-const GROUP_TILES = 16;
+const GROUP_TILES = 32;
+const LOAD_RADIUS = 5000; // Covers max fogFar (2500) + chunk bounding radius (1536)
 
 // Instantiate the pools to prevent GC overhead during panning
 const treePool = new TreePool();
@@ -186,126 +187,126 @@ document.addEventListener("pointerup", () => {
 });
 
 /**
- * Update tick registered in the engine.
- * Computes camera chunk range, manages chunk loading queue, and loads at most 1 chunk per tick.
+ * Update frame loop.
+ * Computes camera chunk range, manages chunk loading queue, and loads at most 1 chunk per frame.
  */
-myGame.world.tickRegister({
-  tick: () => {
-    const camPos = cameraController.cameraObject.transform.getPosition();
-    const camX = camPos[0];
-    const camZ = camPos[2];
+function updateChunks() {
+  const camPos = cameraController.cameraObject.transform.getPosition();
+  const camX = camPos[0];
+  const camZ = camPos[2];
 
-    // Update coordinates display inside control dock
-    const dockCoordsEl = document.getElementById("dock_coords_val");
-    if (dockCoordsEl) {
-      dockCoordsEl.innerText = `${camX.toFixed(1)}, ${camZ.toFixed(1)}`;
+  // Update coordinates display inside control dock
+  const dockCoordsEl = document.getElementById("dock_coords_val");
+  if (dockCoordsEl) {
+    dockCoordsEl.innerText = `${camX.toFixed(1)}, ${camZ.toFixed(1)}`;
+  }
+
+  // Throttle address bar query string updates to once per second while dragging
+  const now = Date.now();
+  if (now - tickState.lastUrlUpdateTime > 1000) {
+    const lastX = tickState.lastUrlX;
+    const lastZ = tickState.lastUrlZ;
+    if (Math.abs(lastX - camX) > 0.5 || Math.abs(lastZ - camZ) > 0.5) {
+      const urlParams = new URLSearchParams(window.location.search);
+      urlParams.set("x", camX.toFixed(1));
+      urlParams.set("z", camZ.toFixed(1));
+      const newSearch = urlParams.toString();
+      const newUrl = `${window.location.pathname}?${newSearch}${window.location.hash}`;
+      window.history.replaceState(null, "", newUrl);
+      tickState.lastUrlX = camX;
+      tickState.lastUrlZ = camZ;
+      tickState.lastUrlUpdateTime = now;
     }
+  }
 
-    // Throttle address bar query string updates to once per second while dragging
-    const now = Date.now();
-    if (now - tickState.lastUrlUpdateTime > 1000) {
-      const lastX = tickState.lastUrlX;
-      const lastZ = tickState.lastUrlZ;
-      if (Math.abs(lastX - camX) > 0.5 || Math.abs(lastZ - camZ) > 0.5) {
-        const urlParams = new URLSearchParams(window.location.search);
-        urlParams.set("x", camX.toFixed(1));
-        urlParams.set("z", camZ.toFixed(1));
-        const newSearch = urlParams.toString();
-        const newUrl = `${window.location.pathname}?${newSearch}${window.location.hash}`;
-        window.history.replaceState(null, "", newUrl);
-        tickState.lastUrlX = camX;
-        tickState.lastUrlZ = camZ;
-        tickState.lastUrlUpdateTime = now;
+  // Compute camera's global tile position (shifted by GROUP_TILES/2 offset)
+  const camTileX_shifted = camX / TILE_WORLD_SIZE + GROUP_TILES / 2;
+  const camTileZ_shifted = camZ / TILE_WORLD_SIZE + GROUP_TILES / 2;
+
+  // Identify camera's current chunk coordinates using floor to partition tile space
+  const camGroupX = Math.floor(camTileX_shifted / GROUP_TILES);
+  const camGroupZ = Math.floor(camTileZ_shifted / GROUP_TILES);
+
+  // Compute visible chunks dynamically using a radial loading distance check
+  const CHUNK_WORLD_SIZE = GROUP_TILES * TILE_WORLD_SIZE;
+  const visibleKeys = new Set();
+  const searchRange = Math.ceil(LOAD_RADIUS / CHUNK_WORLD_SIZE) + 1;
+
+  for (let dx = -searchRange; dx <= searchRange; dx++) {
+    for (let dz = -searchRange; dz <= searchRange; dz++) {
+      const gx = camGroupX + dx;
+      const gz = camGroupZ + dz;
+
+      // Center of this chunk in world space
+      const chunkX = gx * CHUNK_WORLD_SIZE;
+      const chunkZ = gz * CHUNK_WORLD_SIZE;
+
+      // Distance from camera to chunk center
+      const dxWorld = chunkX - camX;
+      const dzWorld = chunkZ - camZ;
+      const dist = Math.sqrt(dxWorld * dxWorld + dzWorld * dzWorld);
+
+      if (dist <= LOAD_RADIUS) {
+        const key = `${gx},${gz}`;
+        visibleKeys.add(key);
       }
     }
+  }
 
-    // Compute camera's global tile position (shifted by GROUP_TILES/2 offset)
-    const camTileX_shifted = camX / TILE_WORLD_SIZE + GROUP_TILES / 2;
-    const camTileZ_shifted = camZ / TILE_WORLD_SIZE + GROUP_TILES / 2;
-
-    // Identify camera's current chunk coordinates using floor to partition tile space
-    const camGroupX = Math.floor(camTileX_shifted / GROUP_TILES);
-    const camGroupZ = Math.floor(camTileZ_shifted / GROUP_TILES);
-
-    // Compute visible chunks dynamically using a radial loading distance check
-    const CHUNK_WORLD_SIZE = GROUP_TILES * TILE_WORLD_SIZE;
-    const LOAD_RADIUS = 4200; // Covers max fogFar (2500) + chunk bounding radius (1536)
-    const visibleKeys = new Set();
-    const searchRange = Math.ceil(LOAD_RADIUS / CHUNK_WORLD_SIZE) + 1;
-
-    for (let dx = -searchRange; dx <= searchRange; dx++) {
-      for (let dz = -searchRange; dz <= searchRange; dz++) {
-        const gx = camGroupX + dx;
-        const gz = camGroupZ + dz;
-
-        // Center of this chunk in world space
-        const chunkX = gx * CHUNK_WORLD_SIZE;
-        const chunkZ = gz * CHUNK_WORLD_SIZE;
-
-        // Distance from camera to chunk center
-        const dxWorld = chunkX - camX;
-        const dzWorld = chunkZ - camZ;
-        const dist = Math.sqrt(dxWorld * dxWorld + dzWorld * dzWorld);
-
-        if (dist <= LOAD_RADIUS) {
-          const key = `${gx},${gz}`;
-          visibleKeys.add(key);
-        }
-      }
+  // 1. Unload out-of-range chunks (return elements to pools to free memory)
+  for (const [key, group] of activeGroups.entries()) {
+    if (!visibleKeys.has(key)) {
+      group.destroy();
+      activeGroups.delete(key);
     }
+  }
 
-    // 1. Unload out-of-range chunks (return elements to pools to free memory)
-    for (const [key, group] of activeGroups.entries()) {
-      if (!visibleKeys.has(key)) {
-        group.destroy();
-        activeGroups.delete(key);
-      }
+  // 2. Add missing chunks to the loading queue
+  for (const key of visibleKeys) {
+    if (!activeGroups.has(key) && !isKeyInQueue(key)) {
+      const [gx, gz] = key.split(",").map(Number);
+      generationQueue.push({ key, gx, gz });
     }
+  }
 
-    // 2. Add missing chunks to the loading queue
-    for (const key of visibleKeys) {
-      if (!activeGroups.has(key) && !isKeyInQueue(key)) {
-        const [gx, gz] = key.split(",").map(Number);
-        generationQueue.push({ key, gx, gz });
-      }
+  // 3. Prune loading queue: remove chunks that are no longer visible
+  for (let i = generationQueue.length - 1; i >= 0; i--) {
+    if (!visibleKeys.has(generationQueue[i].key)) {
+      generationQueue.splice(i, 1);
     }
+  }
 
-    // 3. Prune loading queue: remove chunks that are no longer visible
-    for (let i = generationQueue.length - 1; i >= 0; i--) {
-      if (!visibleKeys.has(generationQueue[i].key)) {
-        generationQueue.splice(i, 1);
-      }
-    }
+  // Sort the queue so that chunks closest to the camera are generated first (radial order)
+  if (generationQueue.length > 1) {
+    generationQueue.sort((a, b) => {
+      const distA = Math.hypot(a.gx * CHUNK_WORLD_SIZE - camX, a.gz * CHUNK_WORLD_SIZE - camZ);
+      const distB = Math.hypot(b.gx * CHUNK_WORLD_SIZE - camX, b.gz * CHUNK_WORLD_SIZE - camZ);
+      return distA - distB;
+    });
+  }
 
-    // Sort the queue so that chunks closest to the camera are generated first (radial order)
-    if (generationQueue.length > 1) {
-      generationQueue.sort((a, b) => {
-        const distA = Math.hypot(a.gx * CHUNK_WORLD_SIZE - camX, a.gz * CHUNK_WORLD_SIZE - camZ);
-        const distB = Math.hypot(b.gx * CHUNK_WORLD_SIZE - camX, b.gz * CHUNK_WORLD_SIZE - camZ);
-        return distA - distB;
-      });
-    }
+  // 4. Generate at most ONE chunk in this frame (Budget-throttled async generation)
+  if (generationQueue.length > 0) {
+    const nextChunk = generationQueue.shift();
+    const group = new TileGroup(
+      nextChunk.gx,
+      nextChunk.gz,
+      myGame,
+      noise,
+      terrainPool,
+      treePool,
+      rockPool,
+      TILE_SIZE,
+      cameraController.isWireframe,
+      cameraController.isSmooth,
+      GROUP_TILES
+    );
+    activeGroups.set(nextChunk.key, group);
+  }
 
-    // 4. Generate at most ONE chunk in this frame (Budget-throttled async generation)
-    if (generationQueue.length > 0) {
-      const nextChunk = generationQueue.shift();
-      const group = new TileGroup(
-        nextChunk.gx,
-        nextChunk.gz,
-        myGame,
-        noise,
-        terrainPool,
-        treePool,
-        rockPool,
-        TILE_SIZE,
-        cameraController.isWireframe,
-        cameraController.isSmooth,
-        GROUP_TILES
-      );
-      activeGroups.set(nextChunk.key, group);
-    }
-  },
-});
+  requestAnimationFrame(updateChunks);
+}
+requestAnimationFrame(updateChunks);
 
 // Run the engine
 myGame.run();
