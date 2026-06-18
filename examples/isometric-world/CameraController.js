@@ -53,6 +53,8 @@ export default class CameraController {
     this.isSmooth = false;
     this.autoCycleEnabled = true;
     this.speedMultiplier = 1.0;
+    this.autoFlyEnabled = false;
+    this.autoFlySpeed = 2000.0; // units per second
 
     // Start cycle at 12:00 (which corresponds to angle 90.0)
     this.currentAngle = 90.0;
@@ -83,6 +85,19 @@ export default class CameraController {
 
     // Synchronize initial daylight state
     this.updateDaylightCycle(this.currentAngle);
+
+    // Start rendering frame loop for smooth camera updates (movement & height tracking)
+    let lastTime = performance.now();
+    const updateFrame = () => {
+      const now = performance.now();
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      this.onFrameUpdate(dt);
+
+      requestAnimationFrame(updateFrame);
+    };
+    requestAnimationFrame(updateFrame);
   }
 
   /**
@@ -146,10 +161,20 @@ export default class CameraController {
   /**
    * Snaps the camera's height to the terrain under it.
    */
-  snapHeightToTerrain() {
+  snapHeightToTerrain(dt) {
     const pos = this.cameraObject.transform.getPosition();
     const terrainH = this.getTerrainHeight(pos[0], pos[2]);
-    this.cameraObject.transform.setPosition(pos[0], terrainH, pos[2]);
+    if (terrainH !== null && terrainH !== undefined) {
+      if (this.autoFlyEnabled && dt !== undefined) {
+        // Smoothly glide over terrain heights using a frame-rate independent lerp
+        const lerpFactor = Math.min(1.0, 4.0 * dt);
+        const targetY = pos[1] + (terrainH - pos[1]) * lerpFactor;
+        this.cameraObject.transform.setPosition(pos[0], targetY, pos[2]);
+      } else {
+        // Instant snap for user panning/dragging
+        this.cameraObject.transform.setPosition(pos[0], terrainH, pos[2]);
+      }
+    }
   }
 
   /**
@@ -173,12 +198,31 @@ export default class CameraController {
   }
 
   /**
-   * Main game loop update. Handles height snapping and auto day/night cycle.
+   * Smooth updates per rendering frame (running in requestAnimationFrame).
+   * Translates the camera if auto-fly is active and keeps the camera snapped to the ground.
+   * @param {number} dt - Frame delta time in seconds
+   */
+  onFrameUpdate(dt) {
+    if (this.autoFlyEnabled) {
+      const mat = this.cameraObject.transform.getLocalToWorld();
+      const fx = mat[8];
+      const fz = mat[10];
+      const fLen = Math.sqrt(fx * fx + fz * fz);
+      if (fLen > 0.001) {
+        const forwardX = fx / fLen;
+        const forwardZ = fz / fLen;
+        const dist = this.autoFlySpeed * dt;
+        this.cameraObject.transform.translate(forwardX * dist, 0, forwardZ * dist, "world");
+      }
+    }
+
+    this.snapHeightToTerrain(dt);
+  }
+
+  /**
+   * Main game loop update. Handles auto day/night cycle.
    */
   onTick(time) {
-    // Snapping the height on tick in case terrain chunks loaded asynchronously
-    this.snapHeightToTerrain();
-
     if (this.autoCycleEnabled) {
       const d = time.dt; // exactly 60ms (simulation step size)
       this.currentAngle = (this.currentAngle + (this.CYCLE_SPEED * this.speedMultiplier * d) / 1000) % 360;
