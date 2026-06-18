@@ -73,7 +73,7 @@ function getTerrainHeight(worldX, worldZ) {
   const gz = Math.floor(row / GROUP_TILES);
   const key = `${gx},${gz}`;
   const group = activeGroups.get(key);
-  if (!group) return 0; // Fallback height if chunk not loaded yet
+  if (!group) return null; // Fallback height if chunk not loaded yet
 
   // Get local tile indices inside the chunk
   const localCol = col - gx * GROUP_TILES;
@@ -534,6 +534,13 @@ if (dockSmoothEl) {
     for (const group of activeGroups.values()) {
       group.setSmooth(checked);
     }
+  });
+}
+
+const dockFlyEl = document.getElementById("dock_fly");
+if (dockFlyEl) {
+  dockFlyEl.addEventListener("change", (e) => {
+    cameraController.autoFlyEnabled = e.target.checked;
   });
 }
 
