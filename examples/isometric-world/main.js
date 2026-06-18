@@ -11,10 +11,8 @@ var myGame = new scaliaEngine.Game();
 
 // Tile and world scaling parameters
 const TILE_SIZE = 45.255;
-const SCALE = 1.6;
-const TILE_WORLD_SIZE = TILE_SIZE * SCALE;
-const GROUP_TILES = 30;
-const GROUP_WORLD_SIZE = GROUP_TILES * TILE_WORLD_SIZE;
+const TILE_WORLD_SIZE = TILE_SIZE;
+const GROUP_TILES = 64;
 
 // Instantiate the pools to prevent GC overhead during panning
 const treePool = new TreePool();
@@ -63,8 +61,8 @@ function isKeyInQueue(key) {
  */
 function getTerrainHeight(worldX, worldZ) {
   // Translate world X/Z to global tile X/Z (re-centered by +50 tiles)
-  const fcol = worldX / TILE_WORLD_SIZE + 50;
-  const frow = worldZ / TILE_WORLD_SIZE + 50;
+  const fcol = worldX / TILE_WORLD_SIZE;
+  const frow = worldZ / TILE_WORLD_SIZE;
   const col = Math.floor(fcol);
   const row = Math.floor(frow);
 
@@ -84,7 +82,7 @@ function getTerrainHeight(worldX, worldZ) {
   const v = frow - row;
 
   const verts = group.terrain.meshRenderer.vertices;
-  const rowStride = 31 * 3; // 31 corners per row * 3 coordinates
+  const rowStride = (GROUP_TILES + 1) * 3;
   
   // Calculate vertex indices
   const a = localRow * rowStride + localCol * 3;
@@ -94,7 +92,7 @@ function getTerrainHeight(worldX, worldZ) {
   const dy = cy - 3; // Bottom-Left Y
 
   // Midpoint vertex index
-  const e = 31 * 31 * 3 + (localRow * 30 + localCol) * 3;
+  const e = (GROUP_TILES + 1) * (GROUP_TILES + 1) * 3 + (localRow * GROUP_TILES + localCol) * 3;
   const ey = e + 1;
 
   // Interpolate height inside the triangular layout
@@ -139,8 +137,8 @@ const cameraController = new CameraController(canvasEl, myGame, getTerrainHeight
 cameraController.cameraObject.transform.setPosition(initX, 0, initZ);
 
 // Find the chunk coordinates containing this world position
-const startTileX = initX / TILE_WORLD_SIZE + 50;
-const startTileZ = initZ / TILE_WORLD_SIZE + 50;
+const startTileX = initX / TILE_WORLD_SIZE;
+const startTileZ = initZ / TILE_WORLD_SIZE;
 const startGroupX = Math.floor(startTileX / GROUP_TILES);
 const startGroupZ = Math.floor(startTileZ / GROUP_TILES);
 
@@ -155,9 +153,9 @@ const centerGroup = new TileGroup(
   treePool,
   rockPool,
   TILE_SIZE,
-  SCALE,
   cameraController.isWireframe,
-  cameraController.isSmooth
+  cameraController.isSmooth,
+  GROUP_TILES
 );
 activeGroups.set(centerKey, centerGroup);
 
@@ -222,8 +220,8 @@ myGame.world.tickRegister({
     }
 
     // Compute camera's global tile position (shifted by +50 offset)
-    const camTileX = camX / TILE_WORLD_SIZE + 50;
-    const camTileZ = camZ / TILE_WORLD_SIZE + 50;
+    const camTileX = camX / TILE_WORLD_SIZE;
+    const camTileZ = camZ / TILE_WORLD_SIZE;
 
     // Identify camera's current chunk coordinates using floor to partition tile space
     const camGroupX = Math.floor(camTileX / GROUP_TILES);
@@ -275,9 +273,9 @@ myGame.world.tickRegister({
         treePool,
         rockPool,
         TILE_SIZE,
-        SCALE,
         cameraController.isWireframe,
-        cameraController.isSmooth
+        cameraController.isSmooth,
+        GROUP_TILES
       );
       activeGroups.set(nextChunk.key, group);
     }

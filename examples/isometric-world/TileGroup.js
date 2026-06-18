@@ -88,7 +88,7 @@ export function isTileWater(tx, tz, noise) {
  * If any of the 4 surrounding tiles are water, this vertex is clamped to 0.
  * This ensures water is perfectly flat and boundary seams are prevented.
  */
-export function getGridVertexHeight(gx, gz, noise, SCALE) {
+export function getGridVertexHeight(gx, gz, noise) {
   if (
     isTileWater(gx - 1, gz - 1, noise) ||
     isTileWater(gx, gz - 1, noise) ||
@@ -97,7 +97,7 @@ export function getGridVertexHeight(gx, gz, noise, SCALE) {
   ) {
     return 0;
   }
-  return calcZ(gx, gz, noise) * 16 * SCALE;
+  return calcZ(gx, gz, noise) * 16;
 }
 
 /**
@@ -169,11 +169,11 @@ export default class TileGroup {
    * @param {TerrainPool} terrainPool - Pool for Terrain GameObjects
    * @param {TreePool} treePool - Pool for Tree GameObjects
    * @param {number} TILE_SIZE - Tile size constant
-   * @param {number} SCALE - World scale constant
    * @param {boolean} isWireframe - Wireframe rendering active
    * @param {boolean} isSmooth - Smooth shading mode active
+   * @param {number} [segments=30] - Grid resolution size
    */
-  constructor(gx, gz, game, noise, terrainPool, treePool, rockPool, TILE_SIZE, SCALE, isWireframe, isSmooth) {
+  constructor(gx, gz, game, noise, terrainPool, treePool, rockPool, TILE_SIZE, isWireframe, isSmooth, segments = 30) {
     this.gx = gx;
     this.gz = gz;
     this.game = game;
@@ -183,8 +183,7 @@ export default class TileGroup {
     this.trees = [];
     this.rocks = [];
 
-    const TILE_WORLD_SIZE = TILE_SIZE * SCALE;
-    const segments = 30;
+    const TILE_WORLD_SIZE = TILE_SIZE;
     const row = segments + 1;
 
     // 1. Acquire terrain object from pool
@@ -200,7 +199,7 @@ export default class TileGroup {
         const vIdx = j * row + i;
         
         // Calculate height with water clamping and seam correction
-        verts[vIdx * 3 + 1] = getGridVertexHeight(globalX, globalZ, noise, SCALE);
+        verts[vIdx * 3 + 1] = getGridVertexHeight(globalX, globalZ, noise);
       }
     }
 
@@ -475,9 +474,9 @@ export default class TileGroup {
             if (treeType === 'cone') {
               // Pine tree scale
               tree.transform.scale(
-                25 * size * SCALE * TREE_SCALE,
-                50 * size * SCALE * TREE_SCALE,
-                25 * size * SCALE * TREE_SCALE
+                25 * size * TREE_SCALE,
+                50 * size * TREE_SCALE,
+                25 * size * TREE_SCALE
               );
               tree.transform.rotate(
                 (rng.next() * 10 - 5) | 0,
@@ -486,7 +485,7 @@ export default class TileGroup {
               );
             } else {
               // Lollipop trees scaled isotropically so ball is a sphere
-              const ballScale = 35 * size * SCALE * TREE_SCALE;
+              const ballScale = 35 * size * TREE_SCALE;
               tree.transform.scale(ballScale, ballScale, ballScale);
               tree.transform.rotate(
                 (rng.next() * 8 - 4) | 0,
@@ -537,7 +536,7 @@ export default class TileGroup {
             rock.transform.translate(rockWorldX, h - 4.0, rockWorldZ);
 
             // Scale uniformly to preserve the single model's shape
-            const rockScale = 44 * size * SCALE * TREE_SCALE;
+            const rockScale = 44 * size * TREE_SCALE;
             rock.transform.scale(rockScale, rockScale, rockScale);
 
             // Rotate ONLY around Y axis to keep the flat base flat on the ground
