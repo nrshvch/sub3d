@@ -1,6 +1,6 @@
 import scaliaEngine from "sub3d";
 
-const FAR_BASE = 3500;
+const FAR_BASE = 4000;
 const NEAR_BASE = 2500;
 
 /**
@@ -160,7 +160,7 @@ export default class CameraController {
     };
 
     document.onwheel = (e) => {
-      this.cameraPitch = Math.max(10, Math.min(80, this.cameraPitch + e.deltaY / 102));
+      this.cameraPitch = Math.max(5, Math.min(90, this.cameraPitch + e.deltaY / 102));
       this.updateCameraTransform();
     };
   }
