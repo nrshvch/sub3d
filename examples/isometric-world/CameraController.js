@@ -54,8 +54,8 @@ export default class CameraController {
     this.autoCycleEnabled = true;
     this.speedMultiplier = 1.0;
 
-    // Start cycle at 07:00 (which corresponds to angle 15.0)
-    this.currentAngle = 15.0;
+    // Start cycle at 12:00 (which corresponds to angle 90.0)
+    this.currentAngle = 90.0;
 
     this.CYCLE_SPEED = 360 / 86400; // base speed in degrees per second (1:1 with real-world time: 360° / 24 hours)
     this.cameraYaw = 45;    // Default camera rotation angle (45 degrees yaw)

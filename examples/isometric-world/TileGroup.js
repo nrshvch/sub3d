@@ -144,6 +144,20 @@ export function getInterpolatedTTDHeight(u, v, h00, h01, h11, h10, hmid) {
 }
 
 /**
+ * Computes depth-dependent water color.
+ * The depth is based on the negative height returned by calcZ.
+ * Transitions from a bright light blue at depth 0 to a deep navy blue at depth >= 8.
+ */
+function getWaterColor(gx, gz, noise) {
+  const depth = Math.max(0, -calcZ(gx, gz, noise));
+  const t = Math.min(depth / 8, 1);
+  const r = 0;
+  const g = (130 * (1 - t) + 35 * t) | 0;
+  const b = (220 * (1 - t) + 110 * t) | 0;
+  return (r << 16) | (g << 8) | b;
+}
+
+/**
  * TileGroup represents a 30x30 procedural isometric chunk.
  */
 export default class TileGroup {
@@ -227,7 +241,7 @@ export default class TileGroup {
           verts[centerVertIdx * 3 + 1] = (tileRand * 2 - 1) * 2;
 
           const colorIdx = colors.length;
-          colors.push(0x0000C8); // Water blue
+          colors.push(getWaterColor(globalX, globalZ, noise)); // Depth-dependent water color
           faceColors.push(colorIdx, colorIdx, colorIdx, colorIdx);
 
         } else if (Math.min(h_tl, h_tr, h_br, h_bl) <= 0) {
@@ -243,7 +257,7 @@ export default class TileGroup {
           if (h_ey === 0) {
             // Partial water inside coast
             const waterColorIdx = colors.length;
-            colors.push(0x0000C8);
+            colors.push(getWaterColor(globalX, globalZ, noise));
 
             faceColors.push(h_tl === h_tr ? waterColorIdx : coastColorIdx);
             faceColors.push(h_tr === h_br ? waterColorIdx : coastColorIdx);
@@ -254,24 +268,26 @@ export default class TileGroup {
             const grassColorIdx = colors.length;
             const bx = globalX + 50 + 640;
             const bz = globalZ + 50 + 700;
+            // Diffuse boundaries using high-frequency noise perturbation
             const biomeNoise = noise.noise2D(bx / 400, bz / 400);
+            const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
 
             let r, g, b;
-            if (biomeNoise > 0.15) {
+            if (perturbedNoise > 0.15) {
               // Pine forest biome - Mossy Pine green
               r = (tileRand * 15 + 35) | 0;
               g = (tileRand * 20 + 120) | 0;
               b = (tileRand * 15 + 45) | 0;
-            } else if (biomeNoise < -0.25) {
-              // Lollipop tree biome - Warm Olive/Yellowish green
-              r = (tileRand * 15 + 130) | 0;
-              g = (tileRand * 20 + 175) | 0;
-              b = (tileRand * 15 + 65) | 0;
+            } else if (perturbedNoise < -0.25) {
+              // Lollipop tree biome - Soft warm olive green
+              r = (tileRand * 15 + 60) | 0;
+              g = (tileRand * 20 + 135) | 0;
+              b = (tileRand * 15 + 55) | 0;
             } else {
-              // Plains biome - Lush vibrant field green
-              r = (tileRand * 10 + 35) | 0;
-              g = (tileRand * 20 + 200) | 0;
-              b = (tileRand * 10 + 45) | 0;
+              // Plains biome - Natural fresh grass green
+              r = (tileRand * 15 + 45) | 0;
+              g = (tileRand * 20 + 150) | 0;
+              b = (tileRand * 15 + 55) | 0;
             }
             colors.push((r << 16) | (g << 8) | b);
 
@@ -300,24 +316,26 @@ export default class TileGroup {
             // Grass green / biome ground color
             const bx = globalX + 50 + 640;
             const bz = globalZ + 50 + 700;
+            // Diffuse boundaries using high-frequency noise perturbation
             const biomeNoise = noise.noise2D(bx / 400, bz / 400);
+            const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
 
             let r, g, b;
-            if (biomeNoise > 0.15) {
+            if (perturbedNoise > 0.15) {
               // Pine forest biome - Mossy Pine green
               r = (tileRand * 15 + 35) | 0;
               g = (tileRand * 20 + 120) | 0;
               b = (tileRand * 15 + 45) | 0;
-            } else if (biomeNoise < -0.25) {
-              // Lollipop tree biome - Warm Olive/Yellowish green
-              r = (tileRand * 15 + 130) | 0;
-              g = (tileRand * 20 + 175) | 0;
-              b = (tileRand * 15 + 65) | 0;
+            } else if (perturbedNoise < -0.25) {
+              // Lollipop tree biome - Soft warm olive green
+              r = (tileRand * 15 + 60) | 0;
+              g = (tileRand * 20 + 135) | 0;
+              b = (tileRand * 15 + 55) | 0;
             } else {
-              // Plains biome - Lush vibrant field green
-              r = (tileRand * 10 + 35) | 0;
-              g = (tileRand * 20 + 200) | 0;
-              b = (tileRand * 10 + 45) | 0;
+              // Plains biome - Natural fresh grass green
+              r = (tileRand * 15 + 45) | 0;
+              g = (tileRand * 20 + 150) | 0;
+              b = (tileRand * 15 + 55) | 0;
             }
             colors.push((r << 16) | (g << 8) | b);
           }
@@ -391,16 +409,18 @@ export default class TileGroup {
         if (h_min > 0 && h_mid < 240) {
           const bx = globalX + 50 + 640;
           const bz = globalZ + 50 + 700;
+          // Diffuse boundaries using high-frequency noise perturbation
           const biomeNoise = noise.noise2D(bx / 400, bz / 400);
+          const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
 
           let spawnProb = 0.98; // Default for Plains (2% chance of tree)
           let treeType = 'ball'; // Plains only have ball trees
 
-          if (biomeNoise > 0.15) {
+          if (perturbedNoise > 0.15) {
             // Pine Forest Biome: dense forest of pines
             spawnProb = 0.35; // 65% chance of tree
             treeType = 'cone';
-          } else if (biomeNoise < -0.25) {
+          } else if (perturbedNoise < -0.25) {
             // Lollipop Tree Biome: less dense new trees
             spawnProb = 0.75; // 25% chance of tree
             treeType = 'ball';
