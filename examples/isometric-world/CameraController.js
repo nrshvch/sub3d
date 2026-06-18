@@ -26,8 +26,12 @@ export default class CameraController {
     this.cameraObject.camera.bgColor = 0x8CB4C8;
     this.cameraObject.camera.ambientLight = 0x202020;
     
+    // Default camera rotation state (pitch/yaw)
+    this.cameraYaw = 45;
+    this.cameraPitch = 30;
+
     // Position and angle the camera in isometric view
-    this.cameraObject.transform.rotate(30, 45, 0);
+    this.cameraObject.transform.rotate(this.cameraPitch, this.cameraYaw, 0);
     this.cameraObject.transform.translate(0, 0, 0);
     this.cameraObject.camera.zoom = 1.0;
 
@@ -60,7 +64,7 @@ export default class CameraController {
     this.currentAngle = 90.0;
 
     this.CYCLE_SPEED = 360 / 86400; // base speed in degrees per second (1:1 with real-world time: 360° / 24 hours)
-    this.cameraYaw = 45;    // Default camera rotation angle (45 degrees yaw)
+    // Default camera rotation state (pitch/yaw already initialized above)
 
     // Setup input listeners
     this.setupPointerListeners();
@@ -154,7 +158,8 @@ export default class CameraController {
     };
 
     document.onwheel = (e) => {
-      this.cameraObject.transform.rotate(e.deltaY / 102, 0, 0);
+      this.cameraPitch = Math.max(10, Math.min(80, this.cameraPitch + e.deltaY / 102));
+      this.updateCameraTransform();
     };
   }
 
@@ -193,7 +198,7 @@ export default class CameraController {
   updateCameraTransform() {
     const pos = this.cameraObject.transform.getPosition();
     scaliaEngine.glMatrix.mat4.identity(this.cameraObject.transform.local);
-    this.cameraObject.transform.rotate(30, this.cameraYaw, 0);
+    this.cameraObject.transform.rotate(this.cameraPitch, this.cameraYaw, 0);
     this.cameraObject.transform.setPosition(pos[0], pos[1], pos[2]);
   }
 
