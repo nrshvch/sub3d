@@ -36,7 +36,7 @@ export default class CameraController {
     // Position and angle the camera in isometric view
     this.cameraObject.transform.rotate(this.cameraPitch, this.cameraYaw, 0);
     this.cameraObject.transform.translate(0, 0, 0);
-    this.cameraObject.camera.zoom = 1.0;
+    this.cameraObject.camera.zoom = 1.5;
 
     this.game.world.scene.addGameObject(this.cameraObject);
 

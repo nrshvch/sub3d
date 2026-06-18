@@ -329,6 +329,91 @@ var scaleValEl = document.getElementById("scale_val");
 var zoomValEl = document.getElementById("zoom_val");
 var systemDprEl = document.getElementById("system_dpr");
 
+// Query all inputs
+const dockRotationEl = document.getElementById("dock_rotation");
+const dockRotValEl = document.getElementById("dock_rot_val");
+const dockZoomEl = document.getElementById("dock_zoom");
+const dockZoomValEl = document.getElementById("dock_zoom_val");
+const dockSpeedEl = document.getElementById("dock_speed");
+const dockSpeedValEl = document.getElementById("dock_speed_val");
+const dockSmoothEl = document.getElementById("dock_smooth");
+const dockFlyEl = document.getElementById("dock_fly");
+
+const chkbx1El = document.getElementById("chkbx_1");
+const sliderScaleEl = document.getElementById("slider_scale");
+const sliderZoomEl = document.getElementById("slider_zoom");
+const sliderFogNearEl = document.getElementById("slider_fog_near");
+const sliderFogFarEl = document.getElementById("slider_fog_far");
+const sliderClipNearEl = document.getElementById("slider_clip_near");
+const sliderClipFarEl = document.getElementById("slider_clip_far");
+
+const colorSunEl = document.getElementById("color_sun");
+const colorFogEl = document.getElementById("color_fog");
+const colorAmbientEl = document.getElementById("color_ambient");
+
+// Explicitly initialize all slider, checkbox, and color input values on startup
+// to override browser cache/sticky state and prevent jumps upon first drag
+if (dockRotationEl) {
+  dockRotationEl.value = cameraController.cameraYaw;
+  if (dockRotValEl) dockRotValEl.innerText = cameraController.cameraYaw;
+}
+if (dockZoomEl) {
+  dockZoomEl.value = cameraController.cameraObject.camera.zoom;
+  if (dockZoomValEl) dockZoomValEl.innerText = cameraController.cameraObject.camera.zoom.toFixed(2);
+}
+if (dockSpeedEl) {
+  dockSpeedEl.value = 1; // 1x cycle speed default
+  cameraController.setSpeed(1);
+  if (dockSpeedValEl) dockSpeedValEl.innerText = "1";
+}
+if (dockSmoothEl) {
+  dockSmoothEl.checked = cameraController.isSmooth;
+}
+if (dockFlyEl) {
+  dockFlyEl.checked = cameraController.autoFlyEnabled;
+}
+
+if (chkbx1El) {
+  chkbx1El.checked = cameraController.isWireframe;
+}
+if (sliderScaleEl) {
+  sliderScaleEl.value = viewport.scale;
+  if (scaleValEl) scaleValEl.innerText = viewport.scale.toFixed(2);
+}
+if (sliderZoomEl) {
+  sliderZoomEl.value = cameraController.cameraObject.camera.zoom;
+  if (zoomValEl) zoomValEl.innerText = cameraController.cameraObject.camera.zoom.toFixed(2);
+}
+if (sliderFogNearEl) {
+  sliderFogNearEl.value = cameraController.cameraObject.camera.fogNearPane;
+  const fogNearValueEl = document.getElementById("fogNearValue");
+  if (fogNearValueEl) fogNearValueEl.innerText = cameraController.cameraObject.camera.fogNearPane;
+}
+if (sliderFogFarEl) {
+  sliderFogFarEl.value = cameraController.cameraObject.camera.fogFarPane;
+  const fogFarValueEl = document.getElementById("fogFarValue");
+  if (fogFarValueEl) fogFarValueEl.innerText = cameraController.cameraObject.camera.fogFarPane;
+}
+if (sliderClipNearEl) {
+  sliderClipNearEl.value = cameraController.cameraObject.camera.nearClippingPane;
+  const clipNearValueEl = document.getElementById("clipNearValue");
+  if (clipNearValueEl) clipNearValueEl.innerText = cameraController.cameraObject.camera.nearClippingPane;
+}
+if (sliderClipFarEl) {
+  sliderClipFarEl.value = cameraController.cameraObject.camera.farClippingPane;
+  const clipFarValueEl = document.getElementById("clipFarValue");
+  if (clipFarValueEl) clipFarValueEl.innerText = cameraController.cameraObject.camera.farClippingPane;
+}
+if (colorSunEl) {
+  colorSunEl.value = "#" + cameraController.sun.light.color.toString(16).padStart(6, "0");
+}
+if (colorFogEl) {
+  colorFogEl.value = "#" + cameraController.cameraObject.camera.fogColor.toString(16).padStart(6, "0");
+}
+if (colorAmbientEl) {
+  colorAmbientEl.value = "#" + cameraController.cameraObject.camera.ambientLight.toString(16).padStart(6, "0");
+}
+
 let isDebug = window.location.pathname.includes('/debug') || window.location.search.includes('debug');
 
 const debugEl = document.getElementById("debug");
@@ -374,7 +459,6 @@ if (toggleBtn) {
 }
 
 // Wireframe Checkbox (Debug menu only)
-const chkbx1El = document.getElementById("chkbx_1");
 if (chkbx1El) {
   chkbx1El.addEventListener("change", (e) => {
     const checked = chkbx1El.checked;
@@ -388,9 +472,6 @@ if (chkbx1El) {
 }
 
 // Fog inputs (Debug menu)
-const sliderFogNearEl = document.getElementById("slider_fog_near");
-const sliderFogFarEl = document.getElementById("slider_fog_far");
-
 if (sliderFogNearEl && sliderFogFarEl) {
   sliderFogNearEl.addEventListener("input", (e) => {
     cameraController.autoCycleEnabled = false;
@@ -414,19 +495,7 @@ if (sliderFogNearEl && sliderFogFarEl) {
 }
 
 // Clipping pane inputs (Debug menu)
-const sliderClipNearEl = document.getElementById("slider_clip_near");
-const sliderClipFarEl = document.getElementById("slider_clip_far");
-
 if (sliderClipNearEl && sliderClipFarEl) {
-  // Sync initial slider values
-  sliderClipNearEl.value = cameraController.cameraObject.camera.nearClippingPane;
-  sliderClipFarEl.value = cameraController.cameraObject.camera.farClippingPane;
-  
-  const clipNearValueEl = document.getElementById("clipNearValue");
-  const clipFarValueEl = document.getElementById("clipFarValue");
-  if (clipNearValueEl) clipNearValueEl.innerText = cameraController.cameraObject.camera.nearClippingPane;
-  if (clipFarValueEl) clipFarValueEl.innerText = cameraController.cameraObject.camera.farClippingPane;
-
   sliderClipNearEl.addEventListener("input", (e) => {
     let nearVal = parseInt(e.target.value, 10);
     let farVal = parseInt(sliderClipFarEl.value, 10);
@@ -447,7 +516,6 @@ if (sliderClipNearEl && sliderClipFarEl) {
 }
 
 // Sun, Fog, Ambient Color controls (Debug menu)
-const colorSunEl = document.getElementById("color_sun");
 if (colorSunEl) {
   colorSunEl.addEventListener("input", (e) => {
     cameraController.autoCycleEnabled = false;
@@ -457,7 +525,6 @@ if (colorSunEl) {
   });
 }
 
-const colorFogEl = document.getElementById("color_fog");
 if (colorFogEl) {
   colorFogEl.addEventListener("input", (e) => {
     cameraController.autoCycleEnabled = false;
@@ -471,7 +538,6 @@ if (colorFogEl) {
   });
 }
 
-const colorAmbientEl = document.getElementById("color_ambient");
 if (colorAmbientEl) {
   colorAmbientEl.addEventListener("input", (e) => {
     cameraController.autoCycleEnabled = false;
@@ -482,10 +548,7 @@ if (colorAmbientEl) {
 }
 
 // Resolution scale and Zoom inputs (Debug menu)
-const sliderScaleEl = document.getElementById("slider_scale");
 if (sliderScaleEl) {
-  sliderScaleEl.value = viewport.scale;
-  if (scaleValEl) scaleValEl.innerText = viewport.scale.toFixed(2);
   sliderScaleEl.addEventListener("input", (e) => {
     const val = parseFloat(e.target.value);
     cameraController.setScale(val);
@@ -493,26 +556,19 @@ if (sliderScaleEl) {
   });
 }
 
-const sliderZoomEl = document.getElementById("slider_zoom");
 if (sliderZoomEl) {
-  sliderZoomEl.value = cameraController.cameraObject.camera.zoom;
-  if (zoomValEl) zoomValEl.innerText = cameraController.cameraObject.camera.zoom.toFixed(2);
   sliderZoomEl.addEventListener("input", (e) => {
     const val = parseFloat(e.target.value);
     cameraController.setZoom(val);
     if (zoomValEl) zoomValEl.innerText = val.toFixed(2);
     
     // Sync with Dock Zoom UI
-    const dockZoom = document.getElementById("dock_zoom");
-    const dockZoomVal = document.getElementById("dock_zoom_val");
-    if (dockZoom) dockZoom.value = val;
-    if (dockZoomVal) dockZoomVal.innerText = val.toFixed(2);
+    if (dockZoomEl) dockZoomEl.value = val;
+    if (dockZoomValEl) dockZoomValEl.innerText = val.toFixed(2);
   });
 }
 
 // --- macOS Dock UI Listeners & Sync ---
-const dockRotationEl = document.getElementById("dock_rotation");
-const dockRotValEl = document.getElementById("dock_rot_val");
 if (dockRotationEl) {
   dockRotationEl.addEventListener("input", (e) => {
     const val = parseInt(e.target.value, 10);
@@ -521,8 +577,6 @@ if (dockRotationEl) {
   });
 }
 
-const dockZoomEl = document.getElementById("dock_zoom");
-const dockZoomValEl = document.getElementById("dock_zoom_val");
 if (dockZoomEl) {
   dockZoomEl.addEventListener("input", (e) => {
     const val = parseFloat(e.target.value);
@@ -535,14 +589,7 @@ if (dockZoomEl) {
   });
 }
 
-const dockSpeedEl = document.getElementById("dock_speed");
-const dockSpeedValEl = document.getElementById("dock_speed_val");
 if (dockSpeedEl) {
-  // Initialize speed on cameraController
-  const initSpeed = parseFloat(dockSpeedEl.value);
-  cameraController.setSpeed(initSpeed);
-  if (dockSpeedValEl) dockSpeedValEl.innerText = initSpeed;
-
   dockSpeedEl.addEventListener("input", (e) => {
     const val = parseFloat(e.target.value);
     if (dockSpeedValEl) dockSpeedValEl.innerText = val;
@@ -550,7 +597,6 @@ if (dockSpeedEl) {
   });
 }
 
-const dockSmoothEl = document.getElementById("dock_smooth");
 if (dockSmoothEl) {
   dockSmoothEl.addEventListener("change", (e) => {
     const checked = e.target.checked;
@@ -561,7 +607,6 @@ if (dockSmoothEl) {
   });
 }
 
-const dockFlyEl = document.getElementById("dock_fly");
 if (dockFlyEl) {
   dockFlyEl.addEventListener("change", (e) => {
     cameraController.autoFlyEnabled = e.target.checked;
