@@ -1,7 +1,7 @@
 import scaliaEngine from "sub3d";
 
-const FAR_BASE = 4500;
-const NEAR_BASE = 3000;
+const FAR_BASE = 3500;
+const NEAR_BASE = 2500;
 
 /**
  * CameraController manages the viewport, camera positioning, panning/zooming controls,
