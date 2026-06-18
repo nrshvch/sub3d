@@ -1,5 +1,8 @@
 import scaliaEngine from "sub3d";
 
+const FAR_BASE = 4500;
+const NEAR_BASE = 3000;
+
 /**
  * CameraController manages the viewport, camera positioning, panning/zooming controls,
  * and day/night environmental lighting cycles.
@@ -17,11 +20,11 @@ export default class CameraController {
 
     // Create camera GameObject
     this.cameraObject = new scaliaEngine.Camera();
-    this.cameraObject.camera.farClippingPane = 2500;
-    this.cameraObject.camera.nearClippingPane = -2500;
+    this.cameraObject.camera.farClippingPane = FAR_BASE;
+    this.cameraObject.camera.nearClippingPane = -FAR_BASE;
     this.cameraObject.camera.fogType = scaliaEngine.CameraComponent.FogType.RADIAL;
-    this.cameraObject.camera.fogFarPane = 2500;
-    this.cameraObject.camera.fogNearPane = 1500;
+    this.cameraObject.camera.fogFarPane = FAR_BASE;
+    this.cameraObject.camera.fogNearPane = NEAR_BASE;
     this.cameraObject.camera.fogColor = 0x8CB4C8;
     this.cameraObject.camera.bgColor = 0x8CB4C8;
     this.cameraObject.camera.ambientLight = 0x202020;
@@ -49,7 +52,6 @@ export default class CameraController {
     this.sun.transform.rotate(45, 0, 0);
 
     // Configuration / state variables
-    this.SCALE_FACTOR = 1.6;
     this.mousepressed = false;
     this.x0 = 0;
     this.y0 = 0;
@@ -76,15 +78,15 @@ export default class CameraController {
 
     // Environmental daylight cycle keyframes
     this.keyframes = [
-      { angle: 0, sunColor: [160, 70, 60], ambientColor: [35, 30, 38], fogColor: [140, 100, 120], fogNear: 800, fogFar: 1800 },
-      { angle: 15, sunColor: [150, 150, 140], ambientColor: [55, 65, 80], fogColor: [140, 180, 200], fogNear: 1500, fogFar: 2500 },
-      { angle: 90, sunColor: [140, 150, 175], ambientColor: [55, 70, 95], fogColor: [140, 180, 200], fogNear: 1500, fogFar: 2500 },
-      { angle: 165, sunColor: [150, 150, 140], ambientColor: [55, 65, 80], fogColor: [140, 180, 200], fogNear: 1500, fogFar: 2500 },
-      { angle: 180, sunColor: [150, 65, 50], ambientColor: [35, 28, 35], fogColor: [100, 70, 100], fogNear: 800, fogFar: 1800 },
-      { angle: 210, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: 500, fogFar: 1500 },
-      { angle: 270, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: 500, fogFar: 1500 },
-      { angle: 330, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: 500, fogFar: 1500 },
-      { angle: 360, sunColor: [160, 70, 60], ambientColor: [35, 30, 38], fogColor: [140, 100, 120], fogNear: 800, fogFar: 1800 }
+      { angle: 0, sunColor: [160, 70, 60], ambientColor: [35, 30, 38], fogColor: [140, 100, 120], fogNear: NEAR_BASE-700, fogFar: FAR_BASE-700 },
+      { angle: 15, sunColor: [150, 150, 140], ambientColor: [55, 65, 80], fogColor: [140, 180, 200], fogNear: NEAR_BASE, fogFar: FAR_BASE },
+      { angle: 90, sunColor: [140, 150, 175], ambientColor: [55, 70, 95], fogColor: [140, 180, 200], fogNear: NEAR_BASE, fogFar: FAR_BASE },
+      { angle: 165, sunColor: [150, 150, 140], ambientColor: [55, 65, 80], fogColor: [140, 180, 200], fogNear: NEAR_BASE, fogFar: FAR_BASE },
+      { angle: 180, sunColor: [150, 65, 50], ambientColor: [35, 28, 35], fogColor: [100, 70, 100], fogNear: NEAR_BASE-700, fogFar: FAR_BASE-700 },
+      { angle: 210, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: NEAR_BASE-1000, fogFar: FAR_BASE-1000 },
+      { angle: 270, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: NEAR_BASE-1000, fogFar: FAR_BASE-1000 },
+      { angle: 330, sunColor: [0, 0, 0], ambientColor: [28, 35, 52], fogColor: [20, 25, 38], fogNear: NEAR_BASE-1000, fogFar: FAR_BASE-1000 },
+      { angle: 360, sunColor: [160, 70, 60], ambientColor: [35, 30, 38], fogColor: [140, 100, 120], fogNear: NEAR_BASE-700, fogFar: FAR_BASE-700 }
     ];
 
     // Synchronize initial daylight state
@@ -149,7 +151,7 @@ export default class CameraController {
       const forwardZ = fz / fLen;
 
       // Move camera along horizontal local directions
-      const sensitivity = 0.5 * this.SCALE_FACTOR;
+      const sensitivity = 0.5;
       const moveX = rightX * (-dx * sensitivity) + forwardX * (-dy * sensitivity);
       const moveZ = rightZ * (-dx * sensitivity) + forwardZ * (-dy * sensitivity);
 
