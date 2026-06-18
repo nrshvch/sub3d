@@ -112,8 +112,8 @@ function generateBallTreeMesh() {
   faceColors.push(0, 0, 0, 0);
 
   // 2. Sphere Foliage Vertices (from index 4 to 4 + 2 + (rings-1)*segments)
-  const segments = 5;
-  const rings = 3;
+  const segments = 4;
+  const rings = 2;
   const centerY = 0.62;
   const radius = 0.52;
 
