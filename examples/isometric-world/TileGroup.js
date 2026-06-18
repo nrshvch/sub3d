@@ -28,8 +28,8 @@ export function calcZ(gx, gz, noise) {
     island = 0;
 
   // Offset global coordinates to match the original starting center height map
-  let x = gx + 50;
-  let y = gz + 50;
+  let x = gx;
+  let y = gz;
 
   x += 640;
   y += 700;
@@ -191,11 +191,11 @@ export default class TileGroup {
 
     const verts = this.terrain.meshRenderer.vertices;
 
-    // 2. Compute heights of grid corner vertices (31x31 corners)
+    // 2. Compute heights of grid corner vertices (corners)
     for (let j = 0; j <= segments; j++) {
-      const globalZ = gz * segments + j;
+      const globalZ = gz * segments + j - segments / 2;
       for (let i = 0; i <= segments; i++) {
-        const globalX = gx * segments + i;
+        const globalX = gx * segments + i - segments / 2;
         const vIdx = j * row + i;
         
         // Calculate height with water clamping and seam correction
@@ -208,9 +208,9 @@ export default class TileGroup {
     const faceColors = [];
 
     for (let j = 0; j < segments; j++) {
-      const globalZ = gz * segments + j;
+      const globalZ = gz * segments + j - segments / 2;
       for (let i = 0; i < segments; i++) {
-        const globalX = gx * segments + i;
+        const globalX = gx * segments + i - segments / 2;
 
         // Tile corner indices
         const tl = j * row + i;
@@ -265,8 +265,8 @@ export default class TileGroup {
           } else {
             // Partial grass inside coast
             const grassColorIdx = colors.length;
-            const bx = globalX + 50 + 640;
-            const bz = globalZ + 50 + 700;
+            const bx = globalX;
+            const bz = globalZ;
             // Diffuse boundaries using high-frequency noise perturbation
             const biomeNoise = noise.noise2D(bx / 400, bz / 400);
             const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
@@ -313,8 +313,8 @@ export default class TileGroup {
             colors.push((gray << 16) | (gray << 8) | gray); // Stone gray
           } else {
             // Grass green / biome ground color
-            const bx = globalX + 50 + 640;
-            const bz = globalZ + 50 + 700;
+            const bx = globalX;
+            const bz = globalZ;
             // Diffuse boundaries using high-frequency noise perturbation
             const biomeNoise = noise.noise2D(bx / 400, bz / 400);
             const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
@@ -367,12 +367,9 @@ export default class TileGroup {
     this.terrain.meshRenderer.shaderType = isSmooth ? 4 : 0;
     this.terrain.meshRenderer.wireframe = isWireframe;
 
-    // 7. Position terrain chunk at the center of its 30x30 tile region
-    // Starting coordinates offset by -50 tiles to align global (0,0) with original center
-    const centerX_tiles = gx * segments + segments / 2;
-    const centerZ_tiles = gz * segments + segments / 2;
-    const centerX_world = (centerX_tiles - 50) * TILE_WORLD_SIZE;
-    const centerZ_world = (centerZ_tiles - 50) * TILE_WORLD_SIZE;
+    // 7. Position terrain chunk at the center of its tile region in world space
+    const centerX_world = gx * segments * TILE_WORLD_SIZE;
+    const centerZ_world = gz * segments * TILE_WORLD_SIZE;
 
     this.terrain.transform.translate(centerX_world, 0, centerZ_world);
     this.terrain.transform.scale(segments * TILE_WORLD_SIZE, 1, segments * TILE_WORLD_SIZE);
@@ -383,9 +380,9 @@ export default class TileGroup {
     const TREE_SCALE = 0.8;
 
     for (let j = 0; j < segments; j++) {
-      const globalZ = gz * segments + j;
+      const globalZ = gz * segments + j - segments / 2;
       for (let i = 0; i < segments; i++) {
-        const globalX = gx * segments + i;
+        const globalX = gx * segments + i - segments / 2;
 
         // Retrieve corner heights for tree interpolation
         const tl = j * row + i;
@@ -406,8 +403,8 @@ export default class TileGroup {
 
         // Spawn trees only above water level and below the treeline (240 height)
         if (h_min > 0 && h_mid < 240) {
-          const bx = globalX + 50 + 640;
-          const bz = globalZ + 50 + 700;
+          const bx = globalX;
+          const bz = globalZ;
           // Diffuse boundaries using high-frequency noise perturbation
           const biomeNoise = noise.noise2D(bx / 400, bz / 400);
           const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
@@ -464,9 +461,9 @@ export default class TileGroup {
             const size = rng.next() / 2 + 0.5;
             const h = getInterpolatedTTDHeight(u, v, h_tl, h_bl, h_br, h_tr, h_mid);
 
-            // Position tree in world space relative to the starting center offset (-50 tiles)
-            const treeWorldX = (globalX - 50) * TILE_WORLD_SIZE + offsetX;
-            const treeWorldZ = (globalZ - 50) * TILE_WORLD_SIZE + offsetY;
+            // Position tree in world space relative to the starting center
+            const treeWorldX = globalX * TILE_WORLD_SIZE + offsetX;
+            const treeWorldZ = globalZ * TILE_WORLD_SIZE + offsetY;
 
             tree.transform.translate(treeWorldX, h, treeWorldZ);
             
@@ -529,8 +526,8 @@ export default class TileGroup {
             const size = rockRng.next() / 2 + 0.5;
             const h = getInterpolatedTTDHeight(u, v, h_tl, h_bl, h_br, h_tr, h_mid);
 
-            const rockWorldX = (globalX - 50) * TILE_WORLD_SIZE + offsetX;
-            const rockWorldZ = (globalZ - 50) * TILE_WORLD_SIZE + offsetY;
+            const rockWorldX = globalX * TILE_WORLD_SIZE + offsetX;
+            const rockWorldZ = globalZ * TILE_WORLD_SIZE + offsetY;
 
             // Position slightly below ground to prevent gaps on sloped terrain
             rock.transform.translate(rockWorldX, h - 4.0, rockWorldZ);

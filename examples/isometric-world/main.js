@@ -12,7 +12,7 @@ var myGame = new scaliaEngine.Game();
 // Tile and world scaling parameters
 const TILE_SIZE = 45.255;
 const TILE_WORLD_SIZE = TILE_SIZE;
-const GROUP_TILES = 64;
+const GROUP_TILES = 16;
 
 // Instantiate the pools to prevent GC overhead during panning
 const treePool = new TreePool();
@@ -126,8 +126,8 @@ function getInterpolatedHeight(u, v, h00, h01, h11, h10, hmid) {
 
 // Read starting coordinates from query string to support permalinks/restoration
 const params = new URLSearchParams(window.location.search);
-const initX = params.has("x") ? parseFloat(params.get("x")) : -2793.4;
-const initZ = params.has("z") ? parseFloat(params.get("z")) : -3334.1;
+const initX = params.has("x") ? parseFloat(params.get("x")) : 0.0;
+const initZ = params.has("z") ? parseFloat(params.get("z")) : 0.0;
 
 // Create the Camera and Environmental controller
 const canvasEl = document.getElementById("canvas");
@@ -137,10 +137,10 @@ const cameraController = new CameraController(canvasEl, myGame, getTerrainHeight
 cameraController.cameraObject.transform.setPosition(initX, 0, initZ);
 
 // Find the chunk coordinates containing this world position
-const startTileX = initX / TILE_WORLD_SIZE;
-const startTileZ = initZ / TILE_WORLD_SIZE;
-const startGroupX = Math.floor(startTileX / GROUP_TILES);
-const startGroupZ = Math.floor(startTileZ / GROUP_TILES);
+const startTileX_shifted = initX / TILE_WORLD_SIZE + GROUP_TILES / 2;
+const startTileZ_shifted = initZ / TILE_WORLD_SIZE + GROUP_TILES / 2;
+const startGroupX = Math.floor(startTileX_shifted / GROUP_TILES);
+const startGroupZ = Math.floor(startTileZ_shifted / GROUP_TILES);
 
 // Instantly generate the starting chunk so the startup area is immediately loaded
 const centerKey = `${startGroupX},${startGroupZ}`;
@@ -187,7 +187,7 @@ document.addEventListener("pointerup", () => {
 
 /**
  * Update tick registered in the engine.
- * Computes camera chunk range, manages chunk loading queue, and loads at most 1 chunk per frame.
+ * Computes camera chunk range, manages chunk loading queue, and loads at most 1 chunk per tick.
  */
 myGame.world.tickRegister({
   tick: () => {
@@ -219,22 +219,38 @@ myGame.world.tickRegister({
       }
     }
 
-    // Compute camera's global tile position (shifted by +50 offset)
-    const camTileX = camX / TILE_WORLD_SIZE;
-    const camTileZ = camZ / TILE_WORLD_SIZE;
+    // Compute camera's global tile position (shifted by GROUP_TILES/2 offset)
+    const camTileX_shifted = camX / TILE_WORLD_SIZE + GROUP_TILES / 2;
+    const camTileZ_shifted = camZ / TILE_WORLD_SIZE + GROUP_TILES / 2;
 
     // Identify camera's current chunk coordinates using floor to partition tile space
-    const camGroupX = Math.floor(camTileX / GROUP_TILES);
-    const camGroupZ = Math.floor(camTileZ / GROUP_TILES);
+    const camGroupX = Math.floor(camTileX_shifted / GROUP_TILES);
+    const camGroupZ = Math.floor(camTileZ_shifted / GROUP_TILES);
 
-    // Compute the 9 visible chunks around the camera (3x3 grid)
+    // Compute visible chunks dynamically using a radial loading distance check
+    const CHUNK_WORLD_SIZE = GROUP_TILES * TILE_WORLD_SIZE;
+    const LOAD_RADIUS = 4200; // Covers max fogFar (2500) + chunk bounding radius (1536)
     const visibleKeys = new Set();
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dz = -1; dz <= 1; dz++) {
+    const searchRange = Math.ceil(LOAD_RADIUS / CHUNK_WORLD_SIZE) + 1;
+
+    for (let dx = -searchRange; dx <= searchRange; dx++) {
+      for (let dz = -searchRange; dz <= searchRange; dz++) {
         const gx = camGroupX + dx;
         const gz = camGroupZ + dz;
-        const key = `${gx},${gz}`;
-        visibleKeys.add(key);
+
+        // Center of this chunk in world space
+        const chunkX = gx * CHUNK_WORLD_SIZE;
+        const chunkZ = gz * CHUNK_WORLD_SIZE;
+
+        // Distance from camera to chunk center
+        const dxWorld = chunkX - camX;
+        const dzWorld = chunkZ - camZ;
+        const dist = Math.sqrt(dxWorld * dxWorld + dzWorld * dzWorld);
+
+        if (dist <= LOAD_RADIUS) {
+          const key = `${gx},${gz}`;
+          visibleKeys.add(key);
+        }
       }
     }
 
@@ -259,6 +275,15 @@ myGame.world.tickRegister({
       if (!visibleKeys.has(generationQueue[i].key)) {
         generationQueue.splice(i, 1);
       }
+    }
+
+    // Sort the queue so that chunks closest to the camera are generated first (radial order)
+    if (generationQueue.length > 1) {
+      generationQueue.sort((a, b) => {
+        const distA = Math.hypot(a.gx * CHUNK_WORLD_SIZE - camX, a.gz * CHUNK_WORLD_SIZE - camZ);
+        const distB = Math.hypot(b.gx * CHUNK_WORLD_SIZE - camX, b.gz * CHUNK_WORLD_SIZE - camZ);
+        return distA - distB;
+      });
     }
 
     // 4. Generate at most ONE chunk in this frame (Budget-throttled async generation)
