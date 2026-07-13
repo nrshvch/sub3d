@@ -1,5 +1,4 @@
 // TODO: dont pass gameObjects object into drawTriangles, move lights params into typed buffers
-// TODO: consider turning layerBuffers into single types array sorted by layer index
 // TODO: move out shaders into separate files, that would inline on runtime (eval()?)
 // TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
 // TODO: calculate lightning at lower fps
@@ -25,8 +24,55 @@ const PALETTE_16BIT = palette.createPalette16Bit();
 // For cases when stroke cannot be done, e.g. textured polys
 const EXPANSION_COEFFICIENT = 0.6;
 
+function groupLayers(visibleObjectsBuffer, gameObjects, layerBuffersOffsets, layersCount, layerBuffers) {
+  if (layersCount === 1) {
+    return visibleObjectsBuffer;
+  }
+
+  const visibleObjectsBufferLen = visibleObjectsBuffer[0] + 1;
+
+  // Pass 1: Count visible meshes per layer
+  layerBuffersOffsets.fill(0);
+  for (let i = 1; i < visibleObjectsBufferLen; i++) {
+    const goIdx = visibleObjectsBuffer[i];
+    const go = gameObjects[goIdx];
+    if (go.meshRenderer) {
+      layerBuffersOffsets[go.meshRenderer.layer]++;
+    }
+  }
+
+  // Compute start offsets for each layer partition (1 slot reserved for header length)
+  let currentOffset = 0;
+  for (let l = 0; l < layersCount; l++) {
+    const count = layerBuffersOffsets[l];
+    layerBuffersOffsets[l] = currentOffset;
+    
+    layerBuffers[currentOffset] = 0; // Initialize count header to 0
+    currentOffset += 1 + count;
+  }
+
+  // Pass 2: Place GameObject indices sorted by layer
+  for (let i = 1; i < visibleObjectsBufferLen; i++) {
+    const goIdx = visibleObjectsBuffer[i];
+    const go = gameObjects[goIdx];
+    if (go.meshRenderer) {
+      const layer = go.meshRenderer.layer;
+      const offset = layerBuffersOffsets[layer];
+      const length = layerBuffers[offset];
+      
+      layerBuffers[offset + 1 + length] = goIdx;
+      layerBuffers[offset] = length + 1;
+    }
+  }
+
+  return layerBuffers;
+}
+
 export default function Canvas2dRenderer() {
-  this.layerBuffers = [];
+  // Single 1D flat typed array storing GameObject indices for all layers
+  this.layerBuffers = new Uint32Array(0);
+  // Start offsets for each layer partition (used only as carets during sorting)
+  this.layerBuffersOffsets = new Uint32Array(config.layersCount);
 
   this.drawCalls = 0;
   this.faces = 0;
@@ -45,18 +91,8 @@ export default function Canvas2dRenderer() {
   this.meshFaceIndexBuffer = new Uint32Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
   this.lightsIndexBuffer = new Uint32Array(10);
-  this.layerBuffers = [];
-  this.layerBufferLengths = new Uint32Array(1);
-
   this.vertexBuffer = new Float32Array(0);
   this.vertexIndexBuffer = new Uint32Array(0);
-
-  // move outside render
-  // initialize layer buffers
-  for (let i = 0; i < config.layersCount; i++) {
-    this.layerBuffers[i] = this.layerBuffers[i] || [];
-  }
-
   this.vMapping = new Int32Array(0);
   this.vTags = new Uint32Array(0);
   this.tempIndexBuffer = new Uint32Array(0);
@@ -79,9 +115,6 @@ p.render = function (camera, viewport, stats) {
     layersCount = config.layersCount,
     vw = viewport.width,
     vh = viewport.height,
-    renderer,
-    renderers,
-    renderersCount,
     i,
     j,
     ctx,
@@ -102,8 +135,7 @@ p.render = function (camera, viewport, stats) {
     meshFaceIndexBuffer = this.meshFaceIndexBuffer,
     visibleObjectsBuffer = this.visibleObjectsBuffer,
     lightsIndexBuffer = this.lightsIndexBuffer,
-    layerBuffers = this.layerBuffers,
-    layerBufferLengths = this.layerBufferLengths,
+    layerBuffersOffsets = this.layerBuffersOffsets,
     mat4Scratchpad1 = this.mat4Scratchpad1,
     mat4Scratchpad2 = this.mat4Scratchpad2,
     worldToScreenMatrix = viewport.getWorldToScreen(),
@@ -169,38 +201,39 @@ p.render = function (camera, viewport, stats) {
 
   exactCull(visibleObjectsBuffer, gameObjects, clipSpaceMatrix);
 
-  if (layerBufferLengths.length < layersCount) {
-    var _layerBufferLengths = layerBufferLengths;
-    this.layerBufferLengths = layerBufferLengths = new Uint32Array(layersCount);
-    layerBufferLengths.set(_layerBufferLengths);
-  }
-
   //first element is length
   const visibleObjectsBufferLen = visibleObjectsBuffer[0] + 1;
-  // group visible object to layer buffers
-  for (i = 1; i < visibleObjectsBufferLen; i++) {
-    const go = gameObjects[visibleObjectsBuffer[i]];
-    if (go.meshRenderer) {
-      const renderer = go.meshRenderer;
-      const layer = renderer.layer;
-      layerBuffers[layer][layerBufferLengths[layer]++] = renderer;
-    }
+  const count = visibleObjectsBuffer[0];
+  if (layersCount > 1 && this.layerBuffers.length < count + layersCount) {
+    this.layerBuffers = new Uint32Array((count + layersCount) * 2);
   }
+
+  let layerBuffers = groupLayers(
+    visibleObjectsBuffer,
+    gameObjects,
+    layerBuffersOffsets,
+    layersCount,
+    this.layerBuffers
+  );
 
   let totalSortTime = 0;
 
-  // render layer one-by-one
+  let layerOffset = 0;
   for (i = 0; i < layersCount; i++) {
-    ctx = viewport.layers[i];
+    const count = layerBuffers[layerOffset];
+    if (count === 0) {
+      layerOffset += 1;
+      continue;
+    }
 
-    renderers = layerBuffers[i];
-    renderersCount = layerBufferLengths[i];
+    ctx = viewport.layers[i];
 
     let maxFacesCount = 0;
     let maxVertsCount = 0;
-    for (let o = 0; o < renderersCount; o++) {
-      maxFacesCount += renderers[o].faces.length;
-      const vertexCount = renderers[o].vertices.length;
+    for (let o = 0; o < count; o++) {
+      const mesh = gameObjects[layerBuffers[layerOffset + 1 + o]].meshRenderer;
+      maxFacesCount += mesh.faces.length;
+      const vertexCount = mesh.vertices.length;
       if (vertexCount > maxVertsCount) maxVertsCount = vertexCount;
     }
     maxFacesCount = (maxFacesCount / 3) | 0;
@@ -281,8 +314,10 @@ p.render = function (camera, viewport, stats) {
     }
 
     const l = destructMesh(
-      renderers,
-      renderersCount,
+      layerBuffers,
+      layerOffset + 1,
+      gameObjects,
+      count,
       vec3Cache2,
       vec4Cache,
       indexBuffer,
@@ -343,17 +378,20 @@ p.render = function (camera, viewport, stats) {
       vertexNormalsBuffer,
       meshIndexBuffer,
       meshFaceIndexBuffer,
-      renderers,
+      layerBuffers,
+      layerOffset + 1,
       this.wireframe,
       lightsIndexBuffer,
       gameObjects,
     );
 
-    for (j = 0; j < renderersCount; j++) {
-      renderer = renderers[j];
+    // Render debug axes by resolving GameObject indices from the flat layerBuffers array
+    for (j = 0; j < count; j++) {
+      const goIdx = layerBuffers[layerOffset + 1 + j];
+      const go = gameObjects[goIdx];
       // Only draw axes for objects with a transform (usually MeshComponents)
-      if (renderer.gameObject && renderer.gameObject.debug) {
-        renderAxis(renderer.gameObject, ctx, worldToScreenMatrix, vec3Cache1);
+      if (go && go.debug) {
+        renderAxis(go, ctx, worldToScreenMatrix, vec3Cache1);
       }
     }
 
@@ -363,7 +401,8 @@ p.render = function (camera, viewport, stats) {
 
     drawCalls += l;
     faces += l;
-    layerBufferLengths[i] = 0;
+
+    layerOffset += 1 + count; // Jump to next partition header
   }
 
   stats.totalObjects = gameObjects.length;
@@ -673,9 +712,10 @@ let callId = 0;
  * coordinates for the Canvas 2D context.
  * 6.  **Buffer Population**: Stores processed geometry, average camera-space depth,
  * and face colors into typed arrays for sorting and rendering.
- *
- * @param {Array} renderers - List of MeshComponents to process.
- * @param {number} renderersCount - Number of active renderers in the current layer.
+ * @param {Uint32Array} layerBuffers - Single 1D flat typed array storing GameObject indices.
+ * @param {number} layerOffset - Starting index of the partition inside layerBuffers.
+ * @param {Array} gameObjects - List of game objects in the scene.
+ * @param {number} count - Number of active objects in the current layer.
  * @param {Float32Array} vec3Cache2 - Pre-allocated buffer for Camera-Space vertices [x, y, z].
  * @param {Float32Array} vec4Cache - Pre-allocated buffer for Clip-Space vertices [x, y, z, w].
  * @param {Uint32Array} indexBuffer - Array to store sequential face indices for sorting.
@@ -700,8 +740,10 @@ let callId = 0;
  * @returns {number} The total count of processed (visible) faces.
  */
 function destructMesh(
-  renderers,
-  renderersCount,
+  layerBuffers,
+  layerOffset,
+  gameObjects,
+  count,
   vec3Cache2,
   vec4Cache,
   indexBuffer,
@@ -727,14 +769,17 @@ function destructMesh(
   let i = 0; // face counter
   let uniqueVertexCount = 0; // vertex pointer for vertexBuffer
 
-  for (let j = 0; j < renderersCount; j++) {
-    const mesh = renderers[j];
+  for (let j = 0; j < count; j++) {
+    // Resolve the GameObject index and its corresponding meshRenderer component from the flat layerBuffers
+    const goIdx = layerBuffers[layerOffset + j];
+    const go = gameObjects[goIdx];
+    const mesh = go.meshRenderer;
     if (mesh.constructor !== MeshComponent) continue;
 
     // Increment unique ID for this specific mesh
     ++callId;
 
-    const W = mesh.gameObject.transform.worldMatrix;
+    const W = go.transform.worldMatrix;
 
     // Precalculate mesh sorting bias once per mesh (constant bias)
     const depthBias = mesh.depthBias || 0;
@@ -1093,7 +1138,8 @@ function destructMesh(
  * @param {Float32Array} vertexNormalsBuffer - Array of vertex normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
  * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
- * @param {Array} renderers - List of MeshComponents.
+ * @param {Uint32Array} layerBuffers - Single 1D flat typed array storing GameObject indices.
+ * @param {number} layerOffset - Starting index of the partition inside layerBuffers.
  * @param {boolean} wireframe - Should faces be drawn as wireframes?
  * @param {Uint32Array} lightsIndexBuffer - Indices of active lights.
  * @param {Object} gameObjects - Dictionary of game objects in the scene.
@@ -1123,7 +1169,8 @@ function drawTriangles(
   vertexNormalsBuffer,
   meshIndexBuffer,
   meshFaceIndexBuffer,
-  renderers,
+  layerBuffers,
+  layerOffset,
   wireframe,
   lightsIndexBuffer,
   gameObjects,
@@ -1298,7 +1345,8 @@ function drawTriangles(
 
         // Handle Textures
         const mIdx = meshIndexBuffer[idx];
-        const mesh = renderers[mIdx];
+        // Resolve mesh from the flat layerBuffers array using layerOffset and mesh index
+        const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
         const img = mesh.textureImage;
 
         if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
@@ -1530,7 +1578,8 @@ function drawTriangles(
 
         // Handle Textures
         const mIdx = meshIndexBuffer[idx];
-        const mesh = renderers[mIdx];
+        // Resolve mesh from the flat layerBuffers array using layerOffset and mesh index
+        const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
         const img = mesh.textureImage;
 
         if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
@@ -1660,7 +1709,8 @@ function drawTriangles(
 
         // Handle Textures
         const mIdx = meshIndexBuffer[idx];
-        const mesh = renderers[mIdx];
+        // Resolve mesh from the flat layerBuffers array using layerOffset and mesh index
+        const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
         const img = mesh.textureImage;
 
         if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
@@ -1890,7 +1940,8 @@ function drawTriangles(
 
         // Handle Textures
         const mIdx = meshIndexBuffer[idx];
-        const mesh = renderers[mIdx];
+        // Resolve mesh from the flat layerBuffers array using layerOffset and mesh index
+        const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
         const img = mesh.textureImage;
 
         if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
