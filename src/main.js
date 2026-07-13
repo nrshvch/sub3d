@@ -16,6 +16,7 @@ import Cone from "./primitives/Cone.js";
 import Ball from "./primitives/Ball.js";
 import Canvas2dViewport from "./Canvas2dViewport.js";
 import Light from "./Light.js";
+import { showDebug } from "./debug/showDebug.jsx";
 
 export default window.scaliaEngine = {
   config: config,
@@ -36,4 +37,5 @@ export default window.scaliaEngine = {
   Ball: Ball,
   Light: Light,
   Canvas2dViewport: Canvas2dViewport,
+  showDebug: showDebug,
 };

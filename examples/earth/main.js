@@ -1,4 +1,5 @@
 import scaliaEngine from "sub3d";
+import "sub3d/dist/sub3d.css";
 import { vec3 } from "gl-matrix";
 import earthTexture from "./earth-texture-equirectangular.jpg";
 import moonTexture from "./2k_moon.jpg";
@@ -89,18 +90,8 @@ viewport.start();
 
 const renderer = viewport.renderer;
 
-let fps,
-  avgDt,
-  maxFps = 0;
-const fpsEl = document.getElementById("fps");
-const maxFpsEl = document.getElementById("maxFps");
-const drawCallsEl = document.getElementById("drawCalls");
-const objectsEl = document.getElementById("objects");
-const visibleObjectsEl = document.getElementById("visibleObjects");
-const facesCountEl = document.getElementById("facesCount");
 const scaleValEl = document.getElementById("scale_val");
 const zoomValEl = document.getElementById("zoom_val");
-const systemDprEl = document.getElementById("system_dpr");
 
 const isDebug =
   window.location.pathname.includes("/debug") ||
@@ -108,9 +99,6 @@ const isDebug =
 
 if (isDebug) {
   document.getElementById("debug").style.display = "block";
-  if (systemDprEl) {
-    systemDprEl.innerText = (window.devicePixelRatio || 1).toFixed(2);
-  }
 }
 
 const toggleBtn = document.getElementById("toggle_debug_btn");
@@ -129,10 +117,7 @@ if (toggleBtn) {
   });
 }
 
-const chkbx1El = document.getElementById("chkbx_1");
-chkbx1El.addEventListener("change", (e) => {
-  renderer.wireframe = chkbx1El.checked;
-});
+
 
 const sliderScaleEl = document.getElementById("slider_scale");
 if (sliderScaleEl) {
@@ -166,16 +151,4 @@ if (sliderZoomEl) {
   });
 }
 
-setInterval(() => {
-  if (!isDebug) return;
-  const dt = viewport.lastRenderStats.dt;
-  fps = viewport.lastRenderStats.fps;
-  avgDt = avgDt === undefined ? dt : (avgDt + dt) / 2;
-  maxFps = Math.max(maxFps, fps);
-  fpsEl.innerText = fps;
-  maxFpsEl.innerText = maxFps;
-  drawCallsEl.innerText = viewport.lastRenderStats.drawCalls;
-  objectsEl.innerText = viewport.lastRenderStats.totalObjects;
-  visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
-  facesCountEl.innerText = viewport.lastRenderStats.faces;
-}, 100);
+scaliaEngine.showDebug(viewport);

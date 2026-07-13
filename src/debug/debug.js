@@ -1,4 +1,4 @@
-import * as math from "./math.js";
+import * as math from "../math.js";
 
 const vec3TransformMat4to2D = math.vec3TransformMat4to2D;
 
