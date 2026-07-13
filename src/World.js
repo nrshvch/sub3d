@@ -9,6 +9,7 @@ export default function World(game) {
     this.time = new Time();
     this.list = [];
     this.scene = new Scene(this);
+    this.lastTickTime = 0;
 }
 
 var p = World.prototype;

@@ -9,7 +9,9 @@ export default function Game() {
     var world = this.world;
 
     this.tick = function tick(){
+        const t0 = performance.now();
         world.tick();
+        world.lastTickTime = performance.now() - t0;
 
         requestAnimationFrame(tick);
     }

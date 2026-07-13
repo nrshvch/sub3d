@@ -3,14 +3,13 @@
 // TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
 // TODO: calculate lightning at lower fps
 // TODO: Allow passing multiple shader. Limiting shader to handling just one pass, has higher chance of compiler optimizing the shader.
-// TODO: add profiling of different pipeline steps
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
 import CameraComponent from "./components/CameraComponent.js";
 import * as math from "./math.js";
 import * as palette from "./palette.js";
-import * as debug from "./debug.js";
+import * as debug from "./debug/debug.js";
 import radixSort from "./radixSort.js";
 
 const computeNormalMatrix = MeshComponent.computeNormalMatrix;
@@ -109,10 +108,13 @@ p.mat4Scratchpad2 = new Float32Array(16);
 p.mat3Scratchpad1 = new Float32Array(9);
 
 p.render = function (camera, viewport, stats) {
-  let t0 = Date.now();
+  let t0 = performance.now();
 
-  let gameObjects = camera.scene.retrieve(),
-    layersCount = config.layersCount,
+  const retrieveStart = performance.now();
+  let gameObjects = camera.scene.retrieve();
+  const retrieveTime = performance.now() - retrieveStart;
+
+  let layersCount = config.layersCount,
     vw = viewport.width,
     vh = viewport.height,
     i,
@@ -192,6 +194,7 @@ p.render = function (camera, viewport, stats) {
     lightsIndexBuffer.set(_lightsIndexBuffer);
   }
 
+  const cullStart = performance.now();
   roughCull(
     gameObjects,
     clipSpaceMatrix,
@@ -200,6 +203,7 @@ p.render = function (camera, viewport, stats) {
   );
 
   exactCull(visibleObjectsBuffer, gameObjects, clipSpaceMatrix);
+  const cullTime = performance.now() - cullStart;
 
   //first element is length
   const visibleObjectsBufferLen = visibleObjectsBuffer[0] + 1;
@@ -208,6 +212,7 @@ p.render = function (camera, viewport, stats) {
     this.layerBuffers = new Uint32Array((count + layersCount) * 2);
   }
 
+  const groupStart = performance.now();
   let layerBuffers = groupLayers(
     visibleObjectsBuffer,
     gameObjects,
@@ -215,8 +220,11 @@ p.render = function (camera, viewport, stats) {
     layersCount,
     this.layerBuffers
   );
+  const groupTime = performance.now() - groupStart;
 
   let totalSortTime = 0;
+  let totalProcessTime = 0;
+  let totalDrawTime = 0;
 
   let layerOffset = 0;
   for (i = 0; i < layersCount; i++) {
@@ -313,6 +321,7 @@ p.render = function (camera, viewport, stats) {
       this.vertexIndexBuffer = vertexIndexBuffer = _vertexIndexBuffer;
     }
 
+    const processStart = performance.now();
     const l = destructMesh(
       layerBuffers,
       layerOffset + 1,
@@ -340,6 +349,7 @@ p.render = function (camera, viewport, stats) {
       this.vMapping,
       this.vTags,
     );
+    totalProcessTime += performance.now() - processStart;
 
     if ((config.depthSortingMask & (i + 1)) === i + 1) {
       const sortStart = performance.now();
@@ -353,6 +363,7 @@ p.render = function (camera, viewport, stats) {
 
     const toClear = (config.layerClearMask & (i + 1)) === i + 1;
 
+    const drawStart = performance.now();
     drawTriangles(
       ctx,
       vertexBuffer,
@@ -398,6 +409,7 @@ p.render = function (camera, viewport, stats) {
     // renderDebugNormals(ctx, l, geometryBuffer, faceNormalsBuffer, 10);
 
     viewport.context.drawImage(ctx.canvas, 0, 0);
+    totalDrawTime += performance.now() - drawStart;
 
     drawCalls += l;
     faces += l;
@@ -410,7 +422,13 @@ p.render = function (camera, viewport, stats) {
   stats.drawCalls = drawCalls;
   stats.faces = faces;
   stats.sortTime = totalSortTime;
-  stats.dt = Date.now() - t0;
+  stats.cullTime = cullTime;
+  stats.groupTime = groupTime;
+  stats.processTime = totalProcessTime;
+  stats.drawTime = totalDrawTime;
+  stats.updateTime = camera.scene && camera.scene.world ? camera.scene.world.lastTickTime : 0;
+  stats.retrieveTime = retrieveTime;
+  stats.dt = performance.now() - t0;
 };
 
 /**

@@ -1,4 +1,5 @@
 import scaliaEngine from "sub3d";
+import "sub3d/dist/sub3d.css";
 import Noise from "./noise.js";
 import TreePool from "./TreePool.js";
 import RockPool from "./RockPool.js";
@@ -318,16 +319,8 @@ var renderer = viewport.renderer;
 var fps,
   avgDt,
   maxFps = 0;
-var fpsEl = document.getElementById("fps");
-var maxFpsEl = document.getElementById("maxFps");
-var drawCallsEl = document.getElementById("drawCalls");
-var objectsEl = document.getElementById("objects");
-var visibleObjectsEl = document.getElementById("visibleObjects");
-var facesCountEl = document.getElementById("facesCount");
-var sortTimeEl = document.getElementById("sortTime");
 var scaleValEl = document.getElementById("scale_val");
 var zoomValEl = document.getElementById("zoom_val");
-var systemDprEl = document.getElementById("system_dpr");
 
 // Query all inputs
 const dockRotationEl = document.getElementById("dock_rotation");
@@ -339,7 +332,7 @@ const dockSpeedValEl = document.getElementById("dock_speed_val");
 const dockSmoothEl = document.getElementById("dock_smooth");
 const dockFlyEl = document.getElementById("dock_fly");
 
-const chkbx1El = document.getElementById("chkbx_1");
+
 const sliderScaleEl = document.getElementById("slider_scale");
 const sliderZoomEl = document.getElementById("slider_zoom");
 const sliderFogNearEl = document.getElementById("slider_fog_near");
@@ -373,9 +366,7 @@ if (dockFlyEl) {
   dockFlyEl.checked = cameraController.autoFlyEnabled;
 }
 
-if (chkbx1El) {
-  chkbx1El.checked = cameraController.isWireframe;
-}
+
 if (sliderScaleEl) {
   sliderScaleEl.value = viewport.scale;
   if (scaleValEl) scaleValEl.innerText = viewport.scale.toFixed(2);
@@ -431,9 +422,7 @@ function updateDebugState() {
   if (toggleBtn) {
     toggleBtn.innerText = isDebug ? "Close Debug" : "Open Debug";
   }
-  if (isDebug && systemDprEl) {
-    systemDprEl.innerText = (window.devicePixelRatio || 1).toFixed(2);
-  }
+
 }
 
 updateDebugState();
@@ -459,17 +448,16 @@ if (toggleBtn) {
 }
 
 // Wireframe Checkbox (Debug menu only)
-if (chkbx1El) {
-  chkbx1El.addEventListener("change", (e) => {
-    const checked = chkbx1El.checked;
-    renderer.wireframe = checked;
-    cameraController.isWireframe = checked;
-    // Apply wireframe to all currently active chunks
-    for (const group of activeGroups.values()) {
-      group.setWireframe(checked);
-    }
-  });
-}
+// Wireframe Change Event Listener
+window.addEventListener("s3d-wireframe-change", (e) => {
+  const checked = e.detail.enabled;
+  renderer.wireframe = checked;
+  cameraController.isWireframe = checked;
+  // Apply wireframe to all currently active chunks
+  for (const group of activeGroups.values()) {
+    group.setWireframe(checked);
+  }
+});
 
 // Fog inputs (Debug menu)
 if (sliderFogNearEl && sliderFogFarEl) {
@@ -621,18 +609,4 @@ if (controlDockEl) {
   controlDockEl.addEventListener("pointerup", (e) => e.stopPropagation());
 }
 
-// Debug panel updates
-setInterval(() => {
-  if (!isDebug) return;
-  const dt = viewport.lastRenderStats.dt;
-  fps = viewport.lastRenderStats.fps;
-  avgDt = avgDt === undefined ? dt : (avgDt + dt) / 2;
-  maxFps = Math.max(maxFps, fps);
-  if (fpsEl) fpsEl.innerText = fps;
-  if (maxFpsEl) maxFpsEl.innerText = maxFps;
-  if (drawCallsEl) drawCallsEl.innerText = viewport.lastRenderStats.drawCalls;
-  if (objectsEl) objectsEl.innerText = viewport.lastRenderStats.totalObjects;
-  if (visibleObjectsEl) visibleObjectsEl.innerText = viewport.lastRenderStats.visibleObjects;
-  if (facesCountEl) facesCountEl.innerText = viewport.lastRenderStats.faces;
-  if (sortTimeEl) sortTimeEl.innerText = viewport.lastRenderStats.sortTime;
-}, 100);
+scaliaEngine.showDebug(viewport);
