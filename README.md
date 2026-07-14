@@ -1,5 +1,7 @@
 # Subpar 3D Engine (sub3d)
 
+*"Canvas can!"*
+
 A custom software 3D game engine and renderer written in pure JavaScript. It renders 3D graphics using only a standard HTML5 Canvas 2D context.
 
 ---
