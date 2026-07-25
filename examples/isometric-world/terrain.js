@@ -7,15 +7,15 @@ const MeshComponent = scaliaEngine.MeshComponent;
  * Simplifies an existing subdivided grid mesh by collapsing flat, uniform tiles.
  * @param {Float32Array} vertices - Existing vertex buffer [x,y,z...]
  * @param {Uint32Array} faces - Existing face index buffer
- * @param {Uint32Array} faceColors - Map of face index to color index
+ * @param {Uint32Array} colors - Map of face index to 32-bit color
  * @param {number} segments - The grid resolution (e.g., 30 for 30x30 cells)
  */
-export function simplifyExistingGridMesh(vertices, faces, faceColors, segments) {
+export function simplifyExistingGridMesh(vertices, faces, colors, segments) {
   const row = segments + 1;
   const gridVertsCount = row * row;
 
   const newFaces = [];
-  const newFaceColors = [];
+  const newColors = [];
 
   // Helper: Get the Y-height of a cell center vertex
   const getCellHeight = (cx, cy) => {
@@ -26,11 +26,11 @@ export function simplifyExistingGridMesh(vertices, faces, faceColors, segments) 
   // Helper: Check if all 4 triangles in a cell share the same color
   const isCellUniformColor = (cx, cy) => {
     const startIdx = (cy * segments + cx) * 4;
-    const c0 = faceColors[startIdx];
+    const c0 = colors[startIdx];
     return (
-      faceColors[startIdx + 1] === c0 &&
-      faceColors[startIdx + 2] === c0 &&
-      faceColors[startIdx + 3] === c0
+      colors[startIdx + 1] === c0 &&
+      colors[startIdx + 2] === c0 &&
+      colors[startIdx + 3] === c0
     );
   };
 
@@ -70,15 +70,15 @@ export function simplifyExistingGridMesh(vertices, faces, faceColors, segments) 
          * Collapse 4 triangles into 2. This bypasses the center vertex.
          * Visual is preserved, face count per tile is halved.
          */
-        const tileColor = faceColors[cellIdx * 4];
+        const tileColor = colors[cellIdx * 4];
 
         // Triangle 1: Top-Left, Bottom-Right, Top-Right
         newFaces.push(tl, br, tr);
-        newFaceColors.push(tileColor);
+        newColors.push(tileColor);
 
         // Triangle 2: Top-Left, Bottom-Left, Bottom-Right
         newFaces.push(tl, bl, br);
-        newFaceColors.push(tileColor);
+        newColors.push(tileColor);
       } else {
         /**
          * COMPLEX CASE:
@@ -90,19 +90,19 @@ export function simplifyExistingGridMesh(vertices, faces, faceColors, segments) 
 
         // Triangle 0: Top-Left to Center
         newFaces.push(tl, center, tr);
-        newFaceColors.push(faceColors[colorBase]);
+        newColors.push(colors[colorBase]);
 
         // Triangle 1: Top-Right to Center
         newFaces.push(tr, center, br);
-        newFaceColors.push(faceColors[colorBase + 1]);
+        newColors.push(colors[colorBase + 1]);
 
         // Triangle 2: Bottom-Right to Center
         newFaces.push(br, center, bl);
-        newFaceColors.push(faceColors[colorBase + 2]);
+        newColors.push(colors[colorBase + 2]);
 
         // Triangle 3: Bottom-Left to Center
         newFaces.push(bl, center, tl);
-        newFaceColors.push(faceColors[colorBase + 3]);
+        newColors.push(colors[colorBase + 3]);
       }
     }
   }
@@ -112,7 +112,7 @@ export function simplifyExistingGridMesh(vertices, faces, faceColors, segments) 
   return {
     vertices: vertices,
     faces: new Uint32Array(newFaces),
-    faceColors: new Uint32Array(newFaceColors),
+    colors: new Uint32Array(newColors),
   };
 }
 
@@ -167,6 +167,7 @@ export function generateTerrainMesh(width, height, segments) {
   return {
     vertices: new Float32Array(verts),
     faces: new Uint16Array(faces),
+    colors: new Uint32Array(faces.length / 3).fill(0x0000FF),
   };
 }
 

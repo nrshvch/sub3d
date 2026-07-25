@@ -11,7 +11,6 @@ const MeshComponent = scaliaEngine.MeshComponent;
 function generatePineMesh() {
   const verts = [];
   const faces = [];
-  const faceColors = [];
 
   const trunkRadius = 0.08;
   const trunkHeight = 0.25; // short trunk
@@ -22,11 +21,10 @@ function generatePineMesh() {
   verts.push(Math.cos(4 * Math.PI / 3) * trunkRadius, 0, Math.sin(4 * Math.PI / 3) * trunkRadius); // 2
   verts.push(0, trunkHeight, 0); // 3
 
-  // Trunk Side Faces (using color index 0 - brown)
+  // Trunk Side Faces
   faces.push(3, 1, 0);
   faces.push(3, 2, 1);
   faces.push(3, 0, 2);
-  faceColors.push(0, 0, 0);
 
   // 2. Bottom Foliage (Bigger 5-sided pyramid: indices 4 apex, 5-9 base)
   const segments = 5;
@@ -42,13 +40,12 @@ function generatePineMesh() {
     verts.push(x, yBottom1, z);
   }
 
-  // Bottom Foliage Side Faces (using color index 1 - green)
+  // Bottom Foliage Side Faces
   // No base faces
   for (let i = 0; i < segments; i++) {
     const current = 5 + i;
     const next = 5 + (i === segments - 1 ? 0 : i + 1);
     faces.push(4, next, current);
-    faceColors.push(1);
   }
 
   // 3. Top Foliage (Smaller 5-sided pyramid: indices 10 apex, 11-15 base)
@@ -64,14 +61,18 @@ function generatePineMesh() {
     verts.push(x, yBottom2, z);
   }
 
-  // Top Foliage Side Faces (using color index 1 - green)
+  // Top Foliage Side Faces
   // No base faces
   for (let i = 0; i < segments; i++) {
     const current = 11 + i;
     const next = 11 + (i === segments - 1 ? 0 : i + 1);
     faces.push(10, next, current);
-    faceColors.push(1);
   }
+
+  const faceCount = faces.length / 3;
+  const colors = new Uint32Array(faceCount);
+  colors.fill(0x5c4033, 0, 3); // 3 trunk faces
+  colors.fill(0x006400, 3);    // 10 foliage faces
 
   const vertices = new Float32Array(verts);
   const bounds = new Float32Array(32);
@@ -81,7 +82,7 @@ function generatePineMesh() {
   return {
     vertices,
     faces: new Uint16Array(faces),
-    faceColors: new Uint32Array(faceColors),
+    colors,
     bounds
   };
 }
@@ -93,7 +94,6 @@ function generatePineMesh() {
 function generateBallTreeMesh() {
   const verts = [];
   const faces = [];
-  const faceColors = [];
 
   const trunkRadius = 0.12;
   const trunkHeight = 0.42; // Trunk apex goes inside the sphere foliage
@@ -104,12 +104,11 @@ function generateBallTreeMesh() {
   verts.push(Math.cos(4 * Math.PI / 3) * trunkRadius, 0, Math.sin(4 * Math.PI / 3) * trunkRadius); // 2
   verts.push(0, trunkHeight, 0); // 3
 
-  // Trunk Faces (using color index 0 - brown)
+  // Trunk Faces
   faces.push(0, 2, 1);
   faces.push(3, 1, 0);
   faces.push(3, 2, 1);
   faces.push(3, 0, 2);
-  faceColors.push(0, 0, 0, 0);
 
   // 2. Sphere Foliage Vertices (from index 4 to 4 + 2 + (rings-1)*segments)
   const segments = 4;
@@ -134,13 +133,12 @@ function generateBallTreeMesh() {
     }
   }
 
-  // 3. Sphere Foliage Faces (using color index 1 - green/red)
+  // 3. Sphere Foliage Faces
   // Top cap faces
   for (let s = 0; s < segments; s++) {
     const current = firstRingStart + s;
     const next = firstRingStart + (s + 1) % segments;
     faces.push(4, next, current);
-    faceColors.push(1);
   }
 
   // Bottom cap faces
@@ -149,7 +147,6 @@ function generateBallTreeMesh() {
     const current = lastRingStart + s;
     const next = lastRingStart + (s + 1) % segments;
     faces.push(5, current, next);
-    faceColors.push(1);
   }
 
   // Intermediate quad ring faces
@@ -166,9 +163,13 @@ function generateBallTreeMesh() {
 
       faces.push(tl, tr, br);
       faces.push(tl, br, bl);
-      faceColors.push(1, 1);
     }
   }
+
+  const faceCount = faces.length / 3;
+  const colors = new Uint32Array(faceCount);
+  colors.fill(0x5c4033, 0, 4); // 4 trunk faces
+  colors.fill(0x006400, 4);    // 16 foliage faces
 
   const vertices = new Float32Array(verts);
   const bounds = new Float32Array(32);
@@ -178,7 +179,7 @@ function generateBallTreeMesh() {
   return {
     vertices,
     faces: new Uint16Array(faces),
-    faceColors: new Uint32Array(faceColors),
+    colors,
     bounds
   };
 }
@@ -201,7 +202,7 @@ export default function Tree(type = 'cone') {
   mesh.vertices = data.vertices;
   mesh.faces = data.faces;
   mesh.bounds = data.bounds;
-  mesh.faceColors = data.faceColors;
+  mesh.colors = data.colors;
   mesh.updateNormals();
 
   this.addComponent(mesh);
@@ -220,6 +221,6 @@ Tree.prototype.setType = function(type) {
   mesh.vertices = data.vertices;
   mesh.faces = data.faces;
   mesh.bounds = data.bounds;
-  mesh.faceColors = data.faceColors;
+  mesh.colors = data.colors;
   mesh.updateNormals();
 };
