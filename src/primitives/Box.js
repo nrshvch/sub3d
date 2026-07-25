@@ -85,7 +85,7 @@ function generateBoxMesh(width, height, depth, segments) {
     vertices: new Float32Array(verts),
     uvs: new Float32Array(uvs),
     faces: new Uint16Array(faces),
-    colors: new Uint32Array(faces.length / 3).fill(0x0000FF),
+    colors: new Uint32Array(verts.length / 3).fill(0x0000FF),
   };
 }
 

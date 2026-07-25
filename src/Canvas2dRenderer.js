@@ -273,8 +273,8 @@ p.render = function (camera, viewport, stats) {
       newArr.set(tempIndexBuffer);
       this.tempIndexBuffer = tempIndexBuffer = newArr;
 
-      //color is per face
-      newArr = new Uint32Array(maxFacesCount);
+      // Allocate colorBuffer with 3 Uint32 slots per face (1 packed color per face vertex)
+      newArr = new Uint32Array(maxFacesCount * 3);
       newArr.set(colorBuffer);
       this.colorBuffer = colorBuffer = newArr;
 
@@ -1005,8 +1005,11 @@ function destructMesh(
       const mag = Math.sqrt(wnx * wnx + wny * wny + wnz * wnz);
       const invMag = mag > 0 ? 1 / mag : 0;
 
-      const fIdx = (f / 3) | 0;
-      colorBuffer[i] = mesh.colors[fIdx];
+      // Populate per-vertex colors directly into renderer's flat colorBuffer (3 slots per face)
+      const cIdx = i * 3;
+      colorBuffer[cIdx] = mesh.colors[idx0];
+      colorBuffer[cIdx + 1] = mesh.colors[idx1];
+      colorBuffer[cIdx + 2] = mesh.colors[idx2];
       shaderTypeBuffer[i] = mesh.shaderType;
       shaderPassBuffer[i] = 0; // default to shader pass 0
 
@@ -1255,7 +1258,7 @@ function drawTriangles(
         //FLAT (light shading + fog)
 
         // Calculating face lightning
-        const color32 = colorBuffer[idx];
+        const color32 = colorBuffer[idx * 3];
         let r = color32 >>> 16;
         let g = (color32 >>> 8) & 255;
         let b = color32 & 255;
@@ -1525,7 +1528,7 @@ function drawTriangles(
       }
       case 1: {
         //EMISSIVE (no light shading, just fog)
-        const color32 = colorBuffer[idx];
+        const color32 = colorBuffer[idx * 3];
         let r = color32 >>> 16;
         let g = (color32 >>> 8) & 255;
         let b = color32 & 255;
@@ -1719,7 +1722,7 @@ function drawTriangles(
       }
       case 2: {
         // UNLIT (no light shading, no fog, just mesh color)
-        const color32 = colorBuffer[idx];
+        const color32 = colorBuffer[idx * 3];
         let r = color32 >>> 16;
         let g = (color32 >>> 8) & 255;
         let b = color32 & 255;
@@ -1834,10 +1837,15 @@ function drawTriangles(
       }
       case 4: {
         // SMOOTH (Gouraud Shading)
-        const color32 = colorBuffer[idx];
-        const r = color32 >>> 16;
-        const g = (color32 >>> 8) & 255;
-        const b = color32 & 255;
+        // Read 3 per-vertex colors directly from the flat renderer colorBuffer
+        const cIdx = idx * 3;
+        const color32_0 = colorBuffer[cIdx];
+        const color32_1 = colorBuffer[cIdx + 1];
+        const color32_2 = colorBuffer[cIdx + 2];
+
+        const r0 = color32_0 >>> 16, g0 = (color32_0 >>> 8) & 255, b0 = color32_0 & 255;
+        const r1 = color32_1 >>> 16, g1 = (color32_1 >>> 8) & 255, b1 = color32_1 & 255;
+        const r2 = color32_2 >>> 16, g2 = (color32_2 >>> 8) & 255, b2 = color32_2 & 255;
 
         let litR = ambientLightRgb >>> 16;
         let litG = (ambientLightRgb >>> 8) & 255;
@@ -2196,15 +2204,15 @@ function drawTriangles(
         }
 
         // Base quantized colors per vertex
-        let cr0 = r * ir0;
-        let cg0 = g * ig0;
-        let cb0 = b * ib0;
-        let cr1 = r * ir1;
-        let cg1 = g * ig1;
-        let cb1 = b * ib1;
-        let cr2 = r * ir2;
-        let cg2 = g * ig2;
-        let cb2 = b * ib2;
+        let cr0 = r0 * ir0;
+        let cg0 = g0 * ig0;
+        let cb0 = b0 * ib0;
+        let cr1 = r1 * ir1;
+        let cg1 = g1 * ig1;
+        let cb1 = b1 * ib1;
+        let cr2 = r2 * ir2;
+        let cg2 = g2 * ig2;
+        let cb2 = b2 * ib2;
 
         // Math.min(255);
         cr0 = cr0 > 255 ? 255 : cr0;

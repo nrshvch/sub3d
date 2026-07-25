@@ -191,55 +191,46 @@ export default class TileGroup {
 
     const verts = this.terrain.meshRenderer.vertices;
 
-    // 2. Compute heights of grid corner vertices (corners)
-    for (let j = 0; j <= segments; j++) {
-      const globalZ = gz * segments + j - segments / 2;
-      for (let i = 0; i <= segments; i++) {
-        const globalX = gx * segments + i - segments / 2;
-        const vIdx = j * row + i;
-        
-        // Calculate height with water clamping and seam correction
-        verts[vIdx * 3 + 1] = getGridVertexHeight(globalX, globalZ, noise);
-      }
-    }
-
-    // 3. Generate center heights and face colors for each of the 30x30 tiles
-    const colors = [];
+    // 2 & 3. Generate heights and per-vertex colors for each of the 30x30 tiles
+    const totalVertices = segments * segments * 12;
+    const colors = new Uint32Array(totalVertices);
 
     for (let j = 0; j < segments; j++) {
       const globalZ = gz * segments + j - segments / 2;
       for (let i = 0; i < segments; i++) {
         const globalX = gx * segments + i - segments / 2;
 
-        // Tile corner indices
-        const tl = j * row + i;
-        const tr = j * row + (i + 1);
-        const br = (j + 1) * row + (i + 1);
-        const bl = (j + 1) * row + i;
+        const cellIdx = j * segments + i;
+        const baseVert = cellIdx * 12;
 
-        // Center vertex index
-        const centerVertIdx = row * row + (j * segments + i);
+        // Compute grid corner heights for this tile cell
+        const h_tl = getGridVertexHeight(globalX, globalZ, noise);
+        const h_tr = getGridVertexHeight(globalX + 1, globalZ, noise);
+        const h_bl = getGridVertexHeight(globalX, globalZ + 1, noise);
+        const h_br = getGridVertexHeight(globalX + 1, globalZ + 1, noise);
 
-        const h_tl = verts[tl * 3 + 1];
-        const h_tr = verts[tr * 3 + 1];
-        const h_br = verts[br * 3 + 1];
-        const h_bl = verts[bl * 3 + 1];
-
-        // Seeded random for deterministic visual variations on this tile
         const tileRand = hash2D(globalX, globalZ);
 
         if (isTileWater(globalX, globalZ, noise)) {
           // Water tile
-          verts[tl * 3 + 1] = 0;
-          verts[tr * 3 + 1] = 0;
-          verts[br * 3 + 1] = 0;
-          verts[bl * 3 + 1] = 0;
-          
-          // Deterministic water surface ripples
-          verts[centerVertIdx * 3 + 1] = (tileRand * 2 - 1) * 2;
+          const h_ripple = (tileRand * 2 - 1) * 2;
 
-          const waterColor = getWaterColor(globalX, globalZ, noise); // Depth-dependent water color
-          colors.push(waterColor, waterColor, waterColor, waterColor);
+          // Set Y for all 12 vertices of this cell
+          verts[(baseVert + 0) * 3 + 1] = 0;
+          verts[(baseVert + 1) * 3 + 1] = h_ripple;
+          verts[(baseVert + 2) * 3 + 1] = 0;
+          verts[(baseVert + 3) * 3 + 1] = 0;
+          verts[(baseVert + 4) * 3 + 1] = h_ripple;
+          verts[(baseVert + 5) * 3 + 1] = 0;
+          verts[(baseVert + 6) * 3 + 1] = 0;
+          verts[(baseVert + 7) * 3 + 1] = h_ripple;
+          verts[(baseVert + 8) * 3 + 1] = 0;
+          verts[(baseVert + 9) * 3 + 1] = 0;
+          verts[(baseVert + 10) * 3 + 1] = h_ripple;
+          verts[(baseVert + 11) * 3 + 1] = 0;
+
+          const waterColor = getWaterColor(globalX, globalZ, noise);
+          colors.fill(waterColor, baseVert, baseVert + 12);
 
         } else if (Math.min(h_tl, h_tr, h_br, h_bl) <= 0) {
           // Coast tile
@@ -248,84 +239,107 @@ export default class TileGroup {
           const coastColor = (cr << 16) | (cg << 8); // Sandy coast
 
           const h_ey = getTTDMidpoint(h_tl, h_tr, h_br, h_bl);
-          verts[centerVertIdx * 3 + 1] = h_ey;
 
-          if (h_ey === 0) {
-            // Partial water inside coast
-            const waterColor = getWaterColor(globalX, globalZ, noise);
+          // Set Y for all 12 vertices of this cell
+          verts[(baseVert + 0) * 3 + 1] = h_tl;
+          verts[(baseVert + 1) * 3 + 1] = h_ey;
+          verts[(baseVert + 2) * 3 + 1] = h_tr;
+          verts[(baseVert + 3) * 3 + 1] = h_tr;
+          verts[(baseVert + 4) * 3 + 1] = h_ey;
+          verts[(baseVert + 5) * 3 + 1] = h_br;
+          verts[(baseVert + 6) * 3 + 1] = h_br;
+          verts[(baseVert + 7) * 3 + 1] = h_ey;
+          verts[(baseVert + 8) * 3 + 1] = h_bl;
+          verts[(baseVert + 9) * 3 + 1] = h_bl;
+          verts[(baseVert + 10) * 3 + 1] = h_ey;
+          verts[(baseVert + 11) * 3 + 1] = h_tl;
 
-            colors.push(h_tl === h_tr ? waterColor : coastColor);
-            colors.push(h_tr === h_br ? waterColor : coastColor);
-            colors.push(h_br === h_bl ? waterColor : coastColor);
-            colors.push(h_bl === h_tl ? waterColor : coastColor);
+          // Biome grass color for top part of coast
+          const bx = globalX;
+          const bz = globalZ;
+          const biomeNoise = noise.noise2D(bx / 400, bz / 400);
+          const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
+
+          let r, g, b;
+          if (perturbedNoise > 0.15) {
+            r = (tileRand * 15 + 35) | 0;
+            g = (tileRand * 20 + 120) | 0;
+            b = (tileRand * 15 + 45) | 0;
+          } else if (perturbedNoise < -0.25) {
+            r = (tileRand * 15 + 60) | 0;
+            g = (tileRand * 20 + 135) | 0;
+            b = (tileRand * 15 + 55) | 0;
           } else {
-            // Partial grass inside coast
-            const bx = globalX;
-            const bz = globalZ;
-            // Diffuse boundaries using high-frequency noise perturbation
-            const biomeNoise = noise.noise2D(bx / 400, bz / 400);
-            const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
-
-            let r, g, b;
-            if (perturbedNoise > 0.15) {
-              // Pine forest biome - Mossy Pine green
-              r = (tileRand * 15 + 35) | 0;
-              g = (tileRand * 20 + 120) | 0;
-              b = (tileRand * 15 + 45) | 0;
-            } else if (perturbedNoise < -0.25) {
-              // Lollipop tree biome - Soft warm olive green
-              r = (tileRand * 15 + 60) | 0;
-              g = (tileRand * 20 + 135) | 0;
-              b = (tileRand * 15 + 55) | 0;
-            } else {
-              // Plains biome - Natural fresh grass green
-              r = (tileRand * 15 + 45) | 0;
-              g = (tileRand * 20 + 150) | 0;
-              b = (tileRand * 15 + 55) | 0;
-            }
-            const grassColor = (r << 16) | (g << 8) | b;
-
-            colors.push(h_tl === h_ey && h_tr === h_ey ? grassColor : coastColor);
-            colors.push(h_tr === h_ey && h_br === h_ey ? grassColor : coastColor);
-            colors.push(h_br === h_ey && h_bl === h_ey ? grassColor : coastColor);
-            colors.push(h_bl === h_ey && h_tl === h_ey ? grassColor : coastColor);
+            r = (tileRand * 15 + 45) | 0;
+            g = (tileRand * 20 + 150) | 0;
+            b = (tileRand * 15 + 55) | 0;
           }
+          const grassColor = (r << 16) | (g << 8) | b;
+          let c0, c1, c2, c3;
+          
+          // Multi-colored coast tile face evaluation:
+          // When h_ey === 0 (center is at water level), triangles flat at y=0 become water, and sloped triangles become sand.
+          // When h_ey > 0 (center is elevated), triangles flat at y=h_ey become grass, and sloped triangles become sand.
+          if (h_ey === 0) {
+            const waterColor = getWaterColor(globalX, globalZ, noise);
+            c0 = (h_tl === 0 && h_tr === 0) ? waterColor : coastColor; // Triangle 0: Top
+            c1 = (h_tr === 0 && h_br === 0) ? waterColor : coastColor; // Triangle 1: Right
+            c2 = (h_br === 0 && h_bl === 0) ? waterColor : coastColor; // Triangle 2: Bottom
+            c3 = (h_bl === 0 && h_tl === 0) ? waterColor : coastColor; // Triangle 3: Left
+          } else {
+            c0 = (h_tl === h_ey && h_tr === h_ey) ? grassColor : coastColor; // Triangle 0: Top
+            c1 = (h_tr === h_ey && h_br === h_ey) ? grassColor : coastColor; // Triangle 1: Right
+            c2 = (h_br === h_ey && h_bl === h_ey) ? grassColor : coastColor; // Triangle 2: Bottom
+            c3 = (h_bl === h_ey && h_tl === h_ey) ? grassColor : coastColor; // Triangle 3: Left
+          }
+
+          // Assign each of the 4 triangles its own 3 split vertex colors (hard edges)
+          colors[baseVert + 0] = c0; colors[baseVert + 1] = c0; colors[baseVert + 2] = c0;
+          colors[baseVert + 3] = c1; colors[baseVert + 4] = c1; colors[baseVert + 5] = c1;
+          colors[baseVert + 6] = c2; colors[baseVert + 7] = c2; colors[baseVert + 8] = c2;
+          colors[baseVert + 9] = c3; colors[baseVert + 10] = c3; colors[baseVert + 11] = c3;
 
         } else {
           // Ground / grass / mountain tile
           const h_ey = getTTDMidpoint(h_tl, h_tr, h_br, h_bl);
-          verts[centerVertIdx * 3 + 1] = h_ey;
+
+          // Set Y for all 12 vertices of this cell
+          verts[(baseVert + 0) * 3 + 1] = h_tl;
+          verts[(baseVert + 1) * 3 + 1] = h_ey;
+          verts[(baseVert + 2) * 3 + 1] = h_tr;
+          verts[(baseVert + 3) * 3 + 1] = h_tr;
+          verts[(baseVert + 4) * 3 + 1] = h_ey;
+          verts[(baseVert + 5) * 3 + 1] = h_br;
+          verts[(baseVert + 6) * 3 + 1] = h_br;
+          verts[(baseVert + 7) * 3 + 1] = h_ey;
+          verts[(baseVert + 8) * 3 + 1] = h_bl;
+          verts[(baseVert + 9) * 3 + 1] = h_bl;
+          verts[(baseVert + 10) * 3 + 1] = h_ey;
+          verts[(baseVert + 11) * 3 + 1] = h_tl;
 
           let groundColor;
           if (h_ey >= 340) {
-            // Snowy peak
             const gray = (240 + tileRand * 15) | 0;
-            groundColor = (gray << 16) | (gray << 8) | gray; // Snowy white
+            groundColor = (gray << 16) | (gray << 8) | gray;
           } else if (h_ey >= 240) {
-            // Rocky mountain slope
             const gray = (120 + tileRand * 25) | 0;
-            groundColor = (gray << 16) | (gray << 8) | gray; // Stone gray
+            groundColor = (gray << 16) | (gray << 8) | gray;
           } else {
-            // Grass green / biome ground color
             const bx = globalX;
             const bz = globalZ;
-            // Diffuse boundaries using high-frequency noise perturbation
             const biomeNoise = noise.noise2D(bx / 400, bz / 400);
             const perturbedNoise = biomeNoise + noise.noise2D(bx / 6, bz / 6) * 0.12;
 
             let r, g, b;
             if (perturbedNoise > 0.15) {
-              // Pine forest biome - Mossy Pine green
               r = (tileRand * 15 + 35) | 0;
               g = (tileRand * 20 + 120) | 0;
               b = (tileRand * 15 + 45) | 0;
             } else if (perturbedNoise < -0.25) {
-              // Lollipop tree biome - Soft warm olive green
               r = (tileRand * 15 + 60) | 0;
               g = (tileRand * 20 + 135) | 0;
               b = (tileRand * 15 + 55) | 0;
             } else {
-              // Plains biome - Natural fresh grass green
               r = (tileRand * 15 + 45) | 0;
               g = (tileRand * 20 + 150) | 0;
               b = (tileRand * 15 + 55) | 0;
@@ -333,13 +347,13 @@ export default class TileGroup {
             groundColor = (r << 16) | (g << 8) | b;
           }
 
-          colors.push(groundColor, groundColor, groundColor, groundColor);
+          colors.fill(groundColor, baseVert, baseVert + 12);
         }
       }
     }
 
-    // 4. Apply face colors
-    this.terrain.meshRenderer.colors = new Uint32Array(colors);
+    // 4. Apply vertex colors
+    this.terrain.meshRenderer.colors = colors;
 
     // 5. Simplify mesh (collapse flat areas)
     const simplifiedMesh = Terrain.simplifyExistingGridMesh(
@@ -378,17 +392,14 @@ export default class TileGroup {
         const globalX = gx * segments + i - segments / 2;
 
         // Retrieve corner heights for tree interpolation
-        const tl = j * row + i;
-        const tr = j * row + (i + 1);
-        const br = (j + 1) * row + (i + 1);
-        const bl = (j + 1) * row + i;
-        const centerVertIdx = row * row + (j * segments + i);
+        const cellIdx = j * segments + i;
+        const baseVert = cellIdx * 12;
 
-        const h_tl = verts[tl * 3 + 1];
-        const h_tr = verts[tr * 3 + 1];
-        const h_br = verts[br * 3 + 1];
-        const h_bl = verts[bl * 3 + 1];
-        const h_mid = verts[centerVertIdx * 3 + 1];
+        const h_tl = verts[baseVert * 3 + 1];
+        const h_tr = verts[(baseVert + 2) * 3 + 1];
+        const h_bl = verts[(baseVert + 8) * 3 + 1];
+        const h_br = verts[(baseVert + 5) * 3 + 1];
+        const h_mid = verts[(baseVert + 1) * 3 + 1];
 
         // Seed using global coordinates
         const rng = new SeededRandom(globalX * 17 + globalZ * 79);
@@ -422,29 +433,29 @@ export default class TileGroup {
           if (rng.next() > spawnProb) {
             const tree = treePool.acquire();
             tree.setType(treeType);
-            const faceCount = tree.meshRenderer.faces.length / 3;
-            const colors = new Uint32Array(faceCount);
+            const vertexCount = tree.meshRenderer.vertices.length / 3;
+            const colors = new Uint32Array(vertexCount);
 
             if (treeType === 'cone') {
               // Pine tree: short brown trunk + classic dark green foliage
               const trunkColor = 0x5c4033; // Brown trunk
               const foliageColor = 0x006400; // Classic dark green pine
 
-              colors.fill(trunkColor, 0, 3);  // 3 trunk faces
-              colors.fill(foliageColor, 3);
+              colors.fill(trunkColor, 0, 4);  // 4 trunk vertices (0..3)
+              colors.fill(foliageColor, 4);   // 12 foliage vertices (4..15)
             } else {
               // Lollipop trees: brown trunk + varied foliage tones
               const trunkColor = 0x5c4033; // Brown trunk
 
-              // Foliage color variation: deep forest green to lime/yellowy-green (NOT too reddish)
+              // Foliage color variation: deep forest green to lime/yellowy-green
               const tColor = rng.next();
               const r = ((1 - tColor) * 34 + tColor * 110) | 0; // 34 to 110
               const g = ((1 - tColor) * 139 + tColor * 165) | 0; // 139 to 165
               const b = ((1 - tColor) * 34 + tColor * 45) | 0; // 34 to 45
               const foliageColor = (r << 16) | (g << 8) | b;
 
-              colors.fill(trunkColor, 0, 4);  // 4 trunk faces
-              colors.fill(foliageColor, 4);   // 16 foliage faces
+              colors.fill(trunkColor, 0, 4);  // 4 trunk vertices (0..3)
+              colors.fill(foliageColor, 4);   // foliage vertices (4..N)
             }
 
             tree.meshRenderer.colors = colors;
@@ -516,8 +527,8 @@ export default class TileGroup {
             const gray = (90 + tRock * 48) | 0;
             const rockColor = (gray << 16) | (gray << 8) | gray;
 
-            const rockFaceCount = rock.meshRenderer.faces.length / 3;
-            rock.meshRenderer.colors = new Uint32Array(rockFaceCount).fill(rockColor);
+            const rockVertexCount = rock.meshRenderer.vertices.length / 3;
+            rock.meshRenderer.colors = new Uint32Array(rockVertexCount).fill(rockColor);
             rock.meshRenderer.layer = 0;
             rock.meshRenderer.depthBias = -16;
 
