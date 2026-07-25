@@ -6,7 +6,7 @@ const MeshComponent = scaliaEngine.MeshComponent;
 function generateApartmentMesh() {
   const verts = [];
   const faces = [];
-  const faceColors = [];
+  const colors = [];
   const lookup = {};
 
   const palette = [
@@ -31,12 +31,13 @@ function generateApartmentMesh() {
     const v2 = getVertexIndex(...p2);
     const v3 = getVertexIndex(...p3);
     const v4 = getVertexIndex(...p4);
+    const col = palette[colorIdx];
     // Triangle 1
     faces.push(v1, v2, v3);
-    faceColors.push(colorIdx);
+    colors.push(col);
     // Triangle 2
     faces.push(v1, v3, v4);
-    faceColors.push(colorIdx);
+    colors.push(col);
   }
 
   const b = 0.2; // Basement height
@@ -258,8 +259,7 @@ function generateApartmentMesh() {
   return {
     vertices: new Float32Array(verts),
     faces: new Uint16Array(faces),
-    faceColors: new Uint32Array(faceColors),
-    colors: new Uint32Array(palette),
+    colors: new Uint32Array(colors),
   };
 }
 
@@ -270,7 +270,6 @@ export default function Apartment() {
   var mesh = new MeshComponent(this);
   mesh.vertices = apartmentData.vertices;
   mesh.faces = apartmentData.faces;
-  mesh.faceColors = apartmentData.faceColors;
   mesh.colors = apartmentData.colors;
   mesh.bounds = new Float32Array(32);
   MeshComponent.computeBoundsFlatArray(mesh.bounds, 0, mesh.vertices);

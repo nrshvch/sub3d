@@ -1006,8 +1006,7 @@ function destructMesh(
       const invMag = mag > 0 ? 1 / mag : 0;
 
       const fIdx = (f / 3) | 0;
-      const cIdx = mesh.faceColors[fIdx % mesh.faceColors.length];
-      colorBuffer[i] = mesh.colors[cIdx];
+      colorBuffer[i] = mesh.colors[fIdx];
       shaderTypeBuffer[i] = mesh.shaderType;
       shaderPassBuffer[i] = 0; // default to shader pass 0
 

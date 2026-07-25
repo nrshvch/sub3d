@@ -64,6 +64,7 @@ function generateBallMesh(rings, sectors, radius) {
     vertices: new Float32Array(verts),
     uvs: new Float32Array(uvs),
     faces: new Uint16Array(faces),
+    colors: new Uint32Array(faces.length / 3).fill(0x0000FF),
   };
 }
 
@@ -83,16 +84,18 @@ function generateBall(rings = 8, sectors = 8, radius = 8) {
     ballMesh.faces,
     ballMesh.uvs,
     bounds,
+    ballMesh.colors,
   ]
 }
 
-function Ball(vertices, faces, uvs, bounds) {
+function Ball(vertices, faces, uvs, bounds, colors) {
   GameObject.call(this);
 
   const mesh = new MeshComponent(this);
   mesh.vertices = vertices;
   mesh.faces = faces;
   mesh.uvs = uvs;
+  mesh.colors = colors || new Uint32Array(faces.length / 3).fill(0x0000FF);
   mesh.bounds = bounds;
   mesh.updateNormals();
 

@@ -203,9 +203,8 @@ export default class TileGroup {
       }
     }
 
-    // 3. Generate center heights, colors, and face colors for each of the 30x30 tiles
+    // 3. Generate center heights and face colors for each of the 30x30 tiles
     const colors = [];
-    const faceColors = [];
 
     for (let j = 0; j < segments; j++) {
       const globalZ = gz * segments + j - segments / 2;
@@ -239,32 +238,28 @@ export default class TileGroup {
           // Deterministic water surface ripples
           verts[centerVertIdx * 3 + 1] = (tileRand * 2 - 1) * 2;
 
-          const colorIdx = colors.length;
-          colors.push(getWaterColor(globalX, globalZ, noise)); // Depth-dependent water color
-          faceColors.push(colorIdx, colorIdx, colorIdx, colorIdx);
+          const waterColor = getWaterColor(globalX, globalZ, noise); // Depth-dependent water color
+          colors.push(waterColor, waterColor, waterColor, waterColor);
 
         } else if (Math.min(h_tl, h_tr, h_br, h_bl) <= 0) {
           // Coast tile
-          const coastColorIdx = colors.length;
           const cr = (tileRand * 20 + 200) | 0;
           const cg = (((tileRand * 15.6) % 1) * 20 + 200) | 0;
-          colors.push((cr << 16) | (cg << 8)); // Sandy coast
+          const coastColor = (cr << 16) | (cg << 8); // Sandy coast
 
           const h_ey = getTTDMidpoint(h_tl, h_tr, h_br, h_bl);
           verts[centerVertIdx * 3 + 1] = h_ey;
 
           if (h_ey === 0) {
             // Partial water inside coast
-            const waterColorIdx = colors.length;
-            colors.push(getWaterColor(globalX, globalZ, noise));
+            const waterColor = getWaterColor(globalX, globalZ, noise);
 
-            faceColors.push(h_tl === h_tr ? waterColorIdx : coastColorIdx);
-            faceColors.push(h_tr === h_br ? waterColorIdx : coastColorIdx);
-            faceColors.push(h_br === h_bl ? waterColorIdx : coastColorIdx);
-            faceColors.push(h_bl === h_tl ? waterColorIdx : coastColorIdx);
+            colors.push(h_tl === h_tr ? waterColor : coastColor);
+            colors.push(h_tr === h_br ? waterColor : coastColor);
+            colors.push(h_br === h_bl ? waterColor : coastColor);
+            colors.push(h_bl === h_tl ? waterColor : coastColor);
           } else {
             // Partial grass inside coast
-            const grassColorIdx = colors.length;
             const bx = globalX;
             const bz = globalZ;
             // Diffuse boundaries using high-frequency noise perturbation
@@ -288,12 +283,12 @@ export default class TileGroup {
               g = (tileRand * 20 + 150) | 0;
               b = (tileRand * 15 + 55) | 0;
             }
-            colors.push((r << 16) | (g << 8) | b);
+            const grassColor = (r << 16) | (g << 8) | b;
 
-            faceColors.push(h_tl === h_ey && h_tr === h_ey ? grassColorIdx : coastColorIdx);
-            faceColors.push(h_tr === h_ey && h_br === h_ey ? grassColorIdx : coastColorIdx);
-            faceColors.push(h_br === h_ey && h_bl === h_ey ? grassColorIdx : coastColorIdx);
-            faceColors.push(h_bl === h_ey && h_tl === h_ey ? grassColorIdx : coastColorIdx);
+            colors.push(h_tl === h_ey && h_tr === h_ey ? grassColor : coastColor);
+            colors.push(h_tr === h_ey && h_br === h_ey ? grassColor : coastColor);
+            colors.push(h_br === h_ey && h_bl === h_ey ? grassColor : coastColor);
+            colors.push(h_bl === h_ey && h_tl === h_ey ? grassColor : coastColor);
           }
 
         } else {
@@ -301,16 +296,15 @@ export default class TileGroup {
           const h_ey = getTTDMidpoint(h_tl, h_tr, h_br, h_bl);
           verts[centerVertIdx * 3 + 1] = h_ey;
 
-          const colorIdx = colors.length;
-          
+          let groundColor;
           if (h_ey >= 340) {
             // Snowy peak
             const gray = (240 + tileRand * 15) | 0;
-            colors.push((gray << 16) | (gray << 8) | gray); // Snowy white
+            groundColor = (gray << 16) | (gray << 8) | gray; // Snowy white
           } else if (h_ey >= 240) {
             // Rocky mountain slope
             const gray = (120 + tileRand * 25) | 0;
-            colors.push((gray << 16) | (gray << 8) | gray); // Stone gray
+            groundColor = (gray << 16) | (gray << 8) | gray; // Stone gray
           } else {
             // Grass green / biome ground color
             const bx = globalX;
@@ -336,28 +330,27 @@ export default class TileGroup {
               g = (tileRand * 20 + 150) | 0;
               b = (tileRand * 15 + 55) | 0;
             }
-            colors.push((r << 16) | (g << 8) | b);
+            groundColor = (r << 16) | (g << 8) | b;
           }
 
-          faceColors.push(colorIdx, colorIdx, colorIdx, colorIdx);
+          colors.push(groundColor, groundColor, groundColor, groundColor);
         }
       }
     }
 
-    // 4. Apply palette and face colors
+    // 4. Apply face colors
     this.terrain.meshRenderer.colors = new Uint32Array(colors);
-    this.terrain.meshRenderer.faceColors = new Uint32Array(faceColors);
 
     // 5. Simplify mesh (collapse flat areas)
     const simplifiedMesh = Terrain.simplifyExistingGridMesh(
       this.terrain.meshRenderer.vertices,
       this.terrain.meshRenderer.faces,
-      this.terrain.meshRenderer.faceColors,
+      this.terrain.meshRenderer.colors,
       segments
     );
 
     this.terrain.meshRenderer.faces = simplifiedMesh.faces;
-    this.terrain.meshRenderer.faceColors = simplifiedMesh.faceColors;
+    this.terrain.meshRenderer.colors = simplifiedMesh.colors;
 
     // Update shading and normals
     this.terrain.meshRenderer.updateNormals();
@@ -429,26 +422,32 @@ export default class TileGroup {
           if (rng.next() > spawnProb) {
             const tree = treePool.acquire();
             tree.setType(treeType);
+            const faceCount = tree.meshRenderer.faces.length / 3;
+            const colors = new Uint32Array(faceCount);
 
             if (treeType === 'cone') {
               // Pine tree: short brown trunk + classic dark green foliage
               const trunkColor = 0x5c4033; // Brown trunk
               const foliageColor = 0x006400; // Classic dark green pine
-              tree.meshRenderer.colors = new Uint32Array([trunkColor, foliageColor]);
+
+              colors.fill(trunkColor, 0, 3);  // 3 trunk faces
+              colors.fill(foliageColor, 3);
             } else {
-              // New lollipop trees: brown trunk + varied foliage
+              // Lollipop trees: brown trunk + varied foliage tones
               const trunkColor = 0x5c4033; // Brown trunk
-              
+
               // Foliage color variation: deep forest green to lime/yellowy-green (NOT too reddish)
               const tColor = rng.next();
               const r = ((1 - tColor) * 34 + tColor * 110) | 0; // 34 to 110
               const g = ((1 - tColor) * 139 + tColor * 165) | 0; // 139 to 165
-              const b = ((1 - tColor) * 34 + tColor * 45) | 0;  // 34 to 45
+              const b = ((1 - tColor) * 34 + tColor * 45) | 0; // 34 to 45
               const foliageColor = (r << 16) | (g << 8) | b;
-              
-              tree.meshRenderer.colors = new Uint32Array([trunkColor, foliageColor]);
+
+              colors.fill(trunkColor, 0, 4);  // 4 trunk faces
+              colors.fill(foliageColor, 4);   // 16 foliage faces
             }
 
+            tree.meshRenderer.colors = colors;
             tree.meshRenderer.layer = 0;
             tree.meshRenderer.depthBias = -16;
 
@@ -512,8 +511,13 @@ export default class TileGroup {
           if (rockRng.next() > rockSpawnProb) {
             const rock = this.rockPool.acquire();
             
-            // Stone gray color - single static color (no variety)
-            rock.meshRenderer.colors = new Uint32Array([0x777777]);
+            // Stone gray color variation per rock (slate gray 90 to granite gray 138)
+            const tRock = rockRng.next();
+            const gray = (90 + tRock * 48) | 0;
+            const rockColor = (gray << 16) | (gray << 8) | gray;
+
+            const rockFaceCount = rock.meshRenderer.faces.length / 3;
+            rock.meshRenderer.colors = new Uint32Array(rockFaceCount).fill(rockColor);
             rock.meshRenderer.layer = 0;
             rock.meshRenderer.depthBias = -16;
 

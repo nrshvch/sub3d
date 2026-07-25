@@ -85,6 +85,7 @@ function generateBoxMesh(width, height, depth, segments) {
     vertices: new Float32Array(verts),
     uvs: new Float32Array(uvs),
     faces: new Uint16Array(faces),
+    colors: new Uint32Array(faces.length / 3).fill(0x0000FF),
   };
 }
 
@@ -104,6 +105,7 @@ function Box() {
   mesh.vertices = boxMesh.vertices;
   mesh.uvs = boxMesh.uvs;
   mesh.faces = boxMesh.faces;
+  mesh.colors = boxMesh.colors;
   mesh.bounds = bounds;
   mesh.updateNormals();
 

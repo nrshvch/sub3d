@@ -11,7 +11,6 @@ const MeshComponent = scaliaEngine.MeshComponent;
 function generateRockMesh() {
   const verts = [];
   const faces = [];
-  const faceColors = [];
 
   // 1. Flat Base vertices (y = 0.0) - 5 unequally distanced points
   verts.push(0.31, 0.0, 0.03);   // Index 0
@@ -39,11 +38,6 @@ function generateRockMesh() {
   faces.push(4, 7, 5);
   faces.push(4, 5, 0);
 
-  // 9 face colors (all using color index 0)
-  for (let i = 0; i < 9; i++) {
-    faceColors.push(0);
-  }
-
   const vertices = new Float32Array(verts);
   const bounds = new Float32Array(32);
   MeshComponent.computeBoundsFlatArray(bounds, 0, vertices);
@@ -52,7 +46,7 @@ function generateRockMesh() {
   return {
     vertices,
     faces: new Uint16Array(faces),
-    faceColors: new Uint32Array(faceColors),
+    colors: new Uint32Array(9).fill(0x777777),
     bounds
   };
 }
@@ -70,7 +64,7 @@ export default function Rock() {
   mesh.vertices = rockMesh.vertices;
   mesh.faces = rockMesh.faces;
   mesh.bounds = rockMesh.bounds;
-  mesh.faceColors = rockMesh.faceColors;
+  mesh.colors = rockMesh.colors;
   mesh.updateNormals();
 
   this.addComponent(mesh);

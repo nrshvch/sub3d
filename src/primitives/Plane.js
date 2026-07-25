@@ -39,6 +39,7 @@ function generatePlaneMesh(width, height, segments) {
   return {
     vertices: new Float32Array(verts),
     faces: new Uint16Array(faces),
+    colors: new Uint32Array(faces.length / 3).fill(0x0000FF),
   };
 }
 
@@ -57,6 +58,7 @@ export default function Plane() {
 
   mesh.faces = planeMesh.faces;
   mesh.vertices = planeMesh.vertices;
+  mesh.colors = planeMesh.colors;
   mesh.bounds = bounds;
   mesh.updateNormals();
 
