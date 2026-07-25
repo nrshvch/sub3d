@@ -46,7 +46,7 @@ function generateRockMesh() {
   return {
     vertices,
     faces: new Uint16Array(faces),
-    colors: new Uint32Array(9).fill(0x777777),
+    colors: new Uint32Array(8).fill(0x777777),
     bounds
   };
 }

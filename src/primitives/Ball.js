@@ -8,7 +8,7 @@ function generateBallMesh(rings, sectors, radius) {
   const lookup = {};
 
   function getVertexIndex(x, y, z, u, v) {
-    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)},${u.toFixed(5)},${v.toFixed(5)}`;
+    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
     if (lookup[key] !== undefined) return lookup[key];
 
     const index = verts.length / 3;
@@ -40,7 +40,7 @@ function generateBallMesh(rings, sectors, radius) {
     grid.push(row);
   }
 
-  // 2. Generate Faces using your original skipping logic
+  // 2. Generate Faces using skipping logic
   for (let r = 0; r < rings; r++) {
     for (let s = 0; s < sectors; s++) {
       const first = grid[r][s];
@@ -64,7 +64,7 @@ function generateBallMesh(rings, sectors, radius) {
     vertices: new Float32Array(verts),
     uvs: new Float32Array(uvs),
     faces: new Uint16Array(faces),
-    colors: new Uint32Array(faces.length / 3).fill(0x0000FF),
+    colors: new Uint32Array(verts.length / 3).fill(0x0000FF),
   };
 }
 
@@ -95,7 +95,7 @@ function Ball(vertices, faces, uvs, bounds, colors) {
   mesh.vertices = vertices;
   mesh.faces = faces;
   mesh.uvs = uvs;
-  mesh.colors = colors || new Uint32Array(faces.length / 3).fill(0x0000FF);
+  mesh.colors = colors || new Uint32Array(vertices.length / 3).fill(0x0000FF);
   mesh.bounds = bounds;
   mesh.updateNormals();
 

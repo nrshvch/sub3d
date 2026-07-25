@@ -4,42 +4,46 @@ const GameObject = scaliaEngine.GameObject;
 const MeshComponent = scaliaEngine.MeshComponent;
 
 /**
- * Simplifies an existing subdivided grid mesh by collapsing flat, uniform tiles.
- * @param {Float32Array} vertices - Existing vertex buffer [x,y,z...]
+ * Simplifies an existing subdivided grid terrain mesh by collapsing flat, single-color tiles.
+ * 
+ * Each tile starts with 12 split vertices (3 vertices per triangle across 4 triangles).
+ * - If a tile is flat (center vertex lies on plane of corners) AND uniform in color (all 12 vertices match),
+ *   its 4 triangles are collapsed into 2 diagonal triangles, cutting face count in half.
+ * - Otherwise (slopes, ridges, or multi-colored shore transitions), all 4 triangles with split vertices
+ *   are retained to preserve detail and hard color edges.
+ * 
+ * @param {Float32Array} vertices - Existing vertex position buffer [x, y, z...]
  * @param {Uint32Array} faces - Existing face index buffer
- * @param {Uint32Array} colors - Map of face index to 32-bit color
- * @param {number} segments - The grid resolution (e.g., 30 for 30x30 cells)
+ * @param {Uint32Array} colors - Per-vertex 32-bit packed color buffer
+ * @param {number} segments - Grid resolution (e.g. 30 for 30x30 cells)
+ * @returns {{vertices: Float32Array, faces: Uint32Array, colors: Uint32Array}}
  */
 export function simplifyExistingGridMesh(vertices, faces, colors, segments) {
-  const row = segments + 1;
-  const gridVertsCount = row * row;
-
   const newFaces = [];
-  const newColors = [];
 
   // Helper: Get the Y-height of a cell center vertex
   const getCellHeight = (cx, cy) => {
-    const centerVertIdx = gridVertsCount + (cy * segments + cx);
-    return vertices[centerVertIdx * 3 + 1];
+    const baseVert = (cy * segments + cx) * 12;
+    return vertices[(baseVert + 1) * 3 + 1]; // Center vertex Y
   };
 
-  // Helper: Check if all 4 triangles in a cell share the same color
+  // Helper: Checks if all 12 vertices of a tile cell share the exact same color
   const isCellUniformColor = (cx, cy) => {
-    const startIdx = (cy * segments + cx) * 4;
-    const c0 = colors[startIdx];
-    return (
-      colors[startIdx + 1] === c0 &&
-      colors[startIdx + 2] === c0 &&
-      colors[startIdx + 3] === c0
-    );
+    const baseVert = (cy * segments + cx) * 12;
+    const c0 = colors[baseVert];
+    for (let k = 1; k < 12; k++) {
+      if (colors[baseVert + k] !== c0) return false;
+    }
+    return true;
   };
 
-  // Helper: Check if center vertex lies perfectly on the plane of the corners
+  // Helper: Checks if the tile's center vertex Y position matches the average of the 4 corners
   const isCellFlat = (cx, cy) => {
-    const tlY = vertices[(cy * row + cx) * 3 + 1];
-    const trY = vertices[(cy * row + (cx + 1)) * 3 + 1];
-    const blY = vertices[((cy + 1) * row + cx) * 3 + 1];
-    const brY = vertices[((cy + 1) * row + (cx + 1)) * 3 + 1];
+    const baseVert = (cy * segments + cx) * 12;
+    const tlY = vertices[baseVert * 3 + 1];           // Triangle 0: Top-Left
+    const trY = vertices[(baseVert + 2) * 3 + 1];     // Triangle 0: Top-Right
+    const blY = vertices[(baseVert + 8) * 3 + 1];     // Triangle 2: Bottom-Left
+    const brY = vertices[(baseVert + 5) * 3 + 1];     // Triangle 1: Bottom-Right
     const centerY = getCellHeight(cx, cy);
 
     // Average corner height
@@ -52,12 +56,7 @@ export function simplifyExistingGridMesh(vertices, faces, colors, segments) {
   for (let y = 0; y < segments; y++) {
     for (let x = 0; x < segments; x++) {
       const cellIdx = y * segments + x;
-
-      // Get corner indices for this specific tile
-      const tl = y * row + x;
-      const tr = y * row + (x + 1);
-      const bl = (y + 1) * row + x;
-      const br = (y + 1) * row + (x + 1);
+      const baseVert = cellIdx * 12;
 
       const flat = isCellFlat(x, y);
       const uniform = isCellUniformColor(x, y);
@@ -65,44 +64,16 @@ export function simplifyExistingGridMesh(vertices, faces, colors, segments) {
       // STEP 1: Determine if this tile can be simplified.
       // It must be flat (no peak/pit) and all 4 triangles must be the same color.
       if (flat && uniform) {
-        /**
-         * SIMPLIFIED CASE:
-         * Collapse 4 triangles into 2. This bypasses the center vertex.
-         * Visual is preserved, face count per tile is halved.
-         */
-        const tileColor = colors[cellIdx * 4];
-
-        // Triangle 1: Top-Left, Bottom-Right, Top-Right
-        newFaces.push(tl, br, tr);
-        newColors.push(tileColor);
-
-        // Triangle 2: Top-Left, Bottom-Left, Bottom-Right
-        newFaces.push(tl, bl, br);
-        newColors.push(tileColor);
+        // SIMPLIFIED CASE: Collapse 4 triangles down to 2 diagonal triangles (saves 50% faces).
+        // Uses corner vertices: TL -> BR -> TR and TL -> BL -> BR
+        newFaces.push(baseVert + 0, baseVert + 5, baseVert + 2); // Triangle A
+        newFaces.push(baseVert + 0, baseVert + 8, baseVert + 5); // Triangle B
       } else {
-        /**
-         * COMPLEX CASE:
-         * If the tile is a "coast" (multi-color) or "rugged" (non-flat),
-         * we must use all 5 vertices and 4 triangles to preserve the detail.
-         */
-        const center = gridVertsCount + cellIdx;
-        const colorBase = cellIdx * 4;
-
-        // Triangle 0: Top-Left to Center
-        newFaces.push(tl, center, tr);
-        newColors.push(colors[colorBase]);
-
-        // Triangle 1: Top-Right to Center
-        newFaces.push(tr, center, br);
-        newColors.push(colors[colorBase + 1]);
-
-        // Triangle 2: Bottom-Right to Center
-        newFaces.push(br, center, bl);
-        newColors.push(colors[colorBase + 2]);
-
-        // Triangle 3: Bottom-Left to Center
-        newFaces.push(bl, center, tl);
-        newColors.push(colors[colorBase + 3]);
+        // DETAILED CASE: Preserve all 4 triangles with split vertices for hard-edge shores/slopes.
+        newFaces.push(baseVert + 0, baseVert + 1, baseVert + 2);   // Triangle 0: Top (TL, Center, TR)
+        newFaces.push(baseVert + 3, baseVert + 4, baseVert + 5);   // Triangle 1: Right (TR, Center, BR)
+        newFaces.push(baseVert + 6, baseVert + 7, baseVert + 8);   // Triangle 2: Bottom (BR, Center, BL)
+        newFaces.push(baseVert + 9, baseVert + 10, baseVert + 11); // Triangle 3: Left (BL, Center, TL)
       }
     }
   }
@@ -112,12 +83,18 @@ export function simplifyExistingGridMesh(vertices, faces, colors, segments) {
   return {
     vertices: vertices,
     faces: new Uint32Array(newFaces),
-    colors: new Uint32Array(newColors),
+    colors: colors,
   };
 }
 
 /**
- * Generates a flat 2D grid terrain mesh with a central vertex per tile.
+ * Generates a flat 2D grid terrain mesh template using 12 split vertices per 1x1 tile cell.
+ * Each of the 4 triangles per cell gets 3 dedicated (unshared) vertices.
+ * 
+ * @param {number} width - Total world-space width of the terrain chunk
+ * @param {number} height - Total world-space height/depth of the terrain chunk
+ * @param {number} segments - Grid resolution (e.g. 30 for 30x30 cells)
+ * @returns {{vertices: Float32Array, faces: Uint16Array, colors: Uint32Array}}
  */
 export function generateTerrainMesh(width, height, segments) {
   const verts = [];
@@ -128,46 +105,47 @@ export function generateTerrainMesh(width, height, segments) {
   const segW = width / segments;
   const segH = height / segments;
 
-  // 1. Generate GRID Vertices (The corners)
-  for (let iy = 0; iy <= segments; iy++) {
-    const z = iy * segH - hH;
-    for (let ix = 0; ix <= segments; ix++) {
-      const x = ix * segW - wH;
-      verts.push(x, 0, z);
-    }
-  }
-
-  const row = segments + 1;
-  const gridVertsCount = row * row;
-  let centerVertIdx = gridVertsCount;
-
-  // 2. Generate CENTER Vertices and Faces
   for (let iy = 0; iy < segments; iy++) {
+    const z0 = iy * segH - hH;
+    const z1 = (iy + 1) * segH - hH;
     for (let ix = 0; ix < segments; ix++) {
-      const tl = iy * row + ix;
-      const tr = iy * row + (ix + 1);
-      const bl = (iy + 1) * row + ix;
-      const br = (iy + 1) * row + (ix + 1);
+      const x0 = ix * segW - wH;
+      const x1 = (ix + 1) * segW - wH;
+      const cx = (x0 + x1) * 0.5; // Cell center X
+      const cz = (z0 + z1) * 0.5; // Cell center Z
 
-      // Center Position
-      const cx = (verts[tl * 3] + verts[tr * 3]) * 0.5;
-      const cz = (verts[tl * 3 + 2] + verts[bl * 3 + 2]) * 0.5;
+      const baseVert = (iy * segments + ix) * 12;
+
+      // Triangle 0: Top (TL, Center, TR)
+      verts.push(x0, 0, z0);
       verts.push(cx, 0, cz);
+      verts.push(x1, 0, z0);
+      faces.push(baseVert, baseVert + 1, baseVert + 2);
 
-      // 4 Triangles with reversed winding
-      faces.push(tl, centerVertIdx, tr); // Top
-      faces.push(tr, centerVertIdx, br); // Right
-      faces.push(br, centerVertIdx, bl); // Bottom
-      faces.push(bl, centerVertIdx, tl); // Left
+      // Triangle 1: Right (TR, Center, BR)
+      verts.push(x1, 0, z0);
+      verts.push(cx, 0, cz);
+      verts.push(x1, 0, z1);
+      faces.push(baseVert + 3, baseVert + 4, baseVert + 5);
 
-      centerVertIdx++;
+      // Triangle 2: Bottom (BR, Center, BL)
+      verts.push(x1, 0, z1);
+      verts.push(cx, 0, cz);
+      verts.push(x0, 0, z1);
+      faces.push(baseVert + 6, baseVert + 7, baseVert + 8);
+
+      // Triangle 3: Left (BL, Center, TL)
+      verts.push(x0, 0, z1);
+      verts.push(cx, 0, cz);
+      verts.push(x0, 0, z0);
+      faces.push(baseVert + 9, baseVert + 10, baseVert + 11);
     }
   }
 
   return {
     vertices: new Float32Array(verts),
     faces: new Uint16Array(faces),
-    colors: new Uint32Array(faces.length / 3).fill(0x0000FF),
+    colors: new Uint32Array(verts.length / 3).fill(0x0000FF),
   };
 }
 

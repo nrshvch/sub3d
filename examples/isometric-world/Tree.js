@@ -69,10 +69,10 @@ function generatePineMesh() {
     faces.push(10, next, current);
   }
 
-  const faceCount = faces.length / 3;
-  const colors = new Uint32Array(faceCount);
-  colors.fill(0x5c4033, 0, 3); // 3 trunk faces
-  colors.fill(0x006400, 3);    // 10 foliage faces
+  const vertexCount = verts.length / 3;
+  const colors = new Uint32Array(vertexCount);
+  colors.fill(0x5c4033, 0, 4); // 4 trunk vertices (0..3)
+  colors.fill(0x006400, 4);    // 12 foliage vertices (4..15)
 
   const vertices = new Float32Array(verts);
   const bounds = new Float32Array(32);
@@ -166,10 +166,10 @@ function generateBallTreeMesh() {
     }
   }
 
-  const faceCount = faces.length / 3;
-  const colors = new Uint32Array(faceCount);
-  colors.fill(0x5c4033, 0, 4); // 4 trunk faces
-  colors.fill(0x006400, 4);    // 16 foliage faces
+  const vertexCount = verts.length / 3;
+  const colors = new Uint32Array(vertexCount);
+  colors.fill(0x5c4033, 0, 4); // 4 trunk vertices (0..3)
+  colors.fill(0x006400, 4);    // foliage vertices (4..N)
 
   const vertices = new Float32Array(verts);
   const bounds = new Float32Array(32);

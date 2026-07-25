@@ -17,27 +17,25 @@ function generateApartmentMesh() {
     0x32281E, // 4: Door
   ];
 
-  function getVertexIndex(x, y, z) {
-    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+  function getVertexIndex(x, y, z, colorIdx) {
+    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)},${colorIdx}`;
     if (lookup[key] !== undefined) return lookup[key];
     const index = verts.length / 3;
     verts.push(x, y, z);
+    colors[index] = palette[colorIdx];
     lookup[key] = index;
     return index;
   }
 
   function addQuad(p1, p2, p3, p4, colorIdx) {
-    const v1 = getVertexIndex(...p1);
-    const v2 = getVertexIndex(...p2);
-    const v3 = getVertexIndex(...p3);
-    const v4 = getVertexIndex(...p4);
-    const col = palette[colorIdx];
+    const v1 = getVertexIndex(...p1, colorIdx);
+    const v2 = getVertexIndex(...p2, colorIdx);
+    const v3 = getVertexIndex(...p3, colorIdx);
+    const v4 = getVertexIndex(...p4, colorIdx);
     // Triangle 1
     faces.push(v1, v2, v3);
-    colors.push(col);
     // Triangle 2
     faces.push(v1, v3, v4);
-    colors.push(col);
   }
 
   const b = 0.2; // Basement height
