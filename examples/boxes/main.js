@@ -1,5 +1,5 @@
 import scaliaEngine from "sub3d";
-import "sub3d/sub3d.css";
+import "sub3d/dist/sub3d.css";
 import { vec3 } from "gl-matrix";
 import boxTexture from "./box.png";
 
@@ -52,7 +52,8 @@ function createBox() {
   const r = (Math.random() * 255) | 0;
   const g = (Math.random() * 255) | 0;
   const b = (Math.random() * 255) | 0;
-  child.meshRenderer.colors = new Uint32Array([(r << 16) | (g << 8) | b]);
+  const vertCount = child.meshRenderer.vertices.length / 3;
+  child.meshRenderer.colors = new Uint32Array(vertCount).fill((r << 16) | (g << 8) | b);
 
   const size = (Math.random() * 2.5) | 0;
 
