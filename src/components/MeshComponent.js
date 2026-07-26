@@ -30,6 +30,11 @@ p.colors = null;
 
 p.uvs = null;
 
+// TODO:
+// if/when UV animation lands, add a `uvVersion` counter here (bumped whenever `uvs`
+// is mutated) so Canvas2dRenderer can cache the per-face affine texture-mapping terms
+// (delta, invDelta, and the UV-difference/cross terms in the case 2/5 shader blocks) and
+// only recompute them when this mesh's UVs actually change, instead of every frame.
 p._texture = null;
 
 p.textureImage = null;
