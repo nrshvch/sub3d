@@ -2477,8 +2477,9 @@ function drawTriangles(
           ig2 = ambG,
           ib2 = ambB;
 
-        const lightsIndexBufferLen = lightsIndexBuffer[0] + 1; //TODO: why + 1?
-        for (let l = 1; l < lightsIndexBufferLen; l++) {
+        // index 0 is a count header, not a light - actual indices start at 1 (see roughCull)
+        const lightsCount = lightsIndexBuffer[0];
+        for (let l = 1; l <= lightsCount; l++) {
           const lightGO = gameObjects[lightsIndexBuffer[l]];
           if (lightGO.light.type === 0) {
             // DIRECTIONAL
@@ -2550,10 +2551,11 @@ function drawTriangles(
             fog2 = (dist2 - fogNearPane) / (fogFarPane - fogNearPane);
           }
         } else if (fogType === CameraComponent.FogType.LINEAR) {
-          fog0 =
-            fog1 =
-            fog2 =
-              (depthBuffer[idx] - fogNearPane) / (fogFarPane - fogNearPane); //TODO: why just one depth?
+          // Per-vertex camera-space Z
+          const invFogRange = 1 / (fogFarPane - fogNearPane);
+          fog0 = (clipGeometryBuffer[idx * 9 + 2] - fogNearPane) * invFogRange;
+          fog1 = (clipGeometryBuffer[idx * 9 + 5] - fogNearPane) * invFogRange;
+          fog2 = (clipGeometryBuffer[idx * 9 + 8] - fogNearPane) * invFogRange;
         }
 
         let avgFog = (fog0 + fog1 + fog2) * 0.33333;
@@ -2585,7 +2587,9 @@ function drawTriangles(
 
           if (Math.abs(delta) > 0.00001) {
             const invDelta = 1 / delta;
-            //TODO: cant we reuse those from previous calculations?
+            // delta/invDelta and the U/V terms below depend only on this face's UVs, not
+            // screen position - static for a static mesh. Cacheable per-face
+            // once MeshComponent gets a uvVersion counter
             const a =
               (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
             const c =
@@ -2617,10 +2621,6 @@ function drawTriangles(
             ctx.clip(); // clip to the expanded triangle
             ctx.setTransform(a, b, c, d, e, f);
             ctx.drawImage(img, 0, 0);
-            // if you are using ctx.clip(), you MUST use save() and restore().
-            // The Canvas 2D API provides no resetClip() method.
-            // Once a path is clipped, the only standard way to un-clip is by restoring a previous stack frame.
-            // But if you only modify transformations, substitute save() and restore() with faster ctx.resetTransform();
             ctx.restore();
 
             // Apply RGB Lighting (Multiply)
@@ -2644,7 +2644,6 @@ function drawTriangles(
             // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
             const color16L = (qrL << 8) | (qgL << 3) | (qbL >> 3);
 
-            //TODO: track current operation locally and change state only when necessary. This saves crossing the exponsive JS-to-C++ boundary.
             ctx.globalCompositeOperation = "multiply";
 
             if (prevFillStyle !== color16L) {
@@ -2655,7 +2654,6 @@ function drawTriangles(
             ctx.fill();
 
             // Restore default blending mode for the rest of the renderer
-            //TODO: track current operation locally and change state only when necessary. This saves crossing the exponsive JS-to-C++ boundary.
             ctx.globalCompositeOperation = "source-over";
 
             // Apply Fog (Source-Over)
