@@ -89,7 +89,7 @@ export default function Canvas2dRenderer() {
   this.meshIndexBuffer = new Uint32Array(0);
   this.meshFaceIndexBuffer = new Uint32Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
-  this.lightsIndexBuffer = new Uint32Array(10);
+  this.lightsIndexBuffer = new Uint32Array(10); // Buffer to store light source indices. First element store length.
   this.vertexBuffer = new Float32Array(0);
   this.vertexIndexBuffer = new Uint32Array(0);
   this.vMapping = new Int32Array(0);
@@ -2432,6 +2432,370 @@ function drawTriangles(
 
           ctx.fill();
         }
+
+        break;
+      }
+      case 5: {
+        //AVG_FLAT - Averaged Vertex Flat Fill
+
+        // Pre-calculate base index once
+        const baseIdx = idx * 3;
+
+        // Resolve vertex indices
+        /*
+        declaring distinct const variables (v0Idx, v1Idx, v2Idx) allows compiler to map each index to a separate CPU register simultaneously.
+        The CPU can then issue memory fetches from vertexNormalsBuffer in parallel or via out-of-order execution, eliminating wait cycles on buffer lookups.
+        */
+        const v0Idx = vertexIndexBuffer[baseIdx];
+        const v1Idx = vertexIndexBuffer[baseIdx + 1];
+        const v2Idx = vertexIndexBuffer[baseIdx + 2];
+
+        // Unroll normal extraction directly
+        const nx0 = vertexNormalsBuffer[v0Idx];
+        const ny0 = vertexNormalsBuffer[v0Idx + 1];
+        const nz0 = vertexNormalsBuffer[v0Idx + 2];
+
+        const nx1 = vertexNormalsBuffer[v1Idx];
+        const ny1 = vertexNormalsBuffer[v1Idx + 1];
+        const nz1 = vertexNormalsBuffer[v1Idx + 2];
+
+        const nx2 = vertexNormalsBuffer[v2Idx];
+        const ny2 = vertexNormalsBuffer[v2Idx + 1];
+        const nz2 = vertexNormalsBuffer[v2Idx + 2];
+
+        const ambR = (ambientLightRgb >>> 16) & 255;
+        const ambG = (ambientLightRgb >>> 8) & 255;
+        const ambB = ambientLightRgb & 255;
+
+        let ir0 = ambR,
+          ig0 = ambG,
+          ib0 = ambB;
+        let ir1 = ambR,
+          ig1 = ambG,
+          ib1 = ambB;
+        let ir2 = ambR,
+          ig2 = ambG,
+          ib2 = ambB;
+
+        const lightsIndexBufferLen = lightsIndexBuffer[0] + 1; //TODO: why + 1?
+        for (let l = 1; l < lightsIndexBufferLen; l++) {
+          const lightGO = gameObjects[lightsIndexBuffer[l]];
+          if (lightGO.light.type === 0) {
+            // DIRECTIONAL
+            const lx = -lightGO.transform.worldMatrix[8];
+            const ly = -lightGO.transform.worldMatrix[9];
+            const lz = -lightGO.transform.worldMatrix[10];
+
+            const lightColor32 = lightGO.light.color;
+            const lightR = (lightColor32 >>> 16) & 255;
+            const lightG = (lightColor32 >>> 8) & 255;
+            const lightB = lightColor32 & 255;
+
+             // Using Math.max(0, dot) allows compiler to generate conditional move instructions (like maxss / cmov) instead of jump/branch instructions e.g. if (dot > 0)
+            const dot0 = Math.max(0, nx0 * lx + ny0 * ly + nz0 * lz);
+            ir0 += lightR * dot0;
+            ig0 += lightG * dot0;
+            ib0 += lightB * dot0;
+
+            const dot1 = Math.max(0, nx1 * lx + ny1 * ly + nz1 * lz);
+            ir1 += lightR * dot1;
+            ig1 += lightG * dot1;
+            ib1 += lightB * dot1;
+
+            const dot2 = Math.max(0, nx2 * lx + ny2 * ly + nz2 * lz);
+            ir2 += lightR * dot2;
+            ig2 += lightG * dot2;
+            ib2 += lightB * dot2;
+          }
+        }
+
+        // Calculating fog
+        let fog0 = 0,
+          fog1 = 0,
+          fog2 = 0;
+
+        if (
+          fogType === CameraComponent.FogType.RADIAL_FAST ||
+          fogType === CameraComponent.FogType.RADIAL
+        ) {
+          // 1. Get the local camera-space coordinates from your cache
+          const w0x = clipGeometryBuffer[idx * 9];
+          const w0y = clipGeometryBuffer[idx * 9 + 1];
+          const w0z = clipGeometryBuffer[idx * 9 + 2];
+          const w1x = clipGeometryBuffer[idx * 9 + 3];
+          const w1y = clipGeometryBuffer[idx * 9 + 4];
+          const w1z = clipGeometryBuffer[idx * 9 + 5];
+          const w2x = clipGeometryBuffer[idx * 9 + 6];
+          const w2y = clipGeometryBuffer[idx * 9 + 7];
+          const w2z = clipGeometryBuffer[idx * 9 + 8];
+
+          if (fogType === CameraComponent.FogType.RADIAL_FAST) {
+            // We need the squares of panes for the comparison
+            const nearSq = fogNearPane * fogNearPane;
+            const farSq = fogFarPane * fogFarPane;
+            const invFogRangeSq = 1.0 / (farSq - nearSq);
+
+            fog0 = (w0x * w0x + w0y * w0y + w0z * w0z - nearSq) * invFogRangeSq;
+            fog1 = (w1x * w1x + w1y * w1y + w1z * w1z - nearSq) * invFogRangeSq;
+            fog2 = (w2x * w2x + w2y * w2y + w2z * w2z - nearSq) * invFogRangeSq;
+          } else {
+            // 2. Calculate Radial Distance
+            // Use x, y, and z for a spherical curve, or just x and z for a cylindrical curve.
+            const dist0 = Math.sqrt(w0x * w0x + w0y * w0y + w0z * w0z);
+            const dist1 = Math.sqrt(w1x * w1x + w1y * w1y + w1z * w1z);
+            const dist2 = Math.sqrt(w2x * w2x + w2y * w2y + w2z * w2z);
+
+            fog0 = (dist0 - fogNearPane) / (fogFarPane - fogNearPane);
+            fog1 = (dist1 - fogNearPane) / (fogFarPane - fogNearPane);
+            fog2 = (dist2 - fogNearPane) / (fogFarPane - fogNearPane);
+          }
+        } else if (fogType === CameraComponent.FogType.LINEAR) {
+          fog0 =
+            fog1 =
+            fog2 =
+              (depthBuffer[idx] - fogNearPane) / (fogFarPane - fogNearPane); //TODO: why just one depth?
+        }
+
+        let avgFog = (fog0 + fog1 + fog2) * 0.33333;
+
+        // Handle Textures
+        const mIdx = meshIndexBuffer[idx];
+        // Resolve mesh from the flat layerBuffers array using layerOffset and mesh index
+        const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
+        const img = mesh.textureImage;
+
+        if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
+          const mFaceIdx = meshFaceIndexBuffer[idx];
+          const uvs = mesh.uvs;
+          // original face vertex indices from mesh
+          const ov0 = mesh.faces[mFaceIdx] * 2;
+          const ov1 = mesh.faces[mFaceIdx + 1] * 2;
+          const ov2 = mesh.faces[mFaceIdx + 2] * 2;
+
+          const imgW = img.width;
+          const imgH = img.height;
+          const U0 = uvs[ov0] * imgW;
+          const V0 = uvs[ov0 + 1] * imgH;
+          const U1 = uvs[ov1] * imgW;
+          const V1 = uvs[ov1 + 1] * imgH;
+          const U2 = uvs[ov2] * imgW;
+          const V2 = uvs[ov2 + 1] * imgH;
+
+          const delta = U0 * (V1 - V2) - V0 * (U1 - U2) + (U1 * V2 - U2 * V1);
+
+          if (Math.abs(delta) > 0.00001) {
+            const invDelta = 1 / delta;
+            //TODO: cant we reuse those from previous calculations?
+            const a =
+              (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+            const c =
+              (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+            const e =
+              (px0 * (U1 * V2 - U2 * V1) +
+                px1 * (U2 * V0 - U0 * V2) +
+                px2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            const b =
+              (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+            const d =
+              (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+            const f =
+              (py0 * (U1 * V2 - U2 * V1) +
+                py1 * (U2 * V0 - U0 * V2) +
+                py2 * (U0 * V1 - U1 * V0)) *
+              invDelta;
+
+            ctx.save();
+
+            ctx.beginPath();
+            ctx.moveTo(epx0, epy0);
+            ctx.lineTo(epx1, epy1);
+            ctx.lineTo(epx2, epy2);
+            ctx.closePath();
+
+            ctx.clip(); // clip to the expanded triangle
+            ctx.setTransform(a, b, c, d, e, f);
+            ctx.drawImage(img, 0, 0);
+            // if you are using ctx.clip(), you MUST use save() and restore().
+            // The Canvas 2D API provides no resetClip() method.
+            // Once a path is clipped, the only standard way to un-clip is by restoring a previous stack frame.
+            // But if you only modify transformations, substitute save() and restore() with faster ctx.resetTransform();
+            ctx.restore();
+
+            // Apply RGB Lighting (Multiply)
+            let ir = (ir0 + ir1 + ir2) * 0.33333;
+            let ig = (ig0 + ig1 + ig2) * 0.33333;
+            let ib = (ib0 + ib1 + ib2) * 0.33333;
+            // Math.min
+            let clampR = ir > 255 ? 255 : ir;
+            let clampG = ig > 255 ? 255 : ig;
+            let clampB = ib > 255 ? 255 : ib;
+
+            clampR = clampR | 0;
+            clampG = clampG | 0;
+            clampB = clampB | 0;
+
+            // Quantize 8-bit color channels to 5-6-5 bits
+            const qrL = clampR & 0xf8; // Keep 5 bits
+            const qgL = clampG & 0xfc; // Keep 6 bits
+            const qbL = clampB & 0xf8; // Keep 5 bits
+
+            // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+            const color16L = (qrL << 8) | (qgL << 3) | (qbL >> 3);
+
+            //TODO: track current operation locally and change state only when necessary. This saves crossing the exponsive JS-to-C++ boundary.
+            ctx.globalCompositeOperation = "multiply";
+
+            if (prevFillStyle !== color16L) {
+              ctx.fillStyle = PALETTE_16BIT[color16L];
+              prevFillStyle = color16L;
+            }
+
+            ctx.fill();
+
+            // Restore default blending mode for the rest of the renderer
+            //TODO: track current operation locally and change state only when necessary. This saves crossing the exponsive JS-to-C++ boundary.
+            ctx.globalCompositeOperation = "source-over";
+
+            // Apply Fog (Source-Over)
+            if (avgFog > 0) {
+              if (avgFog > 1) avgFog = 1;
+
+              const fogR = fogColor >>> 16;
+              const fogG = (fogColor >>> 8) & 255;
+              const fogB = fogColor & 255;
+              // Quantize 8-bit color channels to 5-6-5 bits
+              const qrF = fogR & 0xf8; // Keep 5 bits
+              const qgF = fogG & 0xfc; // Keep 6 bits
+              const qbF = fogB & 0xf8; // Keep 5 bits
+
+              // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+              const color16F = (qrF << 8) | (qgF << 3) | (qbF >> 3);
+
+              ctx.globalAlpha = avgFog;
+
+              if (prevStrokeStyle !== color16F) {
+                ctx.strokeStyle = PALETTE_16BIT[color16F];
+                prevStrokeStyle = color16F;
+              }
+
+              if (prevLineStyle !== 10) {
+                ctx.lineWidth = 1;
+                ctx.lineJoin = "miter";
+                prevLineStyle = 10;
+              }
+
+              ctx.stroke();
+
+              if (prevFillStyle !== color16F) {
+                ctx.fillStyle = PALETTE_16BIT[color16F];
+                prevFillStyle = color16F;
+              }
+
+              ctx.fill();
+
+              // Reset alpha
+              ctx.globalAlpha = 1.0;
+            }
+
+            break;
+          }
+        }
+
+        const cIdx = idx * 3;
+        const c0 = colorBuffer[cIdx],
+          c1 = colorBuffer[cIdx + 1],
+          c2 = colorBuffer[cIdx + 2];
+
+        let r0 = c0 >>> 16,
+          g0 = (c0 >>> 8) & 255,
+          b0 = c0 & 255;
+        let r1 = c1 >>> 16,
+          g1 = (c1 >>> 8) & 255,
+          b1 = c1 & 255;
+        let r2 = c2 >>> 16,
+          g2 = (c2 >>> 8) & 255,
+          b2 = c2 & 255;
+
+        // 1 / 255 = 0.0039215
+        ir0 *= 0.0039215;
+        ig0 *= 0.0039215;
+        ib0 *= 0.0039215;
+        ir1 *= 0.0039215;
+        ig1 *= 0.0039215;
+        ib1 *= 0.0039215;
+        ir2 *= 0.0039215;
+        ig2 *= 0.0039215;
+        ib2 *= 0.0039215;
+
+        // lambertian lightning
+        r0 = r0 * ir0;
+        g0 = g0 * ig0;
+        b0 = b0 * ib0;
+        r1 = r1 * ir1;
+        g1 = g1 * ig1;
+        b1 = b1 * ib1;
+        r2 = r2 * ir2;
+        g2 = g2 * ig2;
+        b2 = b2 * ib2;
+
+        let r = (r0 + r1 + r2) * 0.33333;
+        let g = (g0 + g1 + g2) * 0.33333;
+        let b = (b0 + b1 + b2) * 0.33333;
+
+        if (avgFog > 0) {
+          if (avgFog > 1) avgFog = 1;
+
+          const fogR = fogColor >>> 16;
+          const fogG = (fogColor >>> 8) & 255;
+          const fogB = fogColor & 255;
+
+          // Blend the mesh color with the fog color
+          const invFog = 1 - avgFog;
+          r = r * invFog + fogR * avgFog;
+          g = g * invFog + fogG * avgFog;
+          b = b * invFog + fogB * avgFog;
+        }
+
+        // inlines Math.min(255, r) into hardware-level SIMD/vectorized min instructions (minss on x86) and combines the | 0 directly into a float-to-int conversion instruction (cvttss2si).
+        r = Math.min(255, r) | 0;
+        g = Math.min(255, g) | 0;
+        b = Math.min(255, b) | 0;
+
+        ctx.beginPath();
+        ctx.moveTo(px0, py0);
+        ctx.lineTo(px1, py1);
+        ctx.lineTo(px2, py2);
+        ctx.closePath();
+
+        // Quantize 8-bit color channels to 5-6-5 bits
+        const qr = r & 0xf8; // Keep 5 bits
+        const qg = g & 0xfc; // Keep 6 bits
+        const qb = b & 0xf8; // Keep 5 bits
+
+        // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+        const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
+
+        if (prevStrokeStyle !== color16) {
+          ctx.strokeStyle = PALETTE_16BIT[color16];
+          prevStrokeStyle = color16;
+        }
+
+        if (prevLineStyle !== 10) {
+          ctx.lineWidth = 1;
+          ctx.lineJoin = "miter";
+          prevLineStyle = 10;
+        }
+
+        ctx.stroke();
+
+        if (prevFillStyle !== color16) {
+          ctx.fillStyle = PALETTE_16BIT[color16];
+          prevFillStyle = color16;
+        }
+
+        ctx.fill();
 
         break;
       }
