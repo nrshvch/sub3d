@@ -28,11 +28,11 @@ export default function DebugPanel({ viewport }) {
   });
   const [wireframe, setWireframe] = useState(false);
 
-  // Sync wireframe from viewport renderer on load and when it changes
+  // Sync wireframe from the viewport on load and when it changes
   useEffect(() => {
     const checkWireframe = () => {
-      if (viewport && viewport.renderer) {
-        setWireframe(!!viewport.renderer.wireframe);
+      if (viewport) {
+        setWireframe(!!viewport.wireframe);
       }
     };
     checkWireframe();
@@ -78,9 +78,9 @@ export default function DebugPanel({ viewport }) {
     const nextWireframe = !wireframe;
     setWireframe(nextWireframe);
     
-    // 1. Update on active renderer directly
-    if (viewport && viewport.renderer) {
-      viewport.renderer.wireframe = nextWireframe;
+    // 1. Update the viewport - a renderer-wide flag, not a per-mesh setting
+    if (viewport) {
+      viewport.wireframe = nextWireframe;
     }
     
     // 2. Dispatch custom event for custom integrations (like terrain chunks in isometric-world)

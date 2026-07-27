@@ -155,7 +155,6 @@ const centerGroup = new TileGroup(
   treePool,
   rockPool,
   TILE_SIZE,
-  cameraController.isWireframe,
   cameraController.isSmooth,
   GROUP_TILES
 );
@@ -298,7 +297,6 @@ function updateChunks() {
       treePool,
       rockPool,
       TILE_SIZE,
-      cameraController.isWireframe,
       cameraController.isSmooth,
       GROUP_TILES
     );
@@ -315,7 +313,6 @@ myGame.run();
 // --- Setup UI Handlers and sync them with CameraController ---
 window.myGame = myGame;
 const viewport = cameraController.viewport;
-var renderer = viewport.renderer;
 var fps,
   avgDt,
   maxFps = 0;
@@ -450,13 +447,7 @@ if (toggleBtn) {
 // Wireframe Checkbox (Debug menu only)
 // Wireframe Change Event Listener
 window.addEventListener("s3d-wireframe-change", (e) => {
-  const checked = e.detail.enabled;
-  renderer.wireframe = checked;
-  cameraController.isWireframe = checked;
-  // Apply wireframe to all currently active chunks
-  for (const group of activeGroups.values()) {
-    group.setWireframe(checked);
-  }
+  viewport.wireframe = e.detail.enabled;
 });
 
 // Fog inputs (Debug menu)

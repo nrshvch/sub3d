@@ -55,7 +55,6 @@ export default class CameraController {
     this.mousepressed = false;
     this.x0 = 0;
     this.y0 = 0;
-    this.isWireframe = false;
     this.isSmooth = false;
     this.autoCycleEnabled = true;
     this.speedMultiplier = 1.0;

@@ -122,6 +122,14 @@ p.mat4Scratchpad1 = new Float32Array(16);
 p.mat4Scratchpad2 = new Float32Array(16);
 p.mat3Scratchpad1 = new Float32Array(9);
 
+/**
+ * Renderer-wide override: when true, every face across the whole scene draws as a wireframe
+ * regardless of its mesh's shaderType. Not a per-mesh setting - see Canvas2dViewport#wireframe
+ * for the public API consumers should use instead of setting this directly.
+ * @type {boolean}
+ */
+p.wireframe = false;
+
 p.render = function (camera, viewport, stats) {
   let t0 = performance.now();
 

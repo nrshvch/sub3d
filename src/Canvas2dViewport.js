@@ -108,6 +108,22 @@ p.canvas = null;
  */
 p.context = null;
 
+/**
+ * Renderer-wide wireframe override - when true, every face across the whole scene draws as a
+ * wireframe regardless of its mesh's shaderType (see Canvas2dRenderer's `wireframe` param).
+ * Not a per-mesh setting; toggle this once on the viewport instead of touching individual
+ * MeshComponents.
+ * @type {boolean}
+ */
+Object.defineProperty(p, "wireframe", {
+  get: function () {
+    return this.renderer.wireframe;
+  },
+  set: function (value) {
+    this.renderer.wireframe = value;
+  },
+});
+
 p.start = function () {
   this.setSize(this.canvas.offsetWidth, this.canvas.offsetHeight);
 
