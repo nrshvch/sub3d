@@ -23,7 +23,13 @@ const PALETTE_16BIT = palette.createPalette16Bit();
 // For cases when stroke cannot be done, e.g. textured polys
 const EXPANSION_COEFFICIENT = 0.6;
 
-function groupLayers(visibleObjectsBuffer, gameObjects, layerBuffersOffsets, layersCount, layerBuffers) {
+function groupLayers(
+  visibleObjectsBuffer,
+  gameObjects,
+  layerBuffersOffsets,
+  layersCount,
+  layerBuffers,
+) {
   if (layersCount === 1) {
     return visibleObjectsBuffer;
   }
@@ -45,7 +51,7 @@ function groupLayers(visibleObjectsBuffer, gameObjects, layerBuffersOffsets, lay
   for (let l = 0; l < layersCount; l++) {
     const count = layerBuffersOffsets[l];
     layerBuffersOffsets[l] = currentOffset;
-    
+
     layerBuffers[currentOffset] = 0; // Initialize count header to 0
     currentOffset += 1 + count;
   }
@@ -58,7 +64,7 @@ function groupLayers(visibleObjectsBuffer, gameObjects, layerBuffersOffsets, lay
       const layer = go.meshRenderer.layer;
       const offset = layerBuffersOffsets[layer];
       const length = layerBuffers[offset];
-      
+
       layerBuffers[offset + 1 + length] = goIdx;
       layerBuffers[offset] = length + 1;
     }
@@ -89,13 +95,22 @@ export default function Canvas2dRenderer() {
   this.meshIndexBuffer = new Uint32Array(0);
   this.meshFaceIndexBuffer = new Uint32Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
-  this.lightsIndexBuffer = new Uint32Array(10); // Buffer to store light source indices. First element store length.
+  /*
+  Buffer to store light source indices. First element store length.
+   */
+  this.lightsIndexBuffer = new Uint32Array(10);
   this.vertexBuffer = new Float32Array(0);
   this.vertexIndexBuffer = new Uint32Array(0);
   this.vMapping = new Int32Array(0);
   this.vTags = new Uint32Array(0);
   this.tempIndexBuffer = new Uint32Array(0);
   this.counters = new Uint32Array(256);
+  /*
+  Persistent 3-slot fillStyle/strokeStyle/lineStyle dedup
+  cache: [fillStyle key, strokeStyle key, lineStyle tag]. Shaders read/write these same slots directly,
+  so a run of same-styled faces only touches the canvas once regardless of which case drew them.
+   */
+  this.ctxStateBuffer = new Int32Array(3);
 }
 
 var p = Canvas2dRenderer.prototype;
@@ -146,7 +161,8 @@ p.render = function (camera, viewport, stats) {
     vMapping = this.vMapping,
     vTags = this.vTags,
     tempIndexBuffer = this.tempIndexBuffer,
-    counters = this.counters;
+    counters = this.counters,
+    ctxStateBuffer = this.ctxStateBuffer;
 
   let drawCalls = 0;
   let faces = 0;
@@ -218,7 +234,7 @@ p.render = function (camera, viewport, stats) {
     gameObjects,
     layerBuffersOffsets,
     layersCount,
-    this.layerBuffers
+    this.layerBuffers,
   );
   const groupTime = performance.now() - groupStart;
 
@@ -357,7 +373,17 @@ p.render = function (camera, viewport, stats) {
       // to reduce radix sorting passes. E.g., we could pack local face indices together with mesh
       // references (meshIndex), and utilize a single 32-bit number for both by employing dynamic bit
       // budgeting (allocating bits dynamically based on active mesh count and max face count per mesh).
-      radixSort(indexBuffer, tempIndexBuffer, depthBuffer, meshIndexBuffer, shaderPassBuffer, counters, l, cam.nearClippingPane, cam.farClippingPane);
+      radixSort(
+        indexBuffer,
+        tempIndexBuffer,
+        depthBuffer,
+        meshIndexBuffer,
+        shaderPassBuffer,
+        counters,
+        l,
+        cam.nearClippingPane,
+        cam.farClippingPane,
+      );
       totalSortTime += performance.now() - sortStart;
     }
 
@@ -394,6 +420,7 @@ p.render = function (camera, viewport, stats) {
       this.wireframe,
       lightsIndexBuffer,
       gameObjects,
+      ctxStateBuffer,
     );
 
     // Render debug axes by resolving GameObject indices from the flat layerBuffers array
@@ -426,7 +453,8 @@ p.render = function (camera, viewport, stats) {
   stats.groupTime = groupTime;
   stats.processTime = totalProcessTime;
   stats.drawTime = totalDrawTime;
-  stats.updateTime = camera.scene && camera.scene.world ? camera.scene.world.lastTickTime : 0;
+  stats.updateTime =
+    camera.scene && camera.scene.world ? camera.scene.world.lastTickTime : 0;
   stats.retrieveTime = retrieveTime;
   stats.dt = performance.now() - t0;
 };
@@ -1163,6 +1191,9 @@ function destructMesh(
  * @param {boolean} wireframe - Should faces be drawn as wireframes?
  * @param {Uint32Array} lightsIndexBuffer - Indices of active lights.
  * @param {Object} gameObjects - Dictionary of game objects in the scene.
+ * @param {Int32Array} ctxStateBuffer - Persistent 3-slot fillStyle/strokeStyle/lineStyle dedup
+ *   cache: [fillStyle key, strokeStyle key, lineStyle tag]. Shaders read/write these same slots directly,
+ *   so a run of same-styled faces only touches the canvas once regardless of which case drew them.
  */
 function drawTriangles(
   ctx,
@@ -1194,6 +1225,7 @@ function drawTriangles(
   wireframe,
   lightsIndexBuffer,
   gameObjects,
+  ctxStateBuffer,
 ) {
   const halfW = w * 0.5,
     halfH = h * 0.5;
@@ -1202,9 +1234,12 @@ function drawTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  let prevFillStyle = -1; // -1 = unset, number = quantized color key in PALLETE16
-  let prevStrokeStyle = -1; // -1 = unset, number = quantized color key in PALLETE16
-  let prevLineStyle = -1;
+  // ctxStateBuffer *is* the fillStyle/strokeStyle/lineStyle dedup cache - shaders read/write the same 3 slots directly, so there's no copy in/out at
+  // the custom-shader boundary. Reset once per layer (drawTriangles is called per layer, see
+  // render() below): -1 = unset, forces an explicit ctx style set on the first face drawn.
+  ctxStateBuffer[0] = -1; // fillStyle: quantized color key in PALETTE16
+  ctxStateBuffer[1] = -1; // strokeStyle: quantized color key in PALETTE16
+  ctxStateBuffer[2] = -1; // lineStyle tag
 
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i]; //take face index
@@ -1437,9 +1472,9 @@ function drawTriangles(
 
             ctx.globalCompositeOperation = "multiply";
 
-            if (prevFillStyle !== color16L) {
+            if (ctxStateBuffer[0] !== color16L) {
               ctx.fillStyle = PALETTE_16BIT[color16L];
-              prevFillStyle = color16L;
+              ctxStateBuffer[0] = color16L;
             }
 
             ctx.fill();
@@ -1462,22 +1497,22 @@ function drawTriangles(
 
               ctx.globalAlpha = fogAmount;
 
-              if (prevStrokeStyle !== color16F) {
+              if (ctxStateBuffer[1] !== color16F) {
                 ctx.strokeStyle = PALETTE_16BIT[color16F];
-                prevStrokeStyle = color16F;
+                ctxStateBuffer[1] = color16F;
               }
 
-              if (prevLineStyle !== 10) {
+              if (ctxStateBuffer[2] !== 10) {
                 ctx.lineWidth = 1;
                 ctx.lineJoin = "miter";
-                prevLineStyle = 10;
+                ctxStateBuffer[2] = 10;
               }
 
               ctx.stroke();
 
-              if (prevFillStyle !== color16F) {
+              if (ctxStateBuffer[0] !== color16F) {
                 ctx.fillStyle = PALETTE_16BIT[color16F];
-                prevFillStyle = color16F;
+                ctxStateBuffer[0] = color16F;
               }
 
               ctx.fill();
@@ -1504,22 +1539,22 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        if (prevStrokeStyle !== color16) {
+        if (ctxStateBuffer[1] !== color16) {
           ctx.strokeStyle = PALETTE_16BIT[color16];
-          prevStrokeStyle = color16;
+          ctxStateBuffer[1] = color16;
         }
 
-        if (prevLineStyle !== 10) {
+        if (ctxStateBuffer[2] !== 10) {
           ctx.lineWidth = 1;
           ctx.lineJoin = "miter";
-          prevLineStyle = 10;
+          ctxStateBuffer[2] = 10;
         }
 
         ctx.stroke();
 
-        if (prevFillStyle !== color16) {
+        if (ctxStateBuffer[0] !== color16) {
           ctx.fillStyle = PALETTE_16BIT[color16];
-          prevFillStyle = color16;
+          ctxStateBuffer[0] = color16;
         }
 
         ctx.fill();
@@ -1669,22 +1704,22 @@ function drawTriangles(
 
               ctx.globalAlpha = effectiveFog;
 
-              if (prevStrokeStyle !== color16F) {
+              if (ctxStateBuffer[1] !== color16F) {
                 ctx.strokeStyle = PALETTE_16BIT[color16F];
-                prevStrokeStyle = color16F;
+                ctxStateBuffer[1] = color16F;
               }
 
-              if (prevLineStyle !== 10) {
+              if (ctxStateBuffer[2] !== 10) {
                 ctx.lineWidth = 1;
                 ctx.lineJoin = "miter";
-                prevLineStyle = 10;
+                ctxStateBuffer[2] = 10;
               }
 
               ctx.stroke();
 
-              if (prevFillStyle !== color16F) {
+              if (ctxStateBuffer[0] !== color16F) {
                 ctx.fillStyle = PALETTE_16BIT[color16F];
-                prevFillStyle = color16F;
+                ctxStateBuffer[0] = color16F;
               }
 
               ctx.fill();
@@ -1711,9 +1746,9 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        if (prevFillStyle !== color16) {
+        if (ctxStateBuffer[0] !== color16) {
           ctx.fillStyle = PALETTE_16BIT[color16];
-          prevFillStyle = color16;
+          ctxStateBuffer[0] = color16;
         }
 
         ctx.fill();
@@ -1803,9 +1838,9 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        if (prevFillStyle !== color16) {
+        if (ctxStateBuffer[0] !== color16) {
           ctx.fillStyle = PALETTE_16BIT[color16];
-          prevFillStyle = color16;
+          ctxStateBuffer[0] = color16;
         }
 
         ctx.fill();
@@ -1820,15 +1855,15 @@ function drawTriangles(
         ctx.lineTo(px2, py2);
         ctx.closePath();
 
-        if (prevStrokeStyle !== 31) {
+        if (ctxStateBuffer[1] !== 31) {
           ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
-          prevStrokeStyle = 31;
+          ctxStateBuffer[1] = 31;
         }
 
-        if (prevLineStyle !== 5) {
+        if (ctxStateBuffer[2] !== 5) {
           ctx.lineWidth = 0.5;
           ctx.lineJoin = "miter";
-          prevLineStyle = 5;
+          ctxStateBuffer[2] = 5;
         }
 
         ctx.stroke();
@@ -1843,9 +1878,15 @@ function drawTriangles(
         const color32_1 = colorBuffer[cIdx + 1];
         const color32_2 = colorBuffer[cIdx + 2];
 
-        const r0 = color32_0 >>> 16, g0 = (color32_0 >>> 8) & 255, b0 = color32_0 & 255;
-        const r1 = color32_1 >>> 16, g1 = (color32_1 >>> 8) & 255, b1 = color32_1 & 255;
-        const r2 = color32_2 >>> 16, g2 = (color32_2 >>> 8) & 255, b2 = color32_2 & 255;
+        const r0 = color32_0 >>> 16,
+          g0 = (color32_0 >>> 8) & 255,
+          b0 = color32_0 & 255;
+        const r1 = color32_1 >>> 16,
+          g1 = (color32_1 >>> 8) & 255,
+          b1 = color32_1 & 255;
+        const r2 = color32_2 >>> 16,
+          g2 = (color32_2 >>> 8) & 255,
+          b2 = color32_2 & 255;
 
         let litR = ambientLightRgb >>> 16;
         let litG = (ambientLightRgb >>> 8) & 255;
@@ -2034,9 +2075,12 @@ function drawTriangles(
             const lg2 = ig2 >= 1.0 ? 255 : (ig2 * 255) | 0;
             const lb2 = ib2 >= 1.0 ? 255 : (ib2 * 255) | 0;
 
-            const l16_0 = ((lr0 & 0xf8) << 8) | ((lg0 & 0xfc) << 3) | ((lb0 & 0xf8) >> 3);
-            const l16_1 = ((lr1 & 0xf8) << 8) | ((lg1 & 0xfc) << 3) | ((lb1 & 0xf8) >> 3);
-            const l16_2 = ((lr2 & 0xf8) << 8) | ((lg2 & 0xfc) << 3) | ((lb2 & 0xf8) >> 3);
+            const l16_0 =
+              ((lr0 & 0xf8) << 8) | ((lg0 & 0xfc) << 3) | ((lb0 & 0xf8) >> 3);
+            const l16_1 =
+              ((lr1 & 0xf8) << 8) | ((lg1 & 0xfc) << 3) | ((lb1 & 0xf8) >> 3);
+            const l16_2 =
+              ((lr2 & 0xf8) << 8) | ((lg2 & 0xfc) << 3) | ((lb2 & 0xf8) >> 3);
 
             let _px0 = px0;
             let _py0 = py0;
@@ -2104,9 +2148,9 @@ function drawTriangles(
 
             // If intensity difference is minimal, use flat lighting overlay
             if (pi2 - pi0 < 0.01 || (_l16_0 === _l16_1 && _l16_1 === _l16_2)) {
-              if (prevFillStyle !== _l16_0) {
+              if (ctxStateBuffer[0] !== _l16_0) {
                 ctx.fillStyle = PALETTE_16BIT[_l16_0];
-                prevFillStyle = _l16_0;
+                ctxStateBuffer[0] = _l16_0;
               }
 
               ctx.beginPath();
@@ -2142,11 +2186,16 @@ function drawTriangles(
                 gy_end = _py0 + factor * gy_dir;
               }
 
-              const lightGrad = ctx.createLinearGradient(_px0, _py0, gx_end, gy_end);
+              const lightGrad = ctx.createLinearGradient(
+                _px0,
+                _py0,
+                gx_end,
+                gy_end,
+              );
               lightGrad.addColorStop(0, PALETTE_16BIT[_l16_0]);
               lightGrad.addColorStop(1, PALETTE_16BIT[_l16_2]);
 
-              prevFillStyle = -1; // Resets fillStyle cache
+              ctxStateBuffer[0] = -1; // Resets fillStyle cache
               ctx.fillStyle = lightGrad;
 
               ctx.beginPath();
@@ -2175,22 +2224,22 @@ function drawTriangles(
 
               ctx.globalAlpha = fogAmount;
 
-              if (prevStrokeStyle !== color16F) {
+              if (ctxStateBuffer[1] !== color16F) {
                 ctx.strokeStyle = PALETTE_16BIT[color16F];
-                prevStrokeStyle = color16F;
+                ctxStateBuffer[1] = color16F;
               }
 
-              if (prevLineStyle !== 10) {
+              if (ctxStateBuffer[2] !== 10) {
                 ctx.lineWidth = 1;
                 ctx.lineJoin = "miter";
-                prevLineStyle = 10;
+                ctxStateBuffer[2] = 10;
               }
 
               ctx.stroke();
 
-              if (prevFillStyle !== color16F) {
+              if (ctxStateBuffer[0] !== color16F) {
                 ctx.fillStyle = PALETTE_16BIT[color16F];
-                prevFillStyle = color16F;
+                ctxStateBuffer[0] = color16F;
               }
 
               ctx.fill();
@@ -2269,20 +2318,20 @@ function drawTriangles(
           ctx.lineTo(px2, py2);
           ctx.closePath();
 
-          if (prevFillStyle !== c16_0) {
+          if (ctxStateBuffer[0] !== c16_0) {
             ctx.fillStyle = PALETTE_16BIT[c16_0];
-            prevFillStyle = c16_0;
+            ctxStateBuffer[0] = c16_0;
           }
 
-          if (prevStrokeStyle !== c16_0) {
+          if (ctxStateBuffer[1] !== c16_0) {
             ctx.strokeStyle = PALETTE_16BIT[c16_0];
-            prevStrokeStyle = c16_0;
+            ctxStateBuffer[1] = c16_0;
           }
 
-          if (prevLineStyle !== 10) {
+          if (ctxStateBuffer[2] !== 10) {
             ctx.lineWidth = 1;
             ctx.lineJoin = "miter";
-            prevLineStyle = 10;
+            ctxStateBuffer[2] = 10;
           }
 
           ctx.stroke();
@@ -2363,20 +2412,20 @@ function drawTriangles(
           ctx.lineTo(px2, py2);
           ctx.closePath();
 
-          if (prevFillStyle !== _c16_0) {
+          if (ctxStateBuffer[0] !== _c16_0) {
             ctx.fillStyle = PALETTE_16BIT[_c16_0];
-            prevFillStyle = _c16_0;
+            ctxStateBuffer[0] = _c16_0;
           }
 
-          if (prevStrokeStyle !== _c16_0) {
+          if (ctxStateBuffer[1] !== _c16_0) {
             ctx.strokeStyle = PALETTE_16BIT[_c16_0];
-            prevStrokeStyle = _c16_0;
+            ctxStateBuffer[1] = _c16_0;
           }
 
-          if (prevLineStyle !== 10) {
+          if (ctxStateBuffer[2] !== 10) {
             ctx.lineWidth = 1;
             ctx.lineJoin = "miter";
-            prevLineStyle = 10;
+            ctxStateBuffer[2] = 10;
           }
 
           ctx.stroke();
@@ -2421,7 +2470,7 @@ function drawTriangles(
           // }
           grad.addColorStop(1, PALETTE_16BIT[_c16_2]);
 
-          prevFillStyle = -1; // Resets fillStyle
+          ctxStateBuffer[0] = -1; // Resets fillStyle
           ctx.fillStyle = grad;
 
           ctx.beginPath();
@@ -2492,7 +2541,7 @@ function drawTriangles(
             const lightG = (lightColor32 >>> 8) & 255;
             const lightB = lightColor32 & 255;
 
-             // Using Math.max(0, dot) allows compiler to generate conditional move instructions (like maxss / cmov) instead of jump/branch instructions e.g. if (dot > 0)
+            // Using Math.max(0, dot) allows compiler to generate conditional move instructions (like maxss / cmov) instead of jump/branch instructions e.g. if (dot > 0)
             const dot0 = Math.max(0, nx0 * lx + ny0 * ly + nz0 * lz);
             ir0 += lightR * dot0;
             ig0 += lightG * dot0;
@@ -2646,9 +2695,9 @@ function drawTriangles(
 
             ctx.globalCompositeOperation = "multiply";
 
-            if (prevFillStyle !== color16L) {
+            if (ctxStateBuffer[0] !== color16L) {
               ctx.fillStyle = PALETTE_16BIT[color16L];
-              prevFillStyle = color16L;
+              ctxStateBuffer[0] = color16L;
             }
 
             ctx.fill();
@@ -2673,22 +2722,22 @@ function drawTriangles(
 
               ctx.globalAlpha = avgFog;
 
-              if (prevStrokeStyle !== color16F) {
+              if (ctxStateBuffer[1] !== color16F) {
                 ctx.strokeStyle = PALETTE_16BIT[color16F];
-                prevStrokeStyle = color16F;
+                ctxStateBuffer[1] = color16F;
               }
 
-              if (prevLineStyle !== 10) {
+              if (ctxStateBuffer[2] !== 10) {
                 ctx.lineWidth = 1;
                 ctx.lineJoin = "miter";
-                prevLineStyle = 10;
+                ctxStateBuffer[2] = 10;
               }
 
               ctx.stroke();
 
-              if (prevFillStyle !== color16F) {
+              if (ctxStateBuffer[0] !== color16F) {
                 ctx.fillStyle = PALETTE_16BIT[color16F];
-                prevFillStyle = color16F;
+                ctxStateBuffer[0] = color16F;
               }
 
               ctx.fill();
@@ -2775,22 +2824,22 @@ function drawTriangles(
         // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
         const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-        if (prevStrokeStyle !== color16) {
+        if (ctxStateBuffer[1] !== color16) {
           ctx.strokeStyle = PALETTE_16BIT[color16];
-          prevStrokeStyle = color16;
+          ctxStateBuffer[1] = color16;
         }
 
-        if (prevLineStyle !== 10) {
+        if (ctxStateBuffer[2] !== 10) {
           ctx.lineWidth = 1;
           ctx.lineJoin = "miter";
-          prevLineStyle = 10;
+          ctxStateBuffer[2] = 10;
         }
 
         ctx.stroke();
 
-        if (prevFillStyle !== color16) {
+        if (ctxStateBuffer[0] !== color16) {
           ctx.fillStyle = PALETTE_16BIT[color16];
-          prevFillStyle = color16;
+          ctxStateBuffer[0] = color16;
         }
 
         ctx.fill();
