@@ -1,5 +1,4 @@
-import CameraComponent from "../components/CameraComponent.js";
-import {PALETTE_16BIT} from "../palette.js";
+import { PALETTE_16BIT } from "../palette.js";
 
 /**
  * Predefined shader (see registerShader in shaderRegistry.js for the full argument contract),
@@ -13,14 +12,35 @@ import {PALETTE_16BIT} from "../palette.js";
  */
 export function emissiveShader(
   ctx,
-  px0, py0, px1, py1, px2, py2,
-  epx0, epy0, epx1, epy1, epx2, epy2,
+  px0,
+  py0,
+  px1,
+  py1,
+  px2,
+  py2,
+  epx0,
+  epy0,
+  epx1,
+  epy1,
+  epx2,
+  epy2,
   clipGeometryBuffer,
   colorBuffer,
-  vertexNormalsBuffer, faceNormalsBuffer, v0Idx, v1Idx, v2Idx,
-  faceIdx, mesh, meshFaceIdx,
-  ambientLightRgb, lightsIndexBuffer, gameObjects,
-  fogType, fogColor, fogNearPane, fogFarPane,
+  vertexNormalsBuffer,
+  faceNormalsBuffer,
+  v0Idx,
+  v1Idx,
+  v2Idx,
+  faceIdx,
+  mesh,
+  meshFaceIdx,
+  ambientLightRgb,
+  lightsIndexBuffer,
+  gameObjects,
+  fogType,
+  fogColor,
+  fogNearPane,
+  fogFarPane,
   ctxStateBuffer,
 ) {
   const color32 = colorBuffer[faceIdx * 3];
@@ -31,10 +51,11 @@ export function emissiveShader(
   // Calculating fog
   let fogAmount = 0;
 
-  if (
-    fogType === CameraComponent.FogType.RADIAL_FAST ||
-    fogType === CameraComponent.FogType.RADIAL
-  ) {
+  // fogType arrives as a number (see CameraComponent.FogType: 0 NONE, 1 RADIAL, 2 RADIAL_FAST,
+  // 3 LINEAR) - compared directly as numbers here rather than through the enum object, since a
+  // number === number check is cheaper per-face than dereferencing CameraComponent.FogType.X
+  // and comparing strings.
+  if (fogType === 2 /* RADIAL_FAST */ || fogType === 1 /* RADIAL */) {
     const w0x = clipGeometryBuffer[faceIdx * 9];
     const w0y = clipGeometryBuffer[faceIdx * 9 + 1];
     const w0z = clipGeometryBuffer[faceIdx * 9 + 2];
@@ -51,7 +72,7 @@ export function emissiveShader(
     const ly = (w0y + w1y + w2y) * 0.33333;
     const lz = (w0z + w1z + w2z) * 0.33333;
 
-    if (fogType === CameraComponent.FogType.RADIAL_FAST) {
+    if (fogType === 2 /* RADIAL_FAST */) {
       // We need the squares of your panes for the comparison
       const nearSq = fogNearPane * fogNearPane;
       const farSq = fogFarPane * fogFarPane;
@@ -70,7 +91,7 @@ export function emissiveShader(
       // 3. Calculate fogAmount using distance instead of depth
       fogAmount = (distance - fogNearPane) / (fogFarPane - fogNearPane);
     }
-  } else if (fogType === CameraComponent.FogType.LINEAR) {
+  } else if (fogType === 3 /* LINEAR */) {
     const depth0 = clipGeometryBuffer[faceIdx * 9 + 2];
     const depth1 = clipGeometryBuffer[faceIdx * 9 + 5];
     const depth2 = clipGeometryBuffer[faceIdx * 9 + 8];
@@ -114,16 +135,20 @@ export function emissiveShader(
 
     if (Math.abs(delta) > 0.00001) {
       const invDelta = 1 / delta;
-      const a = (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
-      const c = (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+      const a =
+        (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+      const c =
+        (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
       const e =
         (px0 * (U1 * V2 - U2 * V1) +
           px1 * (U2 * V0 - U0 * V2) +
           px2 * (U0 * V1 - U1 * V0)) *
         invDelta;
 
-      const bT = (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
-      const d = (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+      const bT =
+        (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+      const d =
+        (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
       const f =
         (py0 * (U1 * V2 - U2 * V1) +
           py1 * (U2 * V0 - U0 * V2) +

@@ -2,11 +2,14 @@ import * as glMatrix from "gl-matrix";
 import Component from "../Component.js";
 import * as math from "../math.js";
 
+// Numeric values (not strings) - shaders compare fogType with raw number literals in their hot
+// per-face path instead of dereferencing CameraComponent.FogType.X, so the meaning of each
+// number is documented here once: 0 NONE, 1 RADIAL, 2 RADIAL_FAST, 3 LINEAR.
 const FogType = {
-    'NONE': 'NONE',
-    'RADIAL': 'RADIAL',
-    'RADIAL_FAST': 'RADIAL_FAST',
-    'LINEAR': 'LINEAR'
+    'NONE': 0,
+    'RADIAL': 1,
+    'RADIAL_FAST': 2,
+    'LINEAR': 3
 }
 
 

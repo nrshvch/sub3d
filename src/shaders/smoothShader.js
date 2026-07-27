@@ -1,5 +1,4 @@
-import CameraComponent from "../components/CameraComponent.js";
-import {PALETTE_16BIT} from "../palette.js";
+import { PALETTE_16BIT } from "../palette.js";
 
 /**
  * This *is* the built-in SMOOTH (Gouraud) shader (Canvas2dRenderer.js dispatches shaderType 4
@@ -18,14 +17,35 @@ import {PALETTE_16BIT} from "../palette.js";
  */
 export function smoothShader(
   ctx,
-  px0, py0, px1, py1, px2, py2,
-  epx0, epy0, epx1, epy1, epx2, epy2,
+  px0,
+  py0,
+  px1,
+  py1,
+  px2,
+  py2,
+  epx0,
+  epy0,
+  epx1,
+  epy1,
+  epx2,
+  epy2,
   clipGeometryBuffer,
   colorBuffer,
-  vertexNormalsBuffer, faceNormalsBuffer, v0Idx, v1Idx, v2Idx,
-  faceIdx, mesh, meshFaceIdx,
-  ambientLightRgb, lightsIndexBuffer, gameObjects,
-  fogType, fogColor, fogNearPane, fogFarPane,
+  vertexNormalsBuffer,
+  faceNormalsBuffer,
+  v0Idx,
+  v1Idx,
+  v2Idx,
+  faceIdx,
+  mesh,
+  meshFaceIdx,
+  ambientLightRgb,
+  lightsIndexBuffer,
+  gameObjects,
+  fogType,
+  fogColor,
+  fogNearPane,
+  fogFarPane,
   ctxStateBuffer,
 ) {
   // Read 3 per-vertex colors directly from the flat renderer colorBuffer
@@ -34,21 +54,39 @@ export function smoothShader(
   const color32_1 = colorBuffer[cIdx + 1];
   const color32_2 = colorBuffer[cIdx + 2];
 
-  const r0 = color32_0 >>> 16, g0 = (color32_0 >>> 8) & 255, b0 = color32_0 & 255;
-  const r1 = color32_1 >>> 16, g1 = (color32_1 >>> 8) & 255, b1 = color32_1 & 255;
-  const r2 = color32_2 >>> 16, g2 = (color32_2 >>> 8) & 255, b2 = color32_2 & 255;
+  const r0 = color32_0 >>> 16,
+    g0 = (color32_0 >>> 8) & 255,
+    b0 = color32_0 & 255;
+  const r1 = color32_1 >>> 16,
+    g1 = (color32_1 >>> 8) & 255,
+    b1 = color32_1 & 255;
+  const r2 = color32_2 >>> 16,
+    g2 = (color32_2 >>> 8) & 255,
+    b2 = color32_2 & 255;
 
   let litR = ambientLightRgb >>> 16;
   let litG = (ambientLightRgb >>> 8) & 255;
   let litB = ambientLightRgb & 255;
 
-  let ir0 = litR, ig0 = litG, ib0 = litB,
-    ir1 = litR, ig1 = litG, ib1 = litB,
-    ir2 = litR, ig2 = litG, ib2 = litB;
+  let ir0 = litR,
+    ig0 = litG,
+    ib0 = litB,
+    ir1 = litR,
+    ig1 = litG,
+    ib1 = litB,
+    ir2 = litR,
+    ig2 = litG,
+    ib2 = litB;
 
-  let nx0 = vertexNormalsBuffer[v0Idx], ny0 = vertexNormalsBuffer[v0Idx + 1], nz0 = vertexNormalsBuffer[v0Idx + 2];
-  let nx1 = vertexNormalsBuffer[v1Idx], ny1 = vertexNormalsBuffer[v1Idx + 1], nz1 = vertexNormalsBuffer[v1Idx + 2];
-  let nx2 = vertexNormalsBuffer[v2Idx], ny2 = vertexNormalsBuffer[v2Idx + 1], nz2 = vertexNormalsBuffer[v2Idx + 2];
+  let nx0 = vertexNormalsBuffer[v0Idx],
+    ny0 = vertexNormalsBuffer[v0Idx + 1],
+    nz0 = vertexNormalsBuffer[v0Idx + 2];
+  let nx1 = vertexNormalsBuffer[v1Idx],
+    ny1 = vertexNormalsBuffer[v1Idx + 1],
+    nz1 = vertexNormalsBuffer[v1Idx + 2];
+  let nx2 = vertexNormalsBuffer[v2Idx],
+    ny2 = vertexNormalsBuffer[v2Idx + 1],
+    nz2 = vertexNormalsBuffer[v2Idx + 2];
 
   const lightsCount = lightsIndexBuffer[0];
   for (let l = 1; l <= lightsCount; l++) {
@@ -86,9 +124,15 @@ export function smoothShader(
   }
 
   // 1 / 255 = 0.0039215
-  ir0 *= 0.0039215; ig0 *= 0.0039215; ib0 *= 0.0039215;
-  ir1 *= 0.0039215; ig1 *= 0.0039215; ib1 *= 0.0039215;
-  ir2 *= 0.0039215; ig2 *= 0.0039215; ib2 *= 0.0039215;
+  ir0 *= 0.0039215;
+  ig0 *= 0.0039215;
+  ib0 *= 0.0039215;
+  ir1 *= 0.0039215;
+  ig1 *= 0.0039215;
+  ib1 *= 0.0039215;
+  ir2 *= 0.0039215;
+  ig2 *= 0.0039215;
+  ib2 *= 0.0039215;
 
   let i0 = Math.min(Math.max(ir0, ig0, ib0), 1);
   let i1 = Math.min(Math.max(ir1, ig1, ib1), 1);
@@ -97,10 +141,11 @@ export function smoothShader(
   // Calculating fog based on face centroid
   let fogAmount = 0;
 
-  if (
-    fogType === CameraComponent.FogType.RADIAL_FAST ||
-    fogType === CameraComponent.FogType.RADIAL
-  ) {
+  // fogType arrives as a number (see CameraComponent.FogType: 0 NONE, 1 RADIAL, 2 RADIAL_FAST,
+  // 3 LINEAR) - compared directly as numbers here rather than through the enum object, since a
+  // number === number check is cheaper per-face than dereferencing CameraComponent.FogType.X
+  // and comparing strings.
+  if (fogType === 2 /* RADIAL_FAST */ || fogType === 1 /* RADIAL */) {
     const w0x = clipGeometryBuffer[faceIdx * 9];
     const w0y = clipGeometryBuffer[faceIdx * 9 + 1];
     const w0z = clipGeometryBuffer[faceIdx * 9 + 2];
@@ -115,7 +160,7 @@ export function smoothShader(
     const cy = (w0y + w1y + w2y) * 0.33333;
     const cz = (w0z + w1z + w2z) * 0.33333;
 
-    if (fogType === CameraComponent.FogType.RADIAL_FAST) {
+    if (fogType === 2 /* RADIAL_FAST */) {
       const nearSq = fogNearPane * fogNearPane;
       const farSq = fogFarPane * fogFarPane;
       const invFogRangeSq = 1.0 / (farSq - nearSq);
@@ -125,7 +170,7 @@ export function smoothShader(
       const distance = Math.sqrt(cx * cx + cy * cy + cz * cz);
       fogAmount = (distance - fogNearPane) / (fogFarPane - fogNearPane);
     }
-  } else if (fogType === CameraComponent.FogType.LINEAR) {
+  } else if (fogType === 3 /* LINEAR */) {
     const depth0 = clipGeometryBuffer[faceIdx * 9 + 2];
     const depth1 = clipGeometryBuffer[faceIdx * 9 + 5];
     const depth2 = clipGeometryBuffer[faceIdx * 9 + 8];
@@ -155,16 +200,20 @@ export function smoothShader(
 
     if (Math.abs(delta) > 0.00001) {
       const invDelta = 1 / delta;
-      const a = (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
-      const c = (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+      const a =
+        (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+      const c =
+        (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
       const e =
         (px0 * (U1 * V2 - U2 * V1) +
           px1 * (U2 * V0 - U0 * V2) +
           px2 * (U0 * V1 - U1 * V0)) *
         invDelta;
 
-      const bT = (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
-      const d = (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+      const bT =
+        (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+      const d =
+        (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
       const f =
         (py0 * (U1 * V2 - U2 * V1) +
           py1 * (U2 * V0 - U0 * V2) +
@@ -197,35 +246,71 @@ export function smoothShader(
       const lg2 = ig2 >= 1.0 ? 255 : (ig2 * 255) | 0;
       const lb2 = ib2 >= 1.0 ? 255 : (ib2 * 255) | 0;
 
-      const l16_0 = ((lr0 & 0xf8) << 8) | ((lg0 & 0xfc) << 3) | ((lb0 & 0xf8) >> 3);
-      const l16_1 = ((lr1 & 0xf8) << 8) | ((lg1 & 0xfc) << 3) | ((lb1 & 0xf8) >> 3);
-      const l16_2 = ((lr2 & 0xf8) << 8) | ((lg2 & 0xfc) << 3) | ((lb2 & 0xf8) >> 3);
+      const l16_0 =
+        ((lr0 & 0xf8) << 8) | ((lg0 & 0xfc) << 3) | ((lb0 & 0xf8) >> 3);
+      const l16_1 =
+        ((lr1 & 0xf8) << 8) | ((lg1 & 0xfc) << 3) | ((lb1 & 0xf8) >> 3);
+      const l16_2 =
+        ((lr2 & 0xf8) << 8) | ((lg2 & 0xfc) << 3) | ((lb2 & 0xf8) >> 3);
 
-      let _px0 = px0, _py0 = py0, _px1 = px1, _py1 = py1, _px2 = px2, _py2 = py2;
-      let pi0 = i0, pi1 = i1, pi2 = i2;
-      let _l16_0 = l16_0, _l16_1 = l16_1, _l16_2 = l16_2;
+      let _px0 = px0,
+        _py0 = py0,
+        _px1 = px1,
+        _py1 = py1,
+        _px2 = px2,
+        _py2 = py2;
+      let pi0 = i0,
+        pi1 = i1,
+        pi2 = i2;
+      let _l16_0 = l16_0,
+        _l16_1 = l16_1,
+        _l16_2 = l16_2;
 
       // In-place sort by intensity (ascending)
       if (pi0 > pi1) {
         let t;
-        t = _px0; _px0 = _px1; _px1 = t;
-        t = _py0; _py0 = _py1; _py1 = t;
-        t = pi0; pi0 = pi1; pi1 = t;
-        t = _l16_0; _l16_0 = _l16_1; _l16_1 = t;
+        t = _px0;
+        _px0 = _px1;
+        _px1 = t;
+        t = _py0;
+        _py0 = _py1;
+        _py1 = t;
+        t = pi0;
+        pi0 = pi1;
+        pi1 = t;
+        t = _l16_0;
+        _l16_0 = _l16_1;
+        _l16_1 = t;
       }
       if (pi1 > pi2) {
         let t;
-        t = _px1; _px1 = _px2; _px2 = t;
-        t = _py1; _py1 = _py2; _py2 = t;
-        t = pi1; pi1 = pi2; pi2 = t;
-        t = _l16_1; _l16_1 = _l16_2; _l16_2 = t;
+        t = _px1;
+        _px1 = _px2;
+        _px2 = t;
+        t = _py1;
+        _py1 = _py2;
+        _py2 = t;
+        t = pi1;
+        pi1 = pi2;
+        pi2 = t;
+        t = _l16_1;
+        _l16_1 = _l16_2;
+        _l16_2 = t;
       }
       if (pi0 > pi1) {
         let t;
-        t = _px0; _px0 = _px1; _px1 = t;
-        t = _py0; _py0 = _py1; _py1 = t;
-        t = pi0; pi0 = pi1; pi1 = t;
-        t = _l16_0; _l16_0 = _l16_1; _l16_1 = t;
+        t = _px0;
+        _px0 = _px1;
+        _px1 = t;
+        t = _py0;
+        _py0 = _py1;
+        _py1 = t;
+        t = pi0;
+        pi0 = pi1;
+        pi1 = t;
+        t = _l16_0;
+        _l16_0 = _l16_1;
+        _l16_1 = t;
       }
 
       ctx.globalCompositeOperation = "multiply";
@@ -328,13 +413,25 @@ export function smoothShader(
   }
 
   // Base quantized colors per vertex
-  let cr0 = r0 * ir0, cg0 = g0 * ig0, cb0 = b0 * ib0;
-  let cr1 = r1 * ir1, cg1 = g1 * ig1, cb1 = b1 * ib1;
-  let cr2 = r2 * ir2, cg2 = g2 * ig2, cb2 = b2 * ib2;
+  let cr0 = r0 * ir0,
+    cg0 = g0 * ig0,
+    cb0 = b0 * ib0;
+  let cr1 = r1 * ir1,
+    cg1 = g1 * ig1,
+    cb1 = b1 * ib1;
+  let cr2 = r2 * ir2,
+    cg2 = g2 * ig2,
+    cb2 = b2 * ib2;
 
-  cr0 = cr0 > 255 ? 255 : cr0; cg0 = cg0 > 255 ? 255 : cg0; cb0 = cb0 > 255 ? 255 : cb0;
-  cr1 = cr1 > 255 ? 255 : cr1; cg1 = cg1 > 255 ? 255 : cg1; cb1 = cb1 > 255 ? 255 : cb1;
-  cr2 = cr2 > 255 ? 255 : cr2; cg2 = cg2 > 255 ? 255 : cg2; cb2 = cb2 > 255 ? 255 : cb2;
+  cr0 = cr0 > 255 ? 255 : cr0;
+  cg0 = cg0 > 255 ? 255 : cg0;
+  cb0 = cb0 > 255 ? 255 : cb0;
+  cr1 = cr1 > 255 ? 255 : cr1;
+  cg1 = cg1 > 255 ? 255 : cg1;
+  cb1 = cb1 > 255 ? 255 : cb1;
+  cr2 = cr2 > 255 ? 255 : cr2;
+  cg2 = cg2 > 255 ? 255 : cg2;
+  cb2 = cb2 > 255 ? 255 : cb2;
 
   if (fogAmount > 0) {
     const invFog = 1 - fogAmount;
@@ -344,13 +441,25 @@ export function smoothShader(
     const fr = fogR * fogAmount;
     const fg = fogG * fogAmount;
     const fb = fogB * fogAmount;
-    cr0 = (cr0 * invFog + fr) | 0; cg0 = (cg0 * invFog + fg) | 0; cb0 = (cb0 * invFog + fb) | 0;
-    cr1 = (cr1 * invFog + fr) | 0; cg1 = (cg1 * invFog + fg) | 0; cb1 = (cb1 * invFog + fb) | 0;
-    cr2 = (cr2 * invFog + fr) | 0; cg2 = (cg2 * invFog + fg) | 0; cb2 = (cb2 * invFog + fb) | 0;
+    cr0 = (cr0 * invFog + fr) | 0;
+    cg0 = (cg0 * invFog + fg) | 0;
+    cb0 = (cb0 * invFog + fb) | 0;
+    cr1 = (cr1 * invFog + fr) | 0;
+    cg1 = (cg1 * invFog + fg) | 0;
+    cb1 = (cb1 * invFog + fb) | 0;
+    cr2 = (cr2 * invFog + fr) | 0;
+    cg2 = (cg2 * invFog + fg) | 0;
+    cb2 = (cb2 * invFog + fb) | 0;
   } else {
-    cr0 |= 0; cg0 |= 0; cb0 |= 0;
-    cr1 |= 0; cg1 |= 0; cb1 |= 0;
-    cr2 |= 0; cg2 |= 0; cb2 |= 0;
+    cr0 |= 0;
+    cg0 |= 0;
+    cb0 |= 0;
+    cr1 |= 0;
+    cg1 |= 0;
+    cb1 |= 0;
+    cr2 |= 0;
+    cg2 |= 0;
+    cb2 |= 0;
   }
 
   const c16_0 = ((cr0 & 0xf8) << 8) | ((cg0 & 0xfc) << 3) | ((cb0 & 0xf8) >> 3);
@@ -387,31 +496,64 @@ export function smoothShader(
   }
 
   // Screen space coordinates
-  let _px0 = px0, _py0 = py0, _px1 = px1, _py1 = py1, _px2 = px2, _py2 = py2;
-  let pi0 = i0, pi1 = i1, pi2 = i2;
-  let _c16_0 = c16_0, _c16_1 = c16_1, _c16_2 = c16_2;
+  let _px0 = px0,
+    _py0 = py0,
+    _px1 = px1,
+    _py1 = py1,
+    _px2 = px2,
+    _py2 = py2;
+  let pi0 = i0,
+    pi1 = i1,
+    pi2 = i2;
+  let _c16_0 = c16_0,
+    _c16_1 = c16_1,
+    _c16_2 = c16_2;
 
   // In-place sort by intensity (ascending)
   if (pi0 > pi1) {
     let t;
-    t = _px0; _px0 = _px1; _px1 = t;
-    t = _py0; _py0 = _py1; _py1 = t;
-    t = pi0; pi0 = pi1; pi1 = t;
-    t = _c16_0; _c16_0 = _c16_1; _c16_1 = t;
+    t = _px0;
+    _px0 = _px1;
+    _px1 = t;
+    t = _py0;
+    _py0 = _py1;
+    _py1 = t;
+    t = pi0;
+    pi0 = pi1;
+    pi1 = t;
+    t = _c16_0;
+    _c16_0 = _c16_1;
+    _c16_1 = t;
   }
   if (pi1 > pi2) {
     let t;
-    t = _px1; _px1 = _px2; _px2 = t;
-    t = _py1; _py1 = _py2; _py2 = t;
-    t = pi1; pi1 = pi2; pi2 = t;
-    t = _c16_1; _c16_1 = _c16_2; _c16_2 = t;
+    t = _px1;
+    _px1 = _px2;
+    _px2 = t;
+    t = _py1;
+    _py1 = _py2;
+    _py2 = t;
+    t = pi1;
+    pi1 = pi2;
+    pi2 = t;
+    t = _c16_1;
+    _c16_1 = _c16_2;
+    _c16_2 = t;
   }
   if (pi0 > pi1) {
     let t;
-    t = _px0; _px0 = _px1; _px1 = t;
-    t = _py0; _py0 = _py1; _py1 = t;
-    t = pi0; pi0 = pi1; pi1 = t;
-    t = _c16_0; _c16_0 = _c16_1; _c16_1 = t;
+    t = _px0;
+    _px0 = _px1;
+    _px1 = t;
+    t = _py0;
+    _py0 = _py1;
+    _py1 = t;
+    t = pi0;
+    pi0 = pi1;
+    pi1 = t;
+    t = _c16_0;
+    _c16_0 = _c16_1;
+    _c16_1 = t;
   }
 
   // If intensity difference is minimal, use flat shading
