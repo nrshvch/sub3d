@@ -1252,6 +1252,27 @@ function drawTriangles(
   ctxStateBuffer[1] = -1; // strokeStyle: quantized color key in PALETTE16
   ctxStateBuffer[2] = -1; // lineStyle tag
 
+  if (wireframe) {
+    // WIREFRAME: every face in this layer becomes one subpath of a single path, stroked once
+    // after the loop instead of once per face. stroke() has fixed per-call overhead (path
+    // flattening, join processing, compositing dispatch) on top of the segment work itself, so
+    // batching the whole layer into one beginPath/stroke pair amortizes that cost across every
+    // face instead of paying it per-triangle. Style never changes mid-layer (it's one fixed
+    // wireframe color/width for the whole scene), so it's set once here too.
+    ctx.beginPath();
+
+    if (ctxStateBuffer[1] !== 31) {
+      ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
+      ctxStateBuffer[1] = 31;
+    }
+
+    if (ctxStateBuffer[2] !== 5) {
+      ctx.lineWidth = 0.5;
+      ctx.lineJoin = "miter";
+      ctxStateBuffer[2] = 5;
+    }
+  }
+
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i]; //take face index
 
@@ -1300,25 +1321,12 @@ function drawTriangles(
     const epy2 = py2 + dy2 * invLen2;
 
     if (wireframe) {
-      // WIREFRAME
-      ctx.beginPath();
+      // Add this face as one closed subpath - style is already set and stroke() happens once,
+      // after the loop (see above).
       ctx.moveTo(px0, py0);
       ctx.lineTo(px1, py1);
       ctx.lineTo(px2, py2);
       ctx.closePath();
-
-      if (ctxStateBuffer[1] !== 31) {
-        ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
-        ctxStateBuffer[1] = 31;
-      }
-
-      if (ctxStateBuffer[2] !== 5) {
-        ctx.lineWidth = 0.5;
-        ctx.lineJoin = "miter";
-        ctxStateBuffer[2] = 5;
-      }
-
-      ctx.stroke();
     } else {
       const mIdx = meshIndexBuffer[idx];
       const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
@@ -1564,5 +1572,10 @@ function drawTriangles(
         }
       }
     }
+  }
+
+  if (wireframe) {
+    // Single stroke() call flushes every face this layer added to the path above.
+    ctx.stroke();
   }
 }
