@@ -39,6 +39,21 @@ p._texture = null;
 
 p.textureImage = null;
 
+/**
+ * Selects which shader draws this mesh's faces: 0 flat, 1 emissive, 2 unlit, 3 avgFlat,
+ * 4 smooth. Each is dispatched through a fixed switch case straight to its src/shaders/*.js
+ * implementation, kept monomorphic for the JIT regardless of how many other keys are in use
+ * elsewhere. Wireframe rendering is unrelated to this property entirely - it's a
+ * renderer/viewport-wide flag (see Canvas2dViewport#wireframe), not a shader, and doesn't
+ * occupy a shaderType value at all.
+ *
+ * 5+ are consumer shaders: call registerShader() once per shader function (see
+ * src/shaders/shaderRegistry.js for the registration API and the full positional argument
+ * contract every shader must implement) and set this to the returned key. Register once, reuse
+ * the key across every mesh that should use it - meshes never hold a live function reference,
+ * just the number.
+ * @type {number}
+ */
 p.shaderType = 0;
 
 Object.defineProperty(p, "texture", {

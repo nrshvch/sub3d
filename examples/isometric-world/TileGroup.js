@@ -1,4 +1,3 @@
-import scaliaEngine from "sub3d";
 import Terrain from "./terrain.js";
 
 // Deterministic 2D hash function for seeded random properties
@@ -372,7 +371,6 @@ export default class TileGroup {
     // 6. Set shader options
     this.terrain.meshRenderer.layer = 0;
     this.terrain.meshRenderer.shaderType = isSmooth ? 4 : 0;
-    this.terrain.meshRenderer.wireframe = isWireframe;
 
     // 7. Position terrain chunk at the center of its tile region in world space
     const centerX_world = gx * segments * TILE_WORLD_SIZE;
