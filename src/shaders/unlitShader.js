@@ -1,0 +1,104 @@
+import {PALETTE_16BIT} from "../palette.js";
+
+/**
+ * Predefined shader (see registerShader in shaderRegistry.js for the full argument contract),
+ * and the built-in UNLIT shader (Canvas2dRenderer.js case 2): no light shading, no fog, just
+ * the mesh color (or texture). Exported via scaliaEngine.shaders.unlit; reserved as
+ * shaderType 2 - no registration needed to use it.
+ *
+ * Maintains ctxStateBuffer exactly like every other shader, so a run of same-colored faces -
+ * whether this shader, another registered shader, or a different built-in - only touches
+ * ctx.fillStyle when the value actually changes. Unlike the other built-ins this shader never
+ * strokes, so ctxStateBuffer[1]/[2] (strokeStyle/lineStyle) are left untouched.
+ */
+export function unlitShader(
+  ctx,
+  px0, py0, px1, py1, px2, py2,
+  epx0, epy0, epx1, epy1, epx2, epy2,
+  clipGeometryBuffer,
+  colorBuffer,
+  vertexNormalsBuffer, faceNormalsBuffer, v0Idx, v1Idx, v2Idx,
+  faceIdx, mesh, meshFaceIdx,
+  ambientLightRgb, lightsIndexBuffer, gameObjects,
+  fogType, fogColor, fogNearPane, fogFarPane,
+  ctxStateBuffer,
+) {
+  const color32 = colorBuffer[faceIdx * 3];
+  let r = color32 >>> 16;
+  let g = (color32 >>> 8) & 255;
+  let b = color32 & 255;
+
+  // Handle texture
+  const img = mesh.textureImage;
+
+  if (img && img.complete && img.naturalWidth > 0 && mesh.uvs) {
+    const uvs = mesh.uvs;
+    const ov0 = mesh.faces[meshFaceIdx] * 2;
+    const ov1 = mesh.faces[meshFaceIdx + 1] * 2;
+    const ov2 = mesh.faces[meshFaceIdx + 2] * 2;
+
+    const U0 = uvs[ov0] * img.width;
+    const V0 = uvs[ov0 + 1] * img.height;
+    const U1 = uvs[ov1] * img.width;
+    const V1 = uvs[ov1 + 1] * img.height;
+    const U2 = uvs[ov2] * img.width;
+    const V2 = uvs[ov2 + 1] * img.height;
+
+    const delta = U0 * (V1 - V2) - V0 * (U1 - U2) + (U1 * V2 - U2 * V1);
+
+    if (Math.abs(delta) > 0.00001) {
+      const invDelta = 1 / delta;
+      const a = (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+      const c = (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+      const e =
+        (px0 * (U1 * V2 - U2 * V1) +
+          px1 * (U2 * V0 - U0 * V2) +
+          px2 * (U0 * V1 - U1 * V0)) *
+        invDelta;
+
+      const bT = (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+      const d = (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+      const f =
+        (py0 * (U1 * V2 - U2 * V1) +
+          py1 * (U2 * V0 - U0 * V2) +
+          py2 * (U0 * V1 - U1 * V0)) *
+        invDelta;
+
+      ctx.save();
+
+      ctx.beginPath();
+      ctx.moveTo(epx0, epy0);
+      ctx.lineTo(epx1, epy1);
+      ctx.lineTo(epx2, epy2);
+      ctx.closePath();
+
+      ctx.clip(); // clip to the expanded triangle
+      ctx.setTransform(a, bT, c, d, e, f);
+      ctx.drawImage(img, 0, 0);
+      ctx.restore();
+
+      return;
+    }
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(epx0, epy0);
+  ctx.lineTo(epx1, epy1);
+  ctx.lineTo(epx2, epy2);
+  ctx.closePath();
+
+  // Quantize 8-bit color channels to 5-6-5 bits
+  const qr = r & 0xf8; // Keep 5 bits
+  const qg = g & 0xfc; // Keep 6 bits
+  const qb = b & 0xf8; // Keep 5 bits
+
+  // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+  const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
+
+  if (ctxStateBuffer[0] !== color16) {
+    ctx.fillStyle = PALETTE_16BIT[color16];
+    ctxStateBuffer[0] = color16;
+  }
+
+  ctx.fill();
+}

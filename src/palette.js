@@ -25,3 +25,4 @@ export function createPalette16Bit() {
   return palette;
 }
 
+export const PALETTE_16BIT = createPalette16Bit();
