@@ -168,12 +168,12 @@ export default class TileGroup {
    * @param {object} noise - The Noise generator instance
    * @param {TerrainPool} terrainPool - Pool for Terrain GameObjects
    * @param {TreePool} treePool - Pool for Tree GameObjects
+   * @param {RockPool} rockPool
    * @param {number} TILE_SIZE - Tile size constant
-   * @param {boolean} isWireframe - Wireframe rendering active
    * @param {boolean} isSmooth - Smooth shading mode active
    * @param {number} [segments=30] - Grid resolution size
    */
-  constructor(gx, gz, game, noise, terrainPool, treePool, rockPool, TILE_SIZE, isWireframe, isSmooth, segments = 30) {
+  constructor(gx, gz, game, noise, terrainPool, treePool, rockPool, TILE_SIZE, isSmooth, segments = 30) {
     this.gx = gx;
     this.gz = gz;
     this.game = game;
@@ -559,16 +559,6 @@ export default class TileGroup {
           }
         }
       }
-    }
-  }
-
-  /**
-   * Sets the wireframe rendering state for the terrain chunk.
-   * @param {boolean} value
-   */
-  setWireframe(value) {
-    if (this.terrain && this.terrain.meshRenderer) {
-      this.terrain.meshRenderer.wireframe = value;
     }
   }
 
