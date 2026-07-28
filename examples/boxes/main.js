@@ -12,7 +12,6 @@ ball.meshRenderer.layer = 1;
 ball.meshRenderer.shaderType = 4;
 
 ball.transform.scale(20, 20, 20);
-ball.debug = true;
 
 let dt = null;
 myGame.world.tickRegister({
@@ -58,7 +57,6 @@ function createBox() {
   const size = (Math.random() * 2.5) | 0;
 
   child.transform.scale(size, size, size);
-  // child.debug = true;
   child.transform.rotate(
     (Math.random() * 360) | 0,
     (Math.random() * 360) | 0,
