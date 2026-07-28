@@ -401,38 +401,52 @@ p.render = function (camera, viewport, stats) {
     const toClear = (config.layerClearMask & (i + 1)) === i + 1;
 
     const drawStart = performance.now();
-    drawTriangles(
-      ctx,
-      vertexBuffer,
-      vertexIndexBuffer,
-      indexBuffer,
-      colorBuffer,
-      shaderTypeBuffer,
-      l,
-      0,
-      toClear,
-      vw,
-      vh,
-      clipGeometryBuffer,
-      depthBuffer,
-      camera.camera.fogType,
-      camera.camera.fogColor,
-      camera.camera.fogNearPane,
-      camera.camera.fogFarPane,
-      camera.scene,
-      this.lightDirection,
-      camera.camera.ambientLight,
-      faceNormalsBuffer,
-      vertexNormalsBuffer,
-      meshIndexBuffer,
-      meshFaceIndexBuffer,
-      layerBuffers,
-      layerOffset + 1,
-      this.wireframe,
-      lightsIndexBuffer,
-      gameObjects,
-      ctxStateBuffer,
-    );
+    if (this.wireframe) {
+      drawWireframe(
+        ctx,
+        vertexBuffer,
+        vertexIndexBuffer,
+        indexBuffer,
+        l,
+        0,
+        toClear,
+        vw,
+        vh,
+        ctxStateBuffer,
+      );
+    } else {
+      drawTriangles(
+        ctx,
+        vertexBuffer,
+        vertexIndexBuffer,
+        indexBuffer,
+        colorBuffer,
+        shaderTypeBuffer,
+        l,
+        0,
+        toClear,
+        vw,
+        vh,
+        clipGeometryBuffer,
+        depthBuffer,
+        camera.camera.fogType,
+        camera.camera.fogColor,
+        camera.camera.fogNearPane,
+        camera.camera.fogFarPane,
+        camera.scene,
+        this.lightDirection,
+        camera.camera.ambientLight,
+        faceNormalsBuffer,
+        vertexNormalsBuffer,
+        meshIndexBuffer,
+        meshFaceIndexBuffer,
+        layerBuffers,
+        layerOffset + 1,
+        lightsIndexBuffer,
+        gameObjects,
+        ctxStateBuffer,
+      );
+    }
 
     // Render debug axes by resolving GameObject indices from the flat layerBuffers array
     for (j = 0; j < count; j++) {
@@ -1172,6 +1186,87 @@ function destructMesh(
 }
 
 /**
+ * Draws every face in [offset, offset+count) as a wireframe triangle. Called by render() in
+ * place of drawTriangles (not from inside it) whenever the viewport-wide wireframe flag is on,
+ * so the shader-dispatch switch in drawTriangles doesn't have to carry a wireframe check at all.
+ * Batches every face in this layer into a single path, stroked once - see the same batching
+ * rationale that used to live on the wireframe branch this replaced.
+ * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
+ * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, x1, y1, ...]
+ * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
+ * @param {Uint32Array} indexBuffer - Array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
+ * @param {number} count - Number of elements in indexBuffer
+ * @param {number} offset - Starting index of the triangles to draw
+ * @param {boolean} toClear - Should ctx be cleared before drawing?
+ * @param {number} w - Canvas width
+ * @param {number} h - Canvas height
+ * @param {Int32Array} ctxStateBuffer - Persistent 3-slot fillStyle/strokeStyle/lineStyle dedup
+ *   cache - see drawTriangles' doc for the full explanation.
+ */
+function drawWireframe(
+  ctx,
+  vertexBuffer,
+  vertexIndexBuffer,
+  indexBuffer,
+  count,
+  offset,
+  toClear,
+  w,
+  h,
+  ctxStateBuffer,
+) {
+  const halfW = w * 0.5,
+    halfH = h * 0.5;
+
+  const len = offset + count;
+
+  if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  // Reset once per layer, same as drawTriangles - canvas state (and this cache) can carry over
+  // from whatever drew last, so force an explicit ctx style set on the first face drawn.
+  ctxStateBuffer[0] = -1;
+  ctxStateBuffer[1] = -1;
+  ctxStateBuffer[2] = -1;
+
+  ctx.beginPath();
+
+  if (ctxStateBuffer[1] !== 31) {
+    ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
+    ctxStateBuffer[1] = 31;
+  }
+
+  if (ctxStateBuffer[2] !== 5) {
+    ctx.lineWidth = 0.5;
+    ctx.lineJoin = "miter";
+    ctxStateBuffer[2] = 5;
+  }
+
+  for (let i = offset; i < len; i++) {
+    const idx = indexBuffer[i];
+
+    const v0Idx = vertexIndexBuffer[idx * 3];
+    const v1Idx = vertexIndexBuffer[idx * 3 + 1];
+    const v2Idx = vertexIndexBuffer[idx * 3 + 2];
+
+    const px0 = vertexBuffer[v0Idx] * halfW + halfW;
+    const py0 = vertexBuffer[v0Idx + 1] * halfH + halfH;
+    const px1 = vertexBuffer[v1Idx] * halfW + halfW;
+    const py1 = vertexBuffer[v1Idx + 1] * halfH + halfH;
+    const px2 = vertexBuffer[v2Idx] * halfW + halfW;
+    const py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
+
+    // Each face is one closed subpath - style is already set and stroke() happens once, after
+    // the loop, below.
+    ctx.moveTo(px0, py0);
+    ctx.lineTo(px1, py1);
+    ctx.lineTo(px2, py2);
+    ctx.closePath();
+  }
+
+  ctx.stroke();
+}
+
+/**
  * Draw
  * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
  * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
@@ -1199,7 +1294,6 @@ function destructMesh(
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
  * @param {Uint32Array} layerBuffers - Single 1D flat typed array storing GameObject indices.
  * @param {number} layerOffset - Starting index of the partition inside layerBuffers.
- * @param {boolean} wireframe - Should faces be drawn as wireframes?
  * @param {Uint32Array} lightsIndexBuffer - Indices of active lights.
  * @param {Object} gameObjects - Dictionary of game objects in the scene.
  * @param {Int32Array} ctxStateBuffer - Persistent 3-slot fillStyle/strokeStyle/lineStyle dedup
@@ -1233,7 +1327,6 @@ function drawTriangles(
   meshFaceIndexBuffer,
   layerBuffers,
   layerOffset,
-  wireframe,
   lightsIndexBuffer,
   gameObjects,
   ctxStateBuffer,
@@ -1251,27 +1344,6 @@ function drawTriangles(
   ctxStateBuffer[0] = -1; // fillStyle: quantized color key in PALETTE16
   ctxStateBuffer[1] = -1; // strokeStyle: quantized color key in PALETTE16
   ctxStateBuffer[2] = -1; // lineStyle tag
-
-  if (wireframe) {
-    // WIREFRAME: every face in this layer becomes one subpath of a single path, stroked once
-    // after the loop instead of once per face. stroke() has fixed per-call overhead (path
-    // flattening, join processing, compositing dispatch) on top of the segment work itself, so
-    // batching the whole layer into one beginPath/stroke pair amortizes that cost across every
-    // face instead of paying it per-triangle. Style never changes mid-layer (it's one fixed
-    // wireframe color/width for the whole scene), so it's set once here too.
-    ctx.beginPath();
-
-    if (ctxStateBuffer[1] !== 31) {
-      ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
-      ctxStateBuffer[1] = 31;
-    }
-
-    if (ctxStateBuffer[2] !== 5) {
-      ctx.lineWidth = 0.5;
-      ctx.lineJoin = "miter";
-      ctxStateBuffer[2] = 5;
-    }
-  }
 
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i]; //take face index
@@ -1320,262 +1392,248 @@ function drawTriangles(
     const epx2 = px2 + dx2 * invLen2;
     const epy2 = py2 + dy2 * invLen2;
 
-    if (wireframe) {
-      // Add this face as one closed subpath - style is already set and stroke() happens once,
-      // after the loop (see above).
-      ctx.moveTo(px0, py0);
-      ctx.lineTo(px1, py1);
-      ctx.lineTo(px2, py2);
-      ctx.closePath();
-    } else {
-      const mIdx = meshIndexBuffer[idx];
-      const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
+    const mIdx = meshIndexBuffer[idx];
+    const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
 
-      // Bound once so the default: branch (registered consumer shaders) can look up the same
-      // key the switch dispatched on, without recomputing shaderTypeBuffer[idx].
-      const shaderKey = shaderTypeBuffer[idx];
-      switch (shaderKey) {
-        case 0: {
-          // FLAT (light shading + fog) - see src/shaders/flatShader.js.
-          // Fixed call site so the JIT keeps this monomorphic regardless of what's registered under other keys.
-          flatShader(
-            ctx,
-            px0,
-            py0,
-            px1,
-            py1,
-            px2,
-            py2,
-            epx0,
-            epy0,
-            epx1,
-            epy1,
-            epx2,
-            epy2,
-            clipGeometryBuffer,
-            colorBuffer,
-            vertexNormalsBuffer,
-            faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
-            idx,
-            mesh,
-            meshFaceIndexBuffer[idx],
-            ambientLightRgb,
-            lightsIndexBuffer,
-            gameObjects,
-            fogType,
-            fogColor,
-            fogNearPane,
-            fogFarPane,
-            ctxStateBuffer,
-          );
-          break;
-        }
-        case 1: {
-          // EMISSIVE (no light shading, just fog) - see src/shaders/emissiveShader.js.
-          emissiveShader(
-            ctx,
-            px0,
-            py0,
-            px1,
-            py1,
-            px2,
-            py2,
-            epx0,
-            epy0,
-            epx1,
-            epy1,
-            epx2,
-            epy2,
-            clipGeometryBuffer,
-            colorBuffer,
-            vertexNormalsBuffer,
-            faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
-            idx,
-            mesh,
-            meshFaceIndexBuffer[idx],
-            ambientLightRgb,
-            lightsIndexBuffer,
-            gameObjects,
-            fogType,
-            fogColor,
-            fogNearPane,
-            fogFarPane,
-            ctxStateBuffer,
-          );
-          break;
-        }
-        case 2: {
-          // UNLIT (no light shading, no fog, just mesh color) - see src/shaders/unlitShader.js.
-          unlitShader(
-            ctx,
-            px0,
-            py0,
-            px1,
-            py1,
-            px2,
-            py2,
-            epx0,
-            epy0,
-            epx1,
-            epy1,
-            epx2,
-            epy2,
-            clipGeometryBuffer,
-            colorBuffer,
-            vertexNormalsBuffer,
-            faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
-            idx,
-            mesh,
-            meshFaceIndexBuffer[idx],
-            ambientLightRgb,
-            lightsIndexBuffer,
-            gameObjects,
-            fogType,
-            fogColor,
-            fogNearPane,
-            fogFarPane,
-            ctxStateBuffer,
-          );
-          break;
-        }
-        case 3: {
-          // AVG_FLAT - Averaged Vertex Flat Fill - see src/shaders/avgFlatShader.js. Uses the
-          // switch case wireframe freed up, since wireframe is now handled entirely above,
-          // before the switch, rather than occupying one of its case values.
-          avgFlatShader(
-            ctx,
-            px0,
-            py0,
-            px1,
-            py1,
-            px2,
-            py2,
-            epx0,
-            epy0,
-            epx1,
-            epy1,
-            epx2,
-            epy2,
-            clipGeometryBuffer,
-            colorBuffer,
-            vertexNormalsBuffer,
-            faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
-            idx,
-            mesh,
-            meshFaceIndexBuffer[idx],
-            ambientLightRgb,
-            lightsIndexBuffer,
-            gameObjects,
-            fogType,
-            fogColor,
-            fogNearPane,
-            fogFarPane,
-            ctxStateBuffer,
-          );
-          break;
-        }
-        case 4: {
-          // SMOOTH (Gouraud Shading) - see src/shaders/smoothShader.js.
-          smoothShader(
-            ctx,
-            px0,
-            py0,
-            px1,
-            py1,
-            px2,
-            py2,
-            epx0,
-            epy0,
-            epx1,
-            epy1,
-            epx2,
-            epy2,
-            clipGeometryBuffer,
-            colorBuffer,
-            vertexNormalsBuffer,
-            faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
-            idx,
-            mesh,
-            meshFaceIndexBuffer[idx],
-            ambientLightRgb,
-            lightsIndexBuffer,
-            gameObjects,
-            fogType,
-            fogColor,
-            fogNearPane,
-            fogFarPane,
-            ctxStateBuffer,
-          );
-          break;
-        }
-        default: {
-          // Registered consumer shader (see registerShader in shaders/shaderRegistry.js) - keyed
-          // by shaderKey, not a fixed call site like the built-in cases above, so if many meshes
-          // carry distinct registered shaders it can go megamorphic. That cost is opt-in and
-          // confined to meshes using a registered key instead of one of the built-ins.
+    // Bound once so the default: branch (registered consumer shaders) can look up the same
+    // key the switch dispatched on, without recomputing shaderTypeBuffer[idx].
+    const shaderKey = shaderTypeBuffer[idx];
+    switch (shaderKey) {
+      case 0: {
+        // FLAT (light shading + fog) - see src/shaders/flatShader.js.
+        // Fixed call site so the JIT keeps this monomorphic regardless of what's registered under other keys.
+        flatShader(
+          ctx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+        );
+        break;
+      }
+      case 1: {
+        // EMISSIVE (no light shading, just fog) - see src/shaders/emissiveShader.js.
+        emissiveShader(
+          ctx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+        );
+        break;
+      }
+      case 2: {
+        // UNLIT (no light shading, no fog, just mesh color) - see src/shaders/unlitShader.js.
+        unlitShader(
+          ctx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+        );
+        break;
+      }
+      case 3: {
+        // AVG_FLAT - Averaged Vertex Flat Fill - see src/shaders/avgFlatShader.js. Uses the
+        // switch case wireframe freed up, since wireframe is now handled entirely above,
+        // before the switch, rather than occupying one of its case values.
+        avgFlatShader(
+          ctx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+        );
+        break;
+      }
+      case 4: {
+        // SMOOTH (Gouraud Shading) - see src/shaders/smoothShader.js.
+        smoothShader(
+          ctx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+        );
+        break;
+      }
+      default: {
+        // Registered consumer shader (see registerShader in shaders/shaderRegistry.js) - keyed
+        // by shaderKey, not a fixed call site like the built-in cases above, so if many meshes
+        // carry distinct registered shaders it can go megamorphic. That cost is opt-in and
+        // confined to meshes using a registered key instead of one of the built-ins.
 
-          const shaderFn = shaderRegistry[shaderKey];
+        const shaderFn = shaderRegistry[shaderKey];
 
-          // ctxStateBuffer is passed straight through - the registered shader reads/writes the
-          // same 3 slots the built-in cases above just used, so the dedup cache stays coherent
-          // across built-in and registered faces with no copy in/out at this boundary.
-          shaderFn(
-            ctx,
-            px0,
-            py0,
-            px1,
-            py1,
-            px2,
-            py2,
-            epx0,
-            epy0,
-            epx1,
-            epy1,
-            epx2,
-            epy2,
-            clipGeometryBuffer,
-            colorBuffer,
-            vertexNormalsBuffer,
-            faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
-            idx,
-            mesh,
-            meshFaceIndexBuffer[idx],
-            ambientLightRgb,
-            lightsIndexBuffer,
-            gameObjects,
-            fogType,
-            fogColor,
-            fogNearPane,
-            fogFarPane,
-            ctxStateBuffer,
-          );
+        // ctxStateBuffer is passed straight through - the registered shader reads/writes the
+        // same 3 slots the built-in cases above just used, so the dedup cache stays coherent
+        // across built-in and registered faces with no copy in/out at this boundary.
+        shaderFn(
+          ctx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+        );
 
-          break;
-        }
+        break;
       }
     }
-  }
-
-  if (wireframe) {
-    // Single stroke() call flushes every face this layer added to the path above.
-    ctx.stroke();
   }
 }
