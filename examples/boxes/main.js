@@ -54,7 +54,7 @@ function createBox() {
   const vertCount = child.meshRenderer.vertices.length / 3;
   child.meshRenderer.colors = new Uint32Array(vertCount).fill((r << 16) | (g << 8) | b);
 
-  const size = (Math.random() * 2.5) | 0;
+  const size = ((Math.random() * 2) | 0) + 1;
 
   child.transform.scale(size, size, size);
   child.transform.rotate(
