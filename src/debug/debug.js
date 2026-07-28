@@ -2,80 +2,105 @@ import * as math from "../math.js";
 
 const vec3TransformMat4to2D = math.vec3TransformMat4to2D;
 
+// Fixed screen-space gizmo arm length, regardless of the object's own transform scale.
+const GIZMO_SIZE = 25;
+
 /**
- * Renders one GameObject's axis gizmo (X red, Y green, Z blue) - 3 stroke() calls, called once
- * per object directly from render() for every GameObject in the scene while debugAxis is on (see
- * Canvas2dViewport#debugAxis). Kept deliberately simple and unbatched: this is a debug-only,
- * opt-in overlay, not a hot path, so there's no accumulation/bookkeeping here - just project and
- * draw.
+ * Renders every GameObject's axis gizmo (X red, Y green, Z blue) in the given list, called once
+ * per frame from render() while debugAxis is on (see Canvas2dViewport#debugAxis) - the loop over
+ * gameObjects lives here now instead of in a separate per-object wrapper in Canvas2dRenderer.js.
+ *
+ * Batched to 3 stroke() calls total, regardless of how many objects there are: one Path2D per
+ * axis color, filled in by a single pass over gameObjects, then each stroked once. This also
+ * means each object's origin only needs the one full point-projection (translation included);
+ * the 3 tip directions are derived from it with plain multiply-adds instead of 3 more full
+ * vec3TransformMat4to2D calls - see the inline comment below for why that's valid.
  */
-export function renderAxis(gameObject, ctx, worldToScreenMatrix, vec3Cache1) {
-  var W = gameObject.transform.getLocalToWorld();
+export function renderAxis(gameObjects, ctx, worldToScreenMatrix, vec3Cache1) {
+  // worldToScreenMatrix is affine (no perspective divide - this engine is orthographic-only), so
+  // a direction vector (as opposed to a point) transforms through just its linear part - drop
+  // the translation terms (m12/13/14) rather than re-running the full point transform (with
+  // translation) for each of the 3 tips on top of the one we already did for the origin.
+  const m0 = worldToScreenMatrix[0],
+    m1 = worldToScreenMatrix[1],
+    m4 = worldToScreenMatrix[4],
+    m5 = worldToScreenMatrix[5],
+    m8 = worldToScreenMatrix[8],
+    m9 = worldToScreenMatrix[9];
 
-  // 1. Get the World Position of the object
-  // This is the translation component of the Local-to-World matrix
-  var worldPosX = W[12];
-  var worldPosY = W[13];
-  var worldPosZ = W[14];
+  const xPath = new Path2D();
+  const yPath = new Path2D();
+  const zPath = new Path2D();
 
-  // 2. Project the Origin to Screen Space
-  // We project the world position, NOT (0,0,0)
-  vec3TransformMat4to2D(
-    vec3Cache1,
-    0,
-    worldPosX,
-    worldPosY,
-    worldPosZ,
-    worldToScreenMatrix,
-  );
-  var ox = vec3Cache1[0],
-    oy = vec3Cache1[1];
+  for (let i = 0; i < gameObjects.length; i++) {
+    const go = gameObjects[i];
+    if (!go || !go.transform) continue;
 
-  var gizmoSize = 50;
+    const W = go.transform.getLocalToWorld();
+    const worldPosX = W[12],
+      worldPosY = W[13],
+      worldPosZ = W[14];
 
-  // 3. Extract and Normalize Basis Vectors
-  var axes = [
-    { x: W[0], y: W[1], z: W[2], col: "#ff0000" }, // X
-    { x: W[4], y: W[5], z: W[6], col: "#00ff00" }, // Y
-    { x: W[8], y: W[9], z: W[10], col: "#0000ff" }, // Z
-  ];
+    // Project the Origin to Screen Space (the one point per object that needs the full affine
+    // transform, translation included).
+    vec3TransformMat4to2D(vec3Cache1, 0, worldPosX, worldPosY, worldPosZ, worldToScreenMatrix);
+    const ox = vec3Cache1[0],
+      oy = vec3Cache1[1];
 
-  for (var i = 0; i < 3; i++) {
-    var a = axes[i];
-    var len = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
-
-    // If an axis is scaled to 0, we can't normalize it.
-    // We default it to a unit vector so the axis still shows.
-    if (len < 0.0001) {
-      // Optional: fallback to identity directions if scale is 0
-      if (i === 0) a.x = 1;
-      else if (i === 1) a.y = 1;
-      else a.z = 1;
-      len = 1;
+    // X axis
+    let ax = W[0],
+      ay = W[1],
+      az = W[2];
+    let axLen = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (axLen < 0.0001) {
+      // Scaled to 0 - can't normalize, so fall back to identity so the axis still shows.
+      ax = 1;
+      ay = 0;
+      az = 0;
+      axLen = 1;
     }
+    const axInv = GIZMO_SIZE / axLen;
+    xPath.moveTo(ox, oy);
+    xPath.lineTo(ox + (ax * m0 + ay * m4 + az * m8) * axInv, oy + (ax * m1 + ay * m5 + az * m9) * axInv);
 
-    var nx = a.x / len;
-    var ny = a.y / len;
-    var nz = a.z / len;
+    // Y axis
+    let bx = W[4],
+      by = W[5],
+      bz = W[6];
+    let byLen = Math.sqrt(bx * bx + by * by + bz * bz);
+    if (byLen < 0.0001) {
+      bx = 0;
+      by = 1;
+      bz = 0;
+      byLen = 1;
+    }
+    const byInv = GIZMO_SIZE / byLen;
+    yPath.moveTo(ox, oy);
+    yPath.lineTo(ox + (bx * m0 + by * m4 + bz * m8) * byInv, oy + (bx * m1 + by * m5 + bz * m9) * byInv);
 
-    // 4. Project the Tip
-    // Tip Position = World Position + (Normalized Direction * Size)
-    vec3TransformMat4to2D(
-      vec3Cache1,
-      0,
-      worldPosX + nx * gizmoSize,
-      worldPosY + ny * gizmoSize,
-      worldPosZ + nz * gizmoSize,
-      worldToScreenMatrix,
-    );
-
-    ctx.beginPath();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = a.col;
-    ctx.moveTo(ox, oy);
-    ctx.lineTo(vec3Cache1[0], vec3Cache1[1]);
-    ctx.stroke();
+    // Z axis
+    let cx = W[8],
+      cy = W[9],
+      cz = W[10];
+    let czLen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    if (czLen < 0.0001) {
+      cx = 0;
+      cy = 0;
+      cz = 1;
+      czLen = 1;
+    }
+    const czInv = GIZMO_SIZE / czLen;
+    zPath.moveTo(ox, oy);
+    zPath.lineTo(ox + (cx * m0 + cy * m4 + cz * m8) * czInv, oy + (cx * m1 + cy * m5 + cz * m9) * czInv);
   }
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#ff0000";
+  ctx.stroke(xPath);
+  ctx.strokeStyle = "#00ff00";
+  ctx.stroke(yPath);
+  ctx.strokeStyle = "#0000ff";
+  ctx.stroke(zPath);
 }
 
 /**

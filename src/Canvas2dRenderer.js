@@ -468,11 +468,6 @@ p.render = function (camera, viewport, stats) {
       );
     }
 
-
-    if(this.debugAxis){
-      drawAxis(ctx, gameObjects, worldToScreenMatrix, vec3Cache1);
-    }
-
     if (this.debugNormals) {
       // Same post-cull buffers drawTriangles/drawWireframe just used above - drawn onto this
       // layer's own ctx, on top of that layer's geometry, before it gets composited below.
@@ -491,8 +486,6 @@ p.render = function (camera, viewport, stats) {
       );
     }
 
-    // renderDebugNormals(ctx, l, geometryBuffer, faceNormalsBuffer, 10);
-
     viewport.context.drawImage(ctx.canvas, 0, 0);
     totalDrawTime += performance.now() - drawStart;
 
@@ -500,6 +493,13 @@ p.render = function (camera, viewport, stats) {
     faces += l;
 
     layerOffset += 1 + count; // Jump to next partition header
+  }
+
+  if (this.debugAxis) {
+    // Not tied to layers/culling at all - every GameObject in the scene, once, drawn directly
+    // onto the viewport's top-level composited context so gizmos land on top of everything and
+    // don't get redrawn/covered once per layer.
+    renderAxis(gameObjects, viewport.context, worldToScreenMatrix, vec3Cache1);
   }
 
   stats.totalObjects = gameObjects.length;
@@ -1216,15 +1216,6 @@ function destructMesh(
     }
   }
   return i;
-}
-
-function drawAxis(ctx, gameObjects, worldToScreenMatrix, vec3Cache1){
-  for (let i = 0; i < gameObjects.length; i++) {
-    const go = gameObjects[i];
-    if (go && go.transform) {
-      renderAxis(go, ctx, worldToScreenMatrix, vec3Cache1);
-    }
-  }
 }
 
 /**
