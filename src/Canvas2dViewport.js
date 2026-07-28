@@ -124,6 +124,35 @@ Object.defineProperty(p, "wireframe", {
   },
 });
 
+/**
+ * Renderer-wide override - when true, every face's normal is drawn as a short line on top of
+ * everything else, after the whole scene has been rendered (see Canvas2dRenderer's
+ * `debugNormals` param). Off by default.
+ * @type {boolean}
+ */
+Object.defineProperty(p, "debugNormals", {
+  get: function () {
+    return this.renderer.debugNormals;
+  },
+  set: function (value) {
+    this.renderer.debugNormals = value;
+  },
+});
+
+/**
+ * Renderer-wide override - when true, every visible object draws its axis gizmo, not just
+ * objects with their own `debug` flag set (see Canvas2dRenderer's `debugAxis` param).
+ * @type {boolean}
+ */
+Object.defineProperty(p, "debugAxis", {
+  get: function () {
+    return this.renderer.debugAxis;
+  },
+  set: function (value) {
+    this.renderer.debugAxis = value;
+  },
+});
+
 p.start = function () {
   this.setSize(this.canvas.offsetWidth, this.canvas.offsetHeight);
 

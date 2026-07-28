@@ -2,6 +2,13 @@ import * as math from "../math.js";
 
 const vec3TransformMat4to2D = math.vec3TransformMat4to2D;
 
+/**
+ * Renders one GameObject's axis gizmo (X red, Y green, Z blue) - 3 stroke() calls, called once
+ * per object directly from render() for every GameObject in the scene while debugAxis is on (see
+ * Canvas2dViewport#debugAxis). Kept deliberately simple and unbatched: this is a debug-only,
+ * opt-in overlay, not a hot path, so there's no accumulation/bookkeeping here - just project and
+ * draw.
+ */
 export function renderAxis(gameObject, ctx, worldToScreenMatrix, vec3Cache1) {
   var W = gameObject.transform.getLocalToWorld();
 
@@ -72,56 +79,139 @@ export function renderAxis(gameObject, ctx, worldToScreenMatrix, vec3Cache1) {
 }
 
 /**
- * Renders face normals as lines for debugging purposes.
- * @param {CanvasRenderingContext2D} ctx - The layer context.
- * @param {number} faceCount - Total faces processed (returned by destructMesh).
- * @param {Int16Array} geometryBuffer - Screen-space [x0, y0, x1, y1, x2, y2].
- * @param {Float32Array} faceNormalsBuffer - Normalized World-Space normals.
- * @param {number} length - The length of the normal line in pixels.
+ * Renders face normals (cyan) and vertex normals (yellow) for every face in
+ * [offset, offset+count) - the same post-cull, per-layer buffers drawWireframe uses in
+ * Canvas2dRenderer.js, so this only ever draws normals for faces that actually survived culling;
+ * nothing extra to track here. Each color is one beginPath/stroke() pair for the whole batch,
+ * same rationale as drawWireframe: stroke() has fixed per-call overhead on top of the segment
+ * work, so batching amortizes that across every face instead of paying it per-triangle.
+ *
+ * World-space normals (faceNormalsBuffer/vertexNormalsBuffer) are rotated into view space via
+ * cameraLocalMatrix's rotation submatrix (translation dropped - this is a direction, not a
+ * point) before using their X/Y as the 2D screen direction. That's what makes a normal pointing
+ * straight at/away from the camera draw as a dot instead of a line to the side: its view-space
+ * X/Y shrink toward 0 as more of its length ends up in view-space depth, regardless of which way
+ * the camera itself faces in world space.
+ *
+ * @param {CanvasRenderingContext2D} ctx - The layer context (same one drawTriangles/drawWireframe
+ *   just drew into - this draws on top of that layer's own geometry, not deferred to last).
+ * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, x1, y1, ...]
+ * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
+ * @param {Uint32Array} indexBuffer - Array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
+ * @param {Float32Array} faceNormalsBuffer - World-space face normals, [nx, ny, nz] per face.
+ * @param {Float32Array} vertexNormalsBuffer - World-space vertex normals, [nx, ny, nz] per vertex.
+ * @param {number} count - Number of elements in indexBuffer
+ * @param {number} offset - Starting index of the faces to draw
+ * @param {number} w - Canvas width
+ * @param {number} h - Canvas height
+ * @param {Float32Array} cameraLocalMatrix - World-to-camera-local (view) matrix.
+ * @param {number} [normalLength=10] - Screen-space pixel length of a normal lying fully in the
+ *   screen plane.
  */
 export function renderDebugNormals(
   ctx,
-  faceCount,
-  geometryBuffer,
+  vertexBuffer,
+  vertexIndexBuffer,
+  indexBuffer,
   faceNormalsBuffer,
-  length = 10,
+  vertexNormalsBuffer,
+  count,
+  offset,
+  w,
+  h,
+  cameraLocalMatrix,
+  normalLength = 10,
 ) {
+  const halfW = w * 0.5,
+    halfH = h * 0.5;
+  const len = offset + count;
+
+  const m0 = cameraLocalMatrix[0],
+    m1 = cameraLocalMatrix[1],
+    m4 = cameraLocalMatrix[4],
+    m5 = cameraLocalMatrix[5],
+    m8 = cameraLocalMatrix[8],
+    m9 = cameraLocalMatrix[9];
+
+  // Face normals - cyan
   ctx.beginPath();
-  // Standard debug color for normals
   ctx.lineWidth = 1;
-  ctx.strokeStyle = 'cyan';
+  ctx.strokeStyle = "cyan";
 
-  for (let i = 0; i < faceCount; i++) {
-    const gIdx = i * 6;
-    const nIdx = i * 3;
+  for (let f = offset; f < len; f++) {
+    const idx = indexBuffer[f];
 
-    // 1. Calculate the screen-space center of the triangle
-    const centerX =
-      (geometryBuffer[gIdx] +
-        geometryBuffer[gIdx + 2] +
-        geometryBuffer[gIdx + 4]) /
-      3;
-    const centerY =
-      (geometryBuffer[gIdx + 1] +
-        geometryBuffer[gIdx + 3] +
-        geometryBuffer[gIdx + 5]) /
-      3;
+    const v0Idx = vertexIndexBuffer[idx * 3];
+    const v1Idx = vertexIndexBuffer[idx * 3 + 1];
+    const v2Idx = vertexIndexBuffer[idx * 3 + 2];
 
-    const nx = faceNormalsBuffer[nIdx];
-    const ny = faceNormalsBuffer[nIdx + 1];
+    const px0 = vertexBuffer[v0Idx] * halfW + halfW;
+    const py0 = vertexBuffer[v0Idx + 1] * halfH + halfH;
+    const px1 = vertexBuffer[v1Idx] * halfW + halfW;
+    const py1 = vertexBuffer[v1Idx + 1] * halfH + halfH;
+    const px2 = vertexBuffer[v2Idx] * halfW + halfW;
+    const py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
 
-    // 2. Use the normal direction to find the tip of the line
-    // Note: We use the normal's X and Y to influence the screen direction.
-    // For a more accurate "projected" normal tip, you'd technically want to
-    // transform the normal tip (center + normal) through the view-projection matrix,
-    // but for basic debugging, simply offseting by the world normal works.
-    const tipX = centerX + (nx ? nx * length : 1);
-    const tipY = centerY - (ny ? ny * length : 1); // -Y for Canvas
+    const cx = (px0 + px1 + px2) * 0.33333;
+    const cy = (py0 + py1 + py2) * 0.33333;
 
-    ctx.moveTo(centerX, centerY);
-    ctx.lineTo(tipX, tipY);
+    const fnIdx = idx * 3;
+    const fwx = faceNormalsBuffer[fnIdx];
+    const fwy = faceNormalsBuffer[fnIdx + 1];
+    const fwz = faceNormalsBuffer[fnIdx + 2];
+    const fvx = fwx * m0 + fwy * m4 + fwz * m8;
+    const fvy = fwx * m1 + fwy * m5 + fwz * m9;
+
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + fvx * normalLength, cy - fvy * normalLength); // -Y for Canvas
+  }
+
+  ctx.stroke();
+
+  // Vertex normals - yellow, one segment per face corner (a vertex shared with an adjacent face
+  // gets drawn once per adjacent face - harmless overdraw of the same line, not worth deduping
+  // for a debug-only overlay).
+  ctx.beginPath();
+  ctx.strokeStyle = "yellow";
+
+  for (let f = offset; f < len; f++) {
+    const idx = indexBuffer[f];
+
+    const v0Idx = vertexIndexBuffer[idx * 3];
+    const v1Idx = vertexIndexBuffer[idx * 3 + 1];
+    const v2Idx = vertexIndexBuffer[idx * 3 + 2];
+
+    const px0 = vertexBuffer[v0Idx] * halfW + halfW;
+    const py0 = vertexBuffer[v0Idx + 1] * halfH + halfH;
+    const px1 = vertexBuffer[v1Idx] * halfW + halfW;
+    const py1 = vertexBuffer[v1Idx + 1] * halfH + halfH;
+    const px2 = vertexBuffer[v2Idx] * halfW + halfW;
+    const py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
+
+    const vn0x = vertexNormalsBuffer[v0Idx],
+      vn0y = vertexNormalsBuffer[v0Idx + 1],
+      vn0z = vertexNormalsBuffer[v0Idx + 2];
+    const v0vx = vn0x * m0 + vn0y * m4 + vn0z * m8;
+    const v0vy = vn0x * m1 + vn0y * m5 + vn0z * m9;
+    ctx.moveTo(px0, py0);
+    ctx.lineTo(px0 + v0vx * normalLength, py0 - v0vy * normalLength);
+
+    const vn1x = vertexNormalsBuffer[v1Idx],
+      vn1y = vertexNormalsBuffer[v1Idx + 1],
+      vn1z = vertexNormalsBuffer[v1Idx + 2];
+    const v1vx = vn1x * m0 + vn1y * m4 + vn1z * m8;
+    const v1vy = vn1x * m1 + vn1y * m5 + vn1z * m9;
+    ctx.moveTo(px1, py1);
+    ctx.lineTo(px1 + v1vx * normalLength, py1 - v1vy * normalLength);
+
+    const vn2x = vertexNormalsBuffer[v2Idx],
+      vn2y = vertexNormalsBuffer[v2Idx + 1],
+      vn2z = vertexNormalsBuffer[v2Idx + 2];
+    const v2vx = vn2x * m0 + vn2y * m4 + vn2z * m8;
+    const v2vy = vn2x * m1 + vn2y * m5 + vn2z * m9;
+    ctx.moveTo(px2, py2);
+    ctx.lineTo(px2 + v2vx * normalLength, py2 - v2vy * normalLength);
   }
 
   ctx.stroke();
 }
-

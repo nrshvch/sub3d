@@ -21,6 +21,7 @@ const computeNormalMatrix = MeshComponent.computeNormalMatrix;
 const vec3TransformMat4 = math.vec3TransformMat4;
 const mat4Mul = math.mat4Mul;
 const renderAxis = debug.renderAxis;
+const renderDebugNormals = debug.renderDebugNormals;
 
 // Coefficient for expanding polygons to cover subpixel seams/gaps
 // For cases when stroke cannot be done, e.g. textured polys
@@ -133,6 +134,23 @@ p.mat3Scratchpad1 = new Float32Array(9);
  */
 p.wireframe = false;
 
+/**
+ * Renderer-wide override: when true, every drawn face's normal (cyan) and vertex normals
+ * (yellow) are drawn on top of that face, layer by layer (see debug.js#renderDebugNormals and
+ * Canvas2dViewport#debugNormals for the public API). Off by default - resolving and drawing
+ * normals is extra per-frame work only worth paying for while debugging.
+ * @type {boolean}
+ */
+p.debugNormals = false;
+
+/**
+ * Renderer-wide override: when true, every GameObject in the scene draws its axis gizmo (see
+ * debug.js#renderAxis and Canvas2dViewport#debugAxis for the public API). There is no
+ * per-object opt-in anymore - this is the only way to enable axis gizmos.
+ * @type {boolean}
+ */
+p.debugAxis = false;
+
 p.render = function (camera, viewport, stats) {
   let t0 = performance.now();
 
@@ -177,6 +195,8 @@ p.render = function (camera, viewport, stats) {
 
   let drawCalls = 0;
   let faces = 0;
+  const halfW = vw * 0.5,
+    halfH = vh * 0.5;
 
   const cam = camera.camera;
   const bgColorInt =
@@ -448,14 +468,27 @@ p.render = function (camera, viewport, stats) {
       );
     }
 
-    // Render debug axes by resolving GameObject indices from the flat layerBuffers array
-    for (j = 0; j < count; j++) {
-      const goIdx = layerBuffers[layerOffset + 1 + j];
-      const go = gameObjects[goIdx];
-      // Only draw axes for objects with a transform (usually MeshComponents)
-      if (go && go.debug) {
-        renderAxis(go, ctx, worldToScreenMatrix, vec3Cache1);
-      }
+
+    if(this.debugAxis){
+      drawAxis(ctx, gameObjects, worldToScreenMatrix, vec3Cache1);
+    }
+
+    if (this.debugNormals) {
+      // Same post-cull buffers drawTriangles/drawWireframe just used above - drawn onto this
+      // layer's own ctx, on top of that layer's geometry, before it gets composited below.
+      renderDebugNormals(
+        ctx,
+        vertexBuffer,
+        vertexIndexBuffer,
+        indexBuffer,
+        faceNormalsBuffer,
+        vertexNormalsBuffer,
+        l,
+        0,
+        vw,
+        vh,
+        cameraLocalMatrix,
+      );
     }
 
     // renderDebugNormals(ctx, l, geometryBuffer, faceNormalsBuffer, 10);
@@ -1183,6 +1216,15 @@ function destructMesh(
     }
   }
   return i;
+}
+
+function drawAxis(ctx, gameObjects, worldToScreenMatrix, vec3Cache1){
+  for (let i = 0; i < gameObjects.length; i++) {
+    const go = gameObjects[i];
+    if (go && go.transform) {
+      renderAxis(go, ctx, worldToScreenMatrix, vec3Cache1);
+    }
+  }
 }
 
 /**

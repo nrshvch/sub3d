@@ -17,8 +17,6 @@ earth.meshRenderer.layer = 1;
 earth.meshRenderer.shaderType = 4
 earth.meshRenderer.texture = earthTexture;
 
-// earth.debug = true;
-
 myGame.world.scene.addGameObject(earth);
 
 const moon = createMoon();
@@ -34,7 +32,6 @@ function createMoon() {
 
   moon.transform.setPosition(randPos[0], randPos[1], randPos[2]);
 
-  // moon.debug = true;
   moon.meshRenderer.texture = moonTexture;
   myGame.world.scene.addGameObject(moon);
 

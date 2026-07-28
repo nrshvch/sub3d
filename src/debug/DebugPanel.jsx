@@ -26,17 +26,43 @@ export default function DebugPanel({ viewport }) {
   const [isOpen, setIsOpen] = useState(() => {
     return localStorage.getItem('s3d-debug-open') === 'true';
   });
-  const [wireframe, setWireframe] = useState(false);
+  const [wireframe, setWireframe] = useState(() => {
+    return localStorage.getItem('s3d-wireframe') === 'true';
+  });
+  const [debugNormals, setDebugNormals] = useState(() => {
+    return localStorage.getItem('s3d-debug-normals') === 'true';
+  });
+  const [debugAxis, setDebugAxis] = useState(() => {
+    return localStorage.getItem('s3d-debug-axis') === 'true';
+  });
 
-  // Sync wireframe from the viewport on load and when it changes
+  // Push the persisted (or default) toggle state onto the viewport once it's available - the
+  // polling effect below only reads the viewport's current value, it never restores one, so
+  // without this a reload would always come back up with every toggle off regardless of what
+  // was saved.
   useEffect(() => {
-    const checkWireframe = () => {
+    if (viewport) {
+      viewport.wireframe = wireframe;
+      viewport.debugNormals = debugNormals;
+      viewport.debugAxis = debugAxis;
+    }
+    // Intentionally only re-runs when viewport itself changes - this is a one-time restore, not
+    // a sync (that's what the polling effect below is for).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewport]);
+
+  // Sync wireframe/debugNormals/debugAxis from the viewport on load and when they change (e.g.
+  // toggled by something other than these buttons)
+  useEffect(() => {
+    const checkFlags = () => {
       if (viewport) {
         setWireframe(!!viewport.wireframe);
+        setDebugNormals(!!viewport.debugNormals);
+        setDebugAxis(!!viewport.debugAxis);
       }
     };
-    checkWireframe();
-    const interval = setInterval(checkWireframe, 500);
+    checkFlags();
+    const interval = setInterval(checkFlags, 500);
     return () => clearInterval(interval);
   }, [viewport]);
 
@@ -44,6 +70,17 @@ export default function DebugPanel({ viewport }) {
   useEffect(() => {
     localStorage.setItem('s3d-debug-open', isOpen);
   }, [isOpen]);
+
+  // Persist toggle state so each survives a reload, same as the panel's open/closed state above
+  useEffect(() => {
+    localStorage.setItem('s3d-wireframe', wireframe);
+  }, [wireframe]);
+  useEffect(() => {
+    localStorage.setItem('s3d-debug-normals', debugNormals);
+  }, [debugNormals]);
+  useEffect(() => {
+    localStorage.setItem('s3d-debug-axis', debugAxis);
+  }, [debugAxis]);
 
   // Pull stats periodically
   useEffect(() => {
@@ -77,16 +114,32 @@ export default function DebugPanel({ viewport }) {
   const handleWireframeToggle = () => {
     const nextWireframe = !wireframe;
     setWireframe(nextWireframe);
-    
+
     // 1. Update the viewport - a renderer-wide flag, not a per-mesh setting
     if (viewport) {
       viewport.wireframe = nextWireframe;
     }
-    
+
     // 2. Dispatch custom event for custom integrations (like terrain chunks in isometric-world)
     window.dispatchEvent(new CustomEvent('s3d-wireframe-change', {
       detail: { enabled: nextWireframe }
     }));
+  };
+
+  const handleDebugNormalsToggle = () => {
+    const next = !debugNormals;
+    setDebugNormals(next);
+    if (viewport) {
+      viewport.debugNormals = next;
+    }
+  };
+
+  const handleDebugAxisToggle = () => {
+    const next = !debugAxis;
+    setDebugAxis(next);
+    if (viewport) {
+      viewport.debugAxis = next;
+    }
   };
 
   return (
@@ -106,6 +159,39 @@ export default function DebugPanel({ viewport }) {
           {/* Isometric wireframe cube SVG icon */}
           <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25m-9-5.25v9l9 5.25M12 12.75v9" />
+          </svg>
+        </button>
+
+        {/* Debug Normals Button */}
+        <button
+          onClick={handleDebugNormalsToggle}
+          title="Toggle Debug Normals"
+          className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
+            debugNormals
+              ? 's3d-bg-amber-600/80 s3d-border-amber-400 s3d-text-white'
+              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+          } s3d-backdrop-blur-md s3d-shadow-lg`}
+        >
+          {/* Face with a perpendicular normal line SVG icon */}
+          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 17l8-10 8 10H4z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 13V3" />
+          </svg>
+        </button>
+
+        {/* Debug Axis Button */}
+        <button
+          onClick={handleDebugAxisToggle}
+          title="Toggle Debug Axis"
+          className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
+            debugAxis
+              ? 's3d-bg-purple-600/80 s3d-border-purple-400 s3d-text-white'
+              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+          } s3d-backdrop-blur-md s3d-shadow-lg`}
+        >
+          {/* 3-axis gizmo SVG icon */}
+          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 12L20 12M12 12L12 4M12 12L6 18" />
           </svg>
         </button>
 
