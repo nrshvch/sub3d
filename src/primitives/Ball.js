@@ -70,6 +70,55 @@ function generateBallMesh(rings, sectors, radius) {
 
 
 
+// Sphere-specific pass on top of MeshComponent#updateNormals: the UV seam (s=0 vs s=sectors)
+// and the poles reuse the same position but can't share a vertex index (the seam needs two UVs;
+// the south pole's index-sharing is unreliable since sin(PI) isn't exactly 0), so their normals
+// stay unblended after the base index-only accumulation. Average them back together by position.
+function weldSeamNormals(mesh) {
+  const verts = mesh.vertices;
+  const vn = mesh.vertexNormals;
+  const posGroups = {};
+
+  for (let i = 0; i < verts.length; i += 3) {
+    const vx = Math.abs(verts[i]) < 1e-4 ? 0 : verts[i];
+    const vy = Math.abs(verts[i + 1]) < 1e-4 ? 0 : verts[i + 1];
+    const vz = Math.abs(verts[i + 2]) < 1e-4 ? 0 : verts[i + 2];
+    const key = `${vx.toFixed(4)},${vy.toFixed(4)},${vz.toFixed(4)}`;
+    if (!posGroups[key]) {
+      posGroups[key] = [];
+    }
+    posGroups[key].push(i);
+  }
+
+  for (const key in posGroups) {
+    const indices = posGroups[key];
+    if (indices.length < 2) continue;
+
+    let sumX = 0, sumY = 0, sumZ = 0;
+    for (let k = 0; k < indices.length; k++) {
+      const idx = indices[k];
+      sumX += vn[idx];
+      sumY += vn[idx + 1];
+      sumZ += vn[idx + 2];
+    }
+
+    const mag = Math.sqrt(sumX * sumX + sumY * sumY + sumZ * sumZ);
+    if (mag > 1e-10) {
+      const invMag = 1 / mag;
+      sumX *= invMag;
+      sumY *= invMag;
+      sumZ *= invMag;
+    }
+
+    for (let k = 0; k < indices.length; k++) {
+      const idx = indices[k];
+      vn[idx] = sumX;
+      vn[idx + 1] = sumY;
+      vn[idx + 2] = sumZ;
+    }
+  }
+}
+
 function generateBall(rings = 8, sectors = 8, radius = 8) {
   const ballMesh = generateBallMesh(rings, sectors, radius);
 
@@ -98,6 +147,7 @@ function Ball(vertices, faces, uvs, bounds, colors) {
   mesh.colors = colors || new Uint32Array(vertices.length / 3).fill(0x0000FF);
   mesh.bounds = bounds;
   mesh.updateNormals();
+  weldSeamNormals(mesh);
 
   this.addComponent(mesh);
 }
