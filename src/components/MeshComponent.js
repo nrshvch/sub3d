@@ -145,38 +145,6 @@ p.updateNormals = function (winding = 1) {
     }
   }
 
-  // Weld raw vertex normals for spatially coincident positions (e.g. UV seam boundaries & poles)
-  const posGroups = {};
-  for (let i = 0; i < verts.length; i += 3) {
-    const vx = Math.abs(verts[i]) < 1e-4 ? 0 : verts[i];
-    const vy = Math.abs(verts[i + 1]) < 1e-4 ? 0 : verts[i + 1];
-    const vz = Math.abs(verts[i + 2]) < 1e-4 ? 0 : verts[i + 2];
-    const key = `${vx.toFixed(4)},${vy.toFixed(4)},${vz.toFixed(4)}`;
-    if (!posGroups[key]) {
-      posGroups[key] = [];
-    }
-    posGroups[key].push(i);
-  }
-
-  for (const key in posGroups) {
-    const indices = posGroups[key];
-    if (indices.length > 1) {
-      let sumX = 0, sumY = 0, sumZ = 0;
-      for (let k = 0; k < indices.length; k++) {
-        const idx = indices[k];
-        sumX += this.vertexNormals[idx];
-        sumY += this.vertexNormals[idx + 1];
-        sumZ += this.vertexNormals[idx + 2];
-      }
-      for (let k = 0; k < indices.length; k++) {
-        const idx = indices[k];
-        this.vertexNormals[idx] = sumX;
-        this.vertexNormals[idx + 1] = sumY;
-        this.vertexNormals[idx + 2] = sumZ;
-      }
-    }
-  }
-
   // Normalize Vertex Normals
   for (let i = 0; i < this.vertexNormals.length; i += 3) {
     const vnx = this.vertexNormals[i];
