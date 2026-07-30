@@ -193,6 +193,10 @@ export default class TileGroup {
     // 2 & 3. Generate heights and per-vertex colors for each of the 30x30 tiles
     const totalVertices = segments * segments * 12;
     const colors = new Uint32Array(totalVertices);
+    // Per-vertex material tag (0 = land, 1 = water), fed into smoothTerrainNormals below so
+    // lighting smooths across same-material tile boundaries but stays a hard seam at the
+    // water/shore edge - matches the same condition already used to pick each vertex's color.
+    const materials = new Uint8Array(totalVertices);
 
     for (let j = 0; j < segments; j++) {
       const globalZ = gz * segments + j - segments / 2;
@@ -211,25 +215,25 @@ export default class TileGroup {
         const tileRand = hash2D(globalX, globalZ);
 
         if (isTileWater(globalX, globalZ, noise)) {
-          // Water tile
-          const h_ripple = (tileRand * 2 - 1) * 2;
-
+          // Water tile - perfectly flat (no more ripple jitter), so simplifyExistingGridMesh's
+          // flat + uniform-color check collapses it to 2 triangles automatically below.
           // Set Y for all 12 vertices of this cell
           verts[(baseVert + 0) * 3 + 1] = 0;
-          verts[(baseVert + 1) * 3 + 1] = h_ripple;
+          verts[(baseVert + 1) * 3 + 1] = 0;
           verts[(baseVert + 2) * 3 + 1] = 0;
           verts[(baseVert + 3) * 3 + 1] = 0;
-          verts[(baseVert + 4) * 3 + 1] = h_ripple;
+          verts[(baseVert + 4) * 3 + 1] = 0;
           verts[(baseVert + 5) * 3 + 1] = 0;
           verts[(baseVert + 6) * 3 + 1] = 0;
-          verts[(baseVert + 7) * 3 + 1] = h_ripple;
+          verts[(baseVert + 7) * 3 + 1] = 0;
           verts[(baseVert + 8) * 3 + 1] = 0;
           verts[(baseVert + 9) * 3 + 1] = 0;
-          verts[(baseVert + 10) * 3 + 1] = h_ripple;
+          verts[(baseVert + 10) * 3 + 1] = 0;
           verts[(baseVert + 11) * 3 + 1] = 0;
 
           const waterColor = getWaterColor(globalX, globalZ, noise);
           colors.fill(waterColor, baseVert, baseVert + 12);
+          materials.fill(1, baseVert, baseVert + 12);
 
         } else if (Math.min(h_tl, h_tr, h_br, h_bl) <= 0) {
           // Coast tile
@@ -275,21 +279,31 @@ export default class TileGroup {
           }
           const grassColor = (r << 16) | (g << 8) | b;
           let c0, c1, c2, c3;
-          
+          let m0, m1, m2, m3; // per-triangle material: 0 = land, 1 = water
+
           // Multi-colored coast tile face evaluation:
           // When h_ey === 0 (center is at water level), triangles flat at y=0 become water, and sloped triangles become sand.
           // When h_ey > 0 (center is elevated), triangles flat at y=h_ey become grass, and sloped triangles become sand.
           if (h_ey === 0) {
             const waterColor = getWaterColor(globalX, globalZ, noise);
-            c0 = (h_tl === 0 && h_tr === 0) ? waterColor : coastColor; // Triangle 0: Top
-            c1 = (h_tr === 0 && h_br === 0) ? waterColor : coastColor; // Triangle 1: Right
-            c2 = (h_br === 0 && h_bl === 0) ? waterColor : coastColor; // Triangle 2: Bottom
-            c3 = (h_bl === 0 && h_tl === 0) ? waterColor : coastColor; // Triangle 3: Left
+            const top = h_tl === 0 && h_tr === 0;
+            const right = h_tr === 0 && h_br === 0;
+            const bottom = h_br === 0 && h_bl === 0;
+            const left = h_bl === 0 && h_tl === 0;
+            c0 = top ? waterColor : coastColor; // Triangle 0: Top
+            c1 = right ? waterColor : coastColor; // Triangle 1: Right
+            c2 = bottom ? waterColor : coastColor; // Triangle 2: Bottom
+            c3 = left ? waterColor : coastColor; // Triangle 3: Left
+            m0 = top ? 1 : 0;
+            m1 = right ? 1 : 0;
+            m2 = bottom ? 1 : 0;
+            m3 = left ? 1 : 0;
           } else {
             c0 = (h_tl === h_ey && h_tr === h_ey) ? grassColor : coastColor; // Triangle 0: Top
             c1 = (h_tr === h_ey && h_br === h_ey) ? grassColor : coastColor; // Triangle 1: Right
             c2 = (h_br === h_ey && h_bl === h_ey) ? grassColor : coastColor; // Triangle 2: Bottom
             c3 = (h_bl === h_ey && h_tl === h_ey) ? grassColor : coastColor; // Triangle 3: Left
+            m0 = m1 = m2 = m3 = 0; // always land - no water triangle when the center is elevated
           }
 
           // Assign each of the 4 triangles its own 3 split vertex colors (hard edges)
@@ -297,6 +311,11 @@ export default class TileGroup {
           colors[baseVert + 3] = c1; colors[baseVert + 4] = c1; colors[baseVert + 5] = c1;
           colors[baseVert + 6] = c2; colors[baseVert + 7] = c2; colors[baseVert + 8] = c2;
           colors[baseVert + 9] = c3; colors[baseVert + 10] = c3; colors[baseVert + 11] = c3;
+
+          materials[baseVert + 0] = m0; materials[baseVert + 1] = m0; materials[baseVert + 2] = m0;
+          materials[baseVert + 3] = m1; materials[baseVert + 4] = m1; materials[baseVert + 5] = m1;
+          materials[baseVert + 6] = m2; materials[baseVert + 7] = m2; materials[baseVert + 8] = m2;
+          materials[baseVert + 9] = m3; materials[baseVert + 10] = m3; materials[baseVert + 11] = m3;
 
         } else {
           // Ground / grass / mountain tile
@@ -365,8 +384,17 @@ export default class TileGroup {
     this.terrain.meshRenderer.faces = simplifiedMesh.faces;
     this.terrain.meshRenderer.colors = simplifiedMesh.colors;
 
-    // Update shading and normals
+    // Update shading and normals: base pass stays generic/index-only (hard face normals, used
+    // by flatShader as-is), then point same-position, same-material vertex normals the same
+    // direction (without merging the vertices themselves - still fully split, just now
+    // agreeing on a value) so avgFlat/smooth shading (which reads vertexNormals) gets a smooth
+    // lighting gradient across tile boundaries - material-gated so the water/shore edge stays a
+    // hard lighting seam (a shore tile's water-level corner just keeps its own face normal
+    // there, since it won't find a land match at that position), and every water vertex is then
+    // forced flat regardless of the ripple-jittered center, since water shouldn't show a
+    // lighting gradient at all.
     this.terrain.meshRenderer.updateNormals();
+    Terrain.smoothTerrainNormals(this.terrain.meshRenderer, materials);
 
     // 6. Set shader options
     this.terrain.meshRenderer.layer = 0;
@@ -561,13 +589,14 @@ export default class TileGroup {
   }
 
   /**
-   * Sets the terrain rendering shader type (smooth/flat).
+   * Sets the terrain rendering shader type (smooth/flat). Both the hard face normals and the
+   * smoothed vertex normals are already correct from generation time (see the constructor) -
+   * geometry never changes on a shader toggle, so this is just the one write, no recomputation.
    * @param {boolean} isSmooth
    */
   setSmooth(isSmooth) {
     if (this.terrain && this.terrain.meshRenderer) {
       this.terrain.meshRenderer.shaderType = isSmooth ? 4 : 0;
-      this.terrain.meshRenderer.updateNormals();
     }
   }
 
