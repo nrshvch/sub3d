@@ -398,7 +398,7 @@ export default class TileGroup {
 
     // 6. Set shader options
     this.terrain.meshRenderer.layer = 0;
-    this.terrain.meshRenderer.shaderType = isSmooth ? 4 : 0;
+    this.terrain.meshRenderer.shaderType = isSmooth ? 3 : 0;
 
     // 7. Position terrain chunk at the center of its tile region in world space
     const centerX_world = gx * segments * TILE_WORLD_SIZE;
@@ -596,7 +596,7 @@ export default class TileGroup {
    */
   setSmooth(isSmooth) {
     if (this.terrain && this.terrain.meshRenderer) {
-      this.terrain.meshRenderer.shaderType = isSmooth ? 4 : 0;
+      this.terrain.meshRenderer.shaderType = isSmooth ? 3 : 0;
     }
   }
 

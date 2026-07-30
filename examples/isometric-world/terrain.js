@@ -4,14 +4,24 @@ const GameObject = scaliaEngine.GameObject;
 const MeshComponent = scaliaEngine.MeshComponent;
 
 /**
- * Simplifies an existing subdivided grid terrain mesh by collapsing flat, single-color tiles.
- * 
+ * Simplifies an existing subdivided grid terrain mesh by collapsing tiles that don't need all
+ * 4 split triangles to represent their color boundary.
+ *
  * Each tile starts with 12 split vertices (3 vertices per triangle across 4 triangles).
- * - If a tile is flat (center vertex lies on plane of corners) AND uniform in color (all 12 vertices match),
- *   its 4 triangles are collapsed into 2 diagonal triangles, cutting face count in half.
- * - Otherwise (slopes, ridges, or multi-colored shore transitions), all 4 triangles with split vertices
- *   are retained to preserve detail and hard color edges.
- * 
+ * - If a tile is uniform in color (all 12 vertices match - i.e. single material, no shore
+ *   transition within the tile), its 4 triangles collapse to 2 diagonal triangles, cutting
+ *   face count in half - even across a non-planar slope, splitting along whichever diagonal
+ *   connects the corners with the smaller height difference gives the closer-to-planar
+ *   approximation. This no longer needs the tile to be exactly flat: per-vertex smooth
+ *   normals (see smoothTerrainNormals) don't rely on the extra ridge facet a flat-only check
+ *   used to require for correct-looking lighting - only the color needs to be uniform.
+ * - If a tile has exactly 2 colors split along adjacent triangle pairs (e.g. a shore cell
+ *   that's part water, part sand, with the water/land boundary running corner-to-corner), it
+ *   also collapses to 2 triangles - one per color - along that same diagonal. See the
+ *   two-color branch below for why this is always exact, not an approximation.
+ * - Otherwise (an isolated single-edge notch, or 3+ distinct colors), all 4 triangles with
+ *   split vertices are retained to preserve the hard color edges.
+ *
  * @param {Float32Array} vertices - Existing vertex position buffer [x, y, z...]
  * @param {Uint32Array} faces - Existing face index buffer
  * @param {Uint32Array} colors - Per-vertex 32-bit packed color buffer
@@ -20,12 +30,6 @@ const MeshComponent = scaliaEngine.MeshComponent;
  */
 export function simplifyExistingGridMesh(vertices, faces, colors, segments) {
   const newFaces = [];
-
-  // Helper: Get the Y-height of a cell center vertex
-  const getCellHeight = (cx, cy) => {
-    const baseVert = (cy * segments + cx) * 12;
-    return vertices[(baseVert + 1) * 3 + 1]; // Center vertex Y
-  };
 
   // Helper: Checks if all 12 vertices of a tile cell share the exact same color
   const isCellUniformColor = (cx, cy) => {
@@ -37,39 +41,56 @@ export function simplifyExistingGridMesh(vertices, faces, colors, segments) {
     return true;
   };
 
-  // Helper: Checks if the tile's center vertex Y position matches the average of the 4 corners
-  const isCellFlat = (cx, cy) => {
-    const baseVert = (cy * segments + cx) * 12;
-    const tlY = vertices[baseVert * 3 + 1];           // Triangle 0: Top-Left
-    const trY = vertices[(baseVert + 2) * 3 + 1];     // Triangle 0: Top-Right
-    const blY = vertices[(baseVert + 8) * 3 + 1];     // Triangle 2: Bottom-Left
-    const brY = vertices[(baseVert + 5) * 3 + 1];     // Triangle 1: Bottom-Right
-    const centerY = getCellHeight(cx, cy);
-
-    // Average corner height
-    const avg = (tlY + trY + blY + brY) * 0.25;
-    // Tiny epsilon to handle floating point errors
-    return Math.abs(centerY - avg) < 0.0001;
-  };
-
   // Iterate through every logical tile in the grid
   for (let y = 0; y < segments; y++) {
     for (let x = 0; x < segments; x++) {
       const cellIdx = y * segments + x;
       const baseVert = cellIdx * 12;
 
-      const flat = isCellFlat(x, y);
-      const uniform = isCellUniformColor(x, y);
-
-      // STEP 1: Determine if this tile can be simplified.
-      // It must be flat (no peak/pit) and all 4 triangles must be the same color.
-      if (flat && uniform) {
+      if (isCellUniformColor(x, y)) {
         // SIMPLIFIED CASE: Collapse 4 triangles down to 2 diagonal triangles (saves 50% faces).
-        // Uses corner vertices: TL -> BR -> TR and TL -> BL -> BR
-        newFaces.push(baseVert + 0, baseVert + 5, baseVert + 2); // Triangle A
-        newFaces.push(baseVert + 0, baseVert + 8, baseVert + 5); // Triangle B
+        const tlY = vertices[baseVert * 3 + 1];       // Triangle 0: Top-Left
+        const trY = vertices[(baseVert + 2) * 3 + 1]; // Triangle 0: Top-Right
+        const brY = vertices[(baseVert + 5) * 3 + 1]; // Triangle 1: Bottom-Right
+        const blY = vertices[(baseVert + 8) * 3 + 1]; // Triangle 2: Bottom-Left
+
+        if (Math.abs(tlY - brY) <= Math.abs(trY - blY)) {
+          newFaces.push(baseVert + 0, baseVert + 5, baseVert + 2); // Triangle A: TL, BR, TR
+          newFaces.push(baseVert + 0, baseVert + 8, baseVert + 5); // Triangle B: TL, BL, BR
+        } else {
+          newFaces.push(baseVert + 0, baseVert + 8, baseVert + 2); // Triangle C: TL, BL, TR
+          newFaces.push(baseVert + 2, baseVert + 8, baseVert + 5); // Triangle D: TR, BL, BR
+        }
+        continue;
+      }
+
+      // TWO-COLOR CASE: even without full uniformity, if the 4 triangles split into exactly
+      // 2 colors along one diagonal (adjacent pairs sharing a color - e.g. a shore cell
+      // that's part water, part sand), the boundary between them is provably a straight line
+      // along that diagonal: every cell here is an exact rectangle in XZ, so the fan's
+      // center point always sits exactly on the midpoint of both diagonals regardless of
+      // height data, meaning merging 2 adjacent fan triangles into 1 never distorts the XZ
+      // footprint - only the color grouping needs to match the diagonal being chosen, which
+      // this checks directly. Each duplicate corner slot already carries the color of
+      // whichever original fan triangle it belonged to, so the two merged triangles must
+      // pull from the correct duplicate (not just any copy at that position) to stay correctly
+      // colored - no recoloring needed, just picking the right existing slots.
+      const c0 = colors[baseVert + 0]; // Top
+      const c1 = colors[baseVert + 3]; // Right
+      const c2 = colors[baseVert + 6]; // Bottom
+      const c3 = colors[baseVert + 9]; // Left
+
+      if (c0 === c1 && c2 === c3 && c0 !== c2) {
+        // TL-BR diagonal: Top+Right merge (TL, BR, TR), Bottom+Left merge (TL, BL, BR)
+        newFaces.push(baseVert + 0, baseVert + 5, baseVert + 2);
+        newFaces.push(baseVert + 11, baseVert + 8, baseVert + 6);
+      } else if (c1 === c2 && c3 === c0 && c1 !== c3) {
+        // TR-BL diagonal: Right+Bottom merge (TR, BL, BR), Left+Top merge (TL, BL, TR)
+        newFaces.push(baseVert + 3, baseVert + 8, baseVert + 5);
+        newFaces.push(baseVert + 11, baseVert + 9, baseVert + 2);
       } else {
-        // DETAILED CASE: Preserve all 4 triangles with split vertices for hard-edge shores/slopes.
+        // DETAILED CASE: genuinely needs all 4 triangles (e.g. an isolated single-edge notch,
+        // or a 3+ distinct-color transition) - preserve them with split vertices.
         newFaces.push(baseVert + 0, baseVert + 1, baseVert + 2);   // Triangle 0: Top (TL, Center, TR)
         newFaces.push(baseVert + 3, baseVert + 4, baseVert + 5);   // Triangle 1: Right (TR, Center, BR)
         newFaces.push(baseVert + 6, baseVert + 7, baseVert + 8);   // Triangle 2: Bottom (BR, Center, BL)
