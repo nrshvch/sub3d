@@ -433,30 +433,86 @@ export function smoothShader(
   cg2 = cg2 > 255 ? 255 : cg2;
   cb2 = cb2 > 255 ? 255 : cb2;
 
-  if (fogAmount > 0) {
-    const invFog = 1 - fogAmount;
-    const fogR = fogColor >>> 16;
-    const fogG = (fogColor >>> 8) & 255;
-    const fogB = fogColor & 255;
-    const fr = fogR * fogAmount;
-    const fg = fogG * fogAmount;
-    const fb = fogB * fogAmount;
-    cr0 = (cr0 * invFog + fr) | 0;
-    cg0 = (cg0 * invFog + fg) | 0;
-    cb0 = (cb0 * invFog + fb) | 0;
-    cr1 = (cr1 * invFog + fr) | 0;
-    cg1 = (cg1 * invFog + fg) | 0;
-    cb1 = (cb1 * invFog + fb) | 0;
-    cr2 = (cr2 * invFog + fr) | 0;
-    cg2 = (cg2 * invFog + fg) | 0;
-    cb2 = (cb2 * invFog + fb) | 0;
+  // Per-vertex fog (not the shared face-centroid fogAmount above, which stays reserved for the
+  // textured branch) - same per-vertex distance formula avgFlatShader.js uses before it
+  // averages, kept separate here instead so each vertex blends toward fogColor by its own
+  // amount. This is what lets the gradient below actually vary fog across a large triangle
+  // (e.g. a merged terrain quad) instead of baking in one shared average beforehand.
+  let fog0 = 0,
+    fog1 = 0,
+    fog2 = 0;
+
+  if (fogType === 2 /* RADIAL_FAST */ || fogType === 1 /* RADIAL */) {
+    const w0x = clipGeometryBuffer[faceIdx * 9];
+    const w0y = clipGeometryBuffer[faceIdx * 9 + 1];
+    const w0z = clipGeometryBuffer[faceIdx * 9 + 2];
+    const w1x = clipGeometryBuffer[faceIdx * 9 + 3];
+    const w1y = clipGeometryBuffer[faceIdx * 9 + 4];
+    const w1z = clipGeometryBuffer[faceIdx * 9 + 5];
+    const w2x = clipGeometryBuffer[faceIdx * 9 + 6];
+    const w2y = clipGeometryBuffer[faceIdx * 9 + 7];
+    const w2z = clipGeometryBuffer[faceIdx * 9 + 8];
+
+    if (fogType === 2 /* RADIAL_FAST */) {
+      const nearSq = fogNearPane * fogNearPane;
+      const farSq = fogFarPane * fogFarPane;
+      const invFogRangeSq = 1.0 / (farSq - nearSq);
+
+      fog0 = (w0x * w0x + w0y * w0y + w0z * w0z - nearSq) * invFogRangeSq;
+      fog1 = (w1x * w1x + w1y * w1y + w1z * w1z - nearSq) * invFogRangeSq;
+      fog2 = (w2x * w2x + w2y * w2y + w2z * w2z - nearSq) * invFogRangeSq;
+    } else {
+      const dist0 = Math.sqrt(w0x * w0x + w0y * w0y + w0z * w0z);
+      const dist1 = Math.sqrt(w1x * w1x + w1y * w1y + w1z * w1z);
+      const dist2 = Math.sqrt(w2x * w2x + w2y * w2y + w2z * w2z);
+
+      fog0 = (dist0 - fogNearPane) / (fogFarPane - fogNearPane);
+      fog1 = (dist1 - fogNearPane) / (fogFarPane - fogNearPane);
+      fog2 = (dist2 - fogNearPane) / (fogFarPane - fogNearPane);
+    }
+  } else if (fogType === 3 /* LINEAR */) {
+    const invFogRange = 1 / (fogFarPane - fogNearPane);
+    fog0 = (clipGeometryBuffer[faceIdx * 9 + 2] - fogNearPane) * invFogRange;
+    fog1 = (clipGeometryBuffer[faceIdx * 9 + 5] - fogNearPane) * invFogRange;
+    fog2 = (clipGeometryBuffer[faceIdx * 9 + 8] - fogNearPane) * invFogRange;
+  }
+
+  if (fog0 > 1) fog0 = 1;
+  if (fog1 > 1) fog1 = 1;
+  if (fog2 > 1) fog2 = 1;
+
+  const fogR = fogColor >>> 16;
+  const fogG = (fogColor >>> 8) & 255;
+  const fogB = fogColor & 255;
+
+  if (fog0 > 0) {
+    const invFog0 = 1 - fog0;
+    cr0 = (cr0 * invFog0 + fogR * fog0) | 0;
+    cg0 = (cg0 * invFog0 + fogG * fog0) | 0;
+    cb0 = (cb0 * invFog0 + fogB * fog0) | 0;
   } else {
     cr0 |= 0;
     cg0 |= 0;
     cb0 |= 0;
+  }
+
+  if (fog1 > 0) {
+    const invFog1 = 1 - fog1;
+    cr1 = (cr1 * invFog1 + fogR * fog1) | 0;
+    cg1 = (cg1 * invFog1 + fogG * fog1) | 0;
+    cb1 = (cb1 * invFog1 + fogB * fog1) | 0;
+  } else {
     cr1 |= 0;
     cg1 |= 0;
     cb1 |= 0;
+  }
+
+  if (fog2 > 0) {
+    const invFog2 = 1 - fog2;
+    cr2 = (cr2 * invFog2 + fogR * fog2) | 0;
+    cg2 = (cg2 * invFog2 + fogG * fog2) | 0;
+    cb2 = (cb2 * invFog2 + fogB * fog2) | 0;
+  } else {
     cr2 |= 0;
     cg2 |= 0;
     cb2 |= 0;
@@ -502,9 +558,12 @@ export function smoothShader(
     _py1 = py1,
     _px2 = px2,
     _py2 = py2;
-  let pi0 = i0,
-    pi1 = i1,
-    pi2 = i2;
+  // Sort key is the final post-fog blended brightness (not pre-fog light intensity), so the
+  // gradient direction below reflects what's actually being interpolated - light and fog are
+  // both already baked into cr/cg/cb by this point.
+  let pi0 = cr0 + cg0 + cb0,
+    pi1 = cr1 + cg1 + cb1,
+    pi2 = cr2 + cg2 + cb2;
   let _c16_0 = c16_0,
     _c16_1 = c16_1,
     _c16_2 = c16_2;
