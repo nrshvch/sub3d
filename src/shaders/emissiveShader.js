@@ -1,4 +1,8 @@
 import { PALETTE_16BIT } from "../palette.js";
+import {
+  flatFill,
+  STATS_FILL_DRAW_CALLS,
+} from "./shaderRegistry.js";
 
 /**
  * Predefined shader (see registerShader in shaderRegistry.js for the full argument contract),
@@ -6,9 +10,8 @@ import { PALETTE_16BIT } from "../palette.js";
  * mesh color plus fog - the cheapest built-in shading path. Exported via
  * scaliaEngine.shaders.emissive; reserved as shaderType 1 - no registration needed to use it.
  *
- * Maintains ctxStateBuffer exactly like every other shader, so a run of same-colored faces -
- * whether this shader, another registered shader, or a different built-in - only touches
- * ctx.fillStyle/strokeStyle/lineWidth/lineJoin when the value actually changes.
+ * The flat (untextured) case goes through flatFill, which strokes then fills every triangle
+ * immediately - see shaderRegistry.js for why.
  */
 export function emissiveShader(
   ctx,
@@ -42,6 +45,7 @@ export function emissiveShader(
   fogNearPane,
   fogFarPane,
   ctxStateBuffer,
+  statsBuffer,
 ) {
   const color32 = colorBuffer[faceIdx * 3];
   let r = color32 >>> 16;
@@ -167,6 +171,7 @@ export function emissiveShader(
       ctx.setTransform(a, bT, c, d, e, f);
       ctx.drawImage(img, 0, 0);
       ctx.restore();
+      statsBuffer[STATS_FILL_DRAW_CALLS]++; // drawImage is never batchable
 
       // Apply Fog (Source-Over)
       if (effectiveFog > 0) {
@@ -183,25 +188,12 @@ export function emissiveShader(
 
         ctx.globalAlpha = effectiveFog;
 
-        if (ctxStateBuffer[1] !== color16F) {
-          ctx.strokeStyle = PALETTE_16BIT[color16F];
-          ctxStateBuffer[1] = color16F;
-        }
-
-        if (ctxStateBuffer[2] !== 10) {
-          ctx.lineWidth = 1;
-          ctx.lineJoin = "miter";
-          ctxStateBuffer[2] = 10;
-        }
-
-        ctx.stroke();
-
-        if (ctxStateBuffer[0] !== color16F) {
-          ctx.fillStyle = PALETTE_16BIT[color16F];
-          ctxStateBuffer[0] = color16F;
-        }
+        // Reuses the still-current clip-triangle path from the texture setup above (save()/
+        // restore() don't touch the current path) - no fresh beginPath() needed here.
+        ctx.fillStyle = PALETTE_16BIT[color16F];
 
         ctx.fill();
+        statsBuffer[STATS_FILL_DRAW_CALLS]++;
 
         // Reset alpha - required by the shader contract
         ctx.globalAlpha = 1.0;
@@ -211,12 +203,6 @@ export function emissiveShader(
     }
   }
 
-  ctx.beginPath();
-  ctx.moveTo(epx0, epy0);
-  ctx.lineTo(epx1, epy1);
-  ctx.lineTo(epx2, epy2);
-  ctx.closePath();
-
   // Quantize 8-bit color channels to 5-6-5 bits
   const qr = r & 0xf8; // Keep 5 bits
   const qg = g & 0xfc; // Keep 6 bits
@@ -225,10 +211,5 @@ export function emissiveShader(
   // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
   const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-  if (ctxStateBuffer[0] !== color16) {
-    ctx.fillStyle = PALETTE_16BIT[color16];
-    ctxStateBuffer[0] = color16;
-  }
-
-  ctx.fill();
+  flatFill(ctx, px0, py0, px1, py1, px2, py2, color16, 0, ctxStateBuffer, statsBuffer);
 }

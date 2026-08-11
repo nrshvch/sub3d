@@ -17,12 +17,18 @@ import Ball from "./primitives/Ball.js";
 import Canvas2dViewport from "./Canvas2dViewport.js";
 import Light from "./Light.js";
 import { showDebug } from "./debug/showDebug.jsx";
-import { flatShader } from "./shaders/flatShader.js";
+import { flatShaderFill, flatShaderShade } from "./shaders/flatShader.js";
 import { emissiveShader } from "./shaders/emissiveShader.js";
 import { unlitShader } from "./shaders/unlitShader.js";
-import { smoothShader } from "./shaders/smoothShader.js";
-import { avgFlatShader } from "./shaders/avgFlatShader.js";
-import { registerShader } from "./shaders/shaderRegistry.js";
+import {
+  smoothShaderFill,
+  smoothShaderShade,
+} from "./shaders/smoothShader.js";
+import {
+  avgFlatShaderFill,
+  avgFlatShaderShade,
+} from "./shaders/avgFlatShader.js";
+import { registerShader, whiteFillShade } from "./shaders/shaderRegistry.js";
 
 export default window.scaliaEngine = {
   config: config,
@@ -44,16 +50,13 @@ export default window.scaliaEngine = {
   Light: Light,
   Canvas2dViewport: Canvas2dViewport,
   showDebug: showDebug,
-  // Registers a consumer shader function and returns the numeric key to assign to
-  // MeshComponent#shaderType (see shaders/shaderRegistry.js for the full argument contract).
   registerShader: registerShader,
-  // sub3d's own built-in shaders (reserved as shaderType 0/1/2/3/4 respectively - no
-  // registration needed), also usable directly as a reference for writing an original shader.
+  whiteFillShade: whiteFillShade,
   shaders: {
-    flat: flatShader,
+    flat: { fill: flatShaderFill, shade: flatShaderShade },
     emissive: emissiveShader,
     unlit: unlitShader,
-    avgFlat: avgFlatShader,
-    smooth: smoothShader,
+    avgFlat: { fill: avgFlatShaderFill, shade: avgFlatShaderShade },
+    smooth: { fill: smoothShaderFill, shade: smoothShaderShade },
   },
 };

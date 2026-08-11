@@ -1,4 +1,8 @@
 import {PALETTE_16BIT} from "../palette.js";
+import {
+  flatFill,
+  STATS_FILL_DRAW_CALLS,
+} from "./shaderRegistry.js";
 
 /**
  * Predefined shader (see registerShader in shaderRegistry.js for the full argument contract),
@@ -6,10 +10,8 @@ import {PALETTE_16BIT} from "../palette.js";
  * the mesh color (or texture). Exported via scaliaEngine.shaders.unlit; reserved as
  * shaderType 2 - no registration needed to use it.
  *
- * Maintains ctxStateBuffer exactly like every other shader, so a run of same-colored faces -
- * whether this shader, another registered shader, or a different built-in - only touches
- * ctx.fillStyle when the value actually changes. Unlike the other built-ins this shader never
- * strokes, so ctxStateBuffer[1]/[2] (strokeStyle/lineStyle) are left untouched.
+ * The flat (untextured) case goes through flatFill, which strokes then fills every triangle
+ * immediately - see shaderRegistry.js for why.
  */
 export function unlitShader(
   ctx,
@@ -22,6 +24,7 @@ export function unlitShader(
   ambientLightRgb, lightsIndexBuffer, gameObjects,
   fogType, fogColor, fogNearPane, fogFarPane,
   ctxStateBuffer,
+  statsBuffer,
 ) {
   const color32 = colorBuffer[faceIdx * 3];
   let r = color32 >>> 16;
@@ -76,16 +79,11 @@ export function unlitShader(
       ctx.setTransform(a, bT, c, d, e, f);
       ctx.drawImage(img, 0, 0);
       ctx.restore();
+      statsBuffer[STATS_FILL_DRAW_CALLS]++; // drawImage is never batchable
 
       return;
     }
   }
-
-  ctx.beginPath();
-  ctx.moveTo(epx0, epy0);
-  ctx.lineTo(epx1, epy1);
-  ctx.lineTo(epx2, epy2);
-  ctx.closePath();
 
   // Quantize 8-bit color channels to 5-6-5 bits
   const qr = r & 0xf8; // Keep 5 bits
@@ -95,10 +93,5 @@ export function unlitShader(
   // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
   const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-  if (ctxStateBuffer[0] !== color16) {
-    ctx.fillStyle = PALETTE_16BIT[color16];
-    ctxStateBuffer[0] = color16;
-  }
-
-  ctx.fill();
+  flatFill(ctx, px0, py0, px1, py1, px2, py2, color16, 0, ctxStateBuffer, statsBuffer);
 }
