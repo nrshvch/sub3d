@@ -10,12 +10,38 @@ import * as math from "./math.js";
 import { PALETTE_16BIT } from "./palette.js";
 import * as debug from "./debug/debug.js";
 import radixSort from "./radixSort.js";
-import { flatShader } from "./shaders/flatShader.js";
+import {
+  fogSort,
+  CTX_STATE_FOG,
+  STATS_FOG_DRAW_CALLS,
+  fogTriangles,
+  FOG_BATCH_CAPACITY,
+} from "./fog.js";
+import {
+  flatShaderFill,
+  flatShaderShade,
+} from "./shaders/flatShader.js";
 import { emissiveShader } from "./shaders/emissiveShader.js";
 import { unlitShader } from "./shaders/unlitShader.js";
-import { smoothShader } from "./shaders/smoothShader.js";
-import { avgFlatShader } from "./shaders/avgFlatShader.js";
-import { shaderRegistry } from "./shaders/shaderRegistry.js";
+import { smoothShaderFill, smoothShaderShade } from "./shaders/smoothShader.js";
+import {
+  avgFlatShaderFill,
+  avgFlatShaderShade,
+} from "./shaders/avgFlatShader.js";
+import {
+  shaderRegistry,
+  shadeShaderRegistry,
+  whiteFillShade,
+  flushBatchedFlatFill,
+  flushBatchedShadeFill,
+  BATCH_COLOR16,
+  FILL_BATCH_CAPACITY,
+  SHADE_BATCH_CAPACITY,
+  CTX_STATE_SHADE_FILL,
+  CTX_STATE_SAW_REAL_SHADING,
+  STATS_FILL_DRAW_CALLS,
+  STATS_SHADE_DRAW_CALLS,
+} from "./shaders/shaderRegistry.js";
 
 const computeNormalMatrix = MeshComponent.computeNormalMatrix;
 const vec3TransformMat4 = math.vec3TransformMat4;
@@ -26,6 +52,11 @@ const renderDebugNormals = debug.renderDebugNormals;
 // Coefficient for expanding polygons to cover subpixel seams/gaps
 // For cases when stroke cannot be done, e.g. textured polys
 const EXPANSION_COEFFICIENT = 0.6;
+
+// drawTriangles' return value (see its doc comment) - render() reads these bits to decide
+// whether to call shadeTriangles/fogTriangles for this layer at all.
+const NEEDS_SHADE_PASS = 1;
+const NEEDS_FOG_PASS = 2;
 
 function groupLayers(
   visibleObjectsBuffer,
@@ -86,8 +117,6 @@ export default function Canvas2dRenderer() {
   this.drawCalls = 0;
   this.faces = 0;
 
-  this.lightDirection = new Float32Array([0, 0, 0]);
-
   this.depthBuffer = new Float32Array(0);
   this.indexBuffer = new Uint32Array(0);
   this.clipGeometryBuffer = new Float32Array(0);
@@ -108,13 +137,35 @@ export default function Canvas2dRenderer() {
   this.vMapping = new Int32Array(0);
   this.vTags = new Uint32Array(0);
   this.tempIndexBuffer = new Uint32Array(0);
+  // fogSort's ping-pong scratch across its 4 passes - see fog.js.
+  this.fogSortScratchBuffer = new Uint32Array(0);
   this.counters = new Uint32Array(256);
   /*
-  Persistent 3-slot fillStyle/strokeStyle/lineStyle dedup
-  cache: [fillStyle key, strokeStyle key, lineStyle tag]. Shaders read/write these same slots directly,
-  so a run of same-styled faces only touches the canvas once regardless of which case drew them.
+  Persistent per-layer state shaders read/write directly via flatFill - see shaderRegistry.js's
+  registerShader doc comment for the full slot layout (fillStyle dedup keys, saw-real-shading
+  flag). Slots 1/2 are reserved for drawWireframe's own independent stroke-only rendering.
    */
-  this.ctxStateBuffer = new Int32Array(3);
+  this.ctxStateBuffer = new Int32Array(10);
+  // Separate from ctxStateBuffer on purpose - pure draw-call counters with no bearing on how
+  // anything renders (see shaderRegistry.js's registerShader doc comment for the layout).
+  this.statsBuffer = new Int32Array(3);
+  // batchedFlatFill's pending-batch state (fill pass only) - see shaderRegistry.js's
+  // batchedFlatFill doc comment for the merge algorithm these back.
+  this.batchStateBuffer = new Int32Array(3); // color16, meshIdx, length
+  this.batchCoordsBuffer = new Float32Array(FILL_BATCH_CAPACITY * 2);
+  this.batchIdentityBuffer = new Uint32Array(FILL_BATCH_CAPACITY);
+  this.batchWalkOrderBuffer = new Uint32Array(FILL_BATCH_CAPACITY);
+  // batchedFogFace's pending-batch state (fog pass only) - same mechanism, own buffers, since
+  // fog runs as its own pass with its own ctx/stats (see fog.js's batchedFogFace doc comment).
+  this.fogBatchStateBuffer = new Int32Array(3);
+  this.fogBatchCoordsBuffer = new Float32Array(FOG_BATCH_CAPACITY * 2);
+  this.fogBatchIdentityBuffer = new Uint32Array(FOG_BATCH_CAPACITY);
+  this.fogBatchWalkOrderBuffer = new Uint32Array(FOG_BATCH_CAPACITY);
+  // batchedShadeFill's pending-batch state (shade pass only) - same mechanism, own buffers.
+  this.shadeBatchStateBuffer = new Int32Array(3);
+  this.shadeBatchCoordsBuffer = new Float32Array(SHADE_BATCH_CAPACITY * 2);
+  this.shadeBatchIdentityBuffer = new Uint32Array(SHADE_BATCH_CAPACITY);
+  this.shadeBatchWalkOrderBuffer = new Uint32Array(SHADE_BATCH_CAPACITY);
 }
 
 var p = Canvas2dRenderer.prototype;
@@ -150,6 +201,31 @@ p.debugNormals = false;
  * @type {boolean}
  */
 p.debugAxis = false;
+
+/**
+ * Renderer-wide override: when false, the fill pass (base color/texture, see drawTriangles) is
+ * skipped entirely for every layer - see Canvas2dViewport#fillEnabled for the public API. Shade
+ * and fog composite onto the fill pass's output (multiply/lighter against `ctx`), so with fill
+ * off there's nothing for them to composite onto either, regardless of their own toggles below.
+ * @type {boolean}
+ */
+p.fillEnabled = true;
+
+/**
+ * Renderer-wide override: when false, the shade pass (deferred lighting, see shadeTriangles) is
+ * skipped for every layer even on faces whose shader would otherwise need it - see
+ * Canvas2dViewport#shadeEnabled for the public API.
+ * @type {boolean}
+ */
+p.shadeEnabled = true;
+
+/**
+ * Renderer-wide override: when false, the fog pass (see fogTriangles) is skipped for
+ * every layer even when flat-shaded faces are present - see Canvas2dViewport#fogEnabled for the
+ * public API.
+ * @type {boolean}
+ */
+p.fogEnabled = true;
 
 p.render = function (camera, viewport, stats) {
   let t0 = performance.now();
@@ -190,11 +266,32 @@ p.render = function (camera, viewport, stats) {
     vMapping = this.vMapping,
     vTags = this.vTags,
     tempIndexBuffer = this.tempIndexBuffer,
+    fogSortScratchBuffer = this.fogSortScratchBuffer,
     counters = this.counters,
-    ctxStateBuffer = this.ctxStateBuffer;
+    ctxStateBuffer = this.ctxStateBuffer,
+    statsBuffer = this.statsBuffer,
+    batchStateBuffer = this.batchStateBuffer,
+    batchCoordsBuffer = this.batchCoordsBuffer,
+    batchIdentityBuffer = this.batchIdentityBuffer,
+    batchWalkOrderBuffer = this.batchWalkOrderBuffer,
+    fogBatchStateBuffer = this.fogBatchStateBuffer,
+    fogBatchCoordsBuffer = this.fogBatchCoordsBuffer,
+    fogBatchIdentityBuffer = this.fogBatchIdentityBuffer,
+    fogBatchWalkOrderBuffer = this.fogBatchWalkOrderBuffer,
+    shadeBatchStateBuffer = this.shadeBatchStateBuffer,
+    shadeBatchCoordsBuffer = this.shadeBatchCoordsBuffer,
+    shadeBatchIdentityBuffer = this.shadeBatchIdentityBuffer,
+    shadeBatchWalkOrderBuffer = this.shadeBatchWalkOrderBuffer;
 
   let drawCalls = 0;
   let faces = 0;
+  let fillDrawCalls = 0;
+  let fogDrawCalls = 0;
+  let shadeDrawCalls = 0;
+  let totalFillRasterTime = 0;
+  let totalShadeRasterTime = 0;
+  let totalFogSortTime = 0;
+  let totalFogRasterTime = 0;
   const halfW = vw * 0.5,
     halfH = vh * 0.5;
 
@@ -271,7 +368,6 @@ p.render = function (camera, viewport, stats) {
 
   let totalSortTime = 0;
   let totalProcessTime = 0;
-  let totalDrawTime = 0;
 
   let layerOffset = 0;
   for (i = 0; i < layersCount; i++) {
@@ -282,6 +378,8 @@ p.render = function (camera, viewport, stats) {
     }
 
     ctx = viewport.layers[i];
+    const shadeCtx = viewport.shadeLayers[i];
+    const fogCtx = viewport.fogLayers[i];
 
     let maxFacesCount = 0;
     let maxVertsCount = 0;
@@ -319,6 +417,10 @@ p.render = function (camera, viewport, stats) {
       newArr = new Uint32Array(maxFacesCount);
       newArr.set(tempIndexBuffer);
       this.tempIndexBuffer = tempIndexBuffer = newArr;
+
+      newArr = new Uint32Array(maxFacesCount);
+      newArr.set(fogSortScratchBuffer);
+      this.fogSortScratchBuffer = fogSortScratchBuffer = newArr;
 
       // Allocate colorBuffer with 3 Uint32 slots per face (1 packed color per face vertex)
       newArr = new Uint32Array(maxFacesCount * 3);
@@ -420,7 +522,6 @@ p.render = function (camera, viewport, stats) {
 
     const toClear = (config.layerClearMask & (i + 1)) === i + 1;
 
-    const drawStart = performance.now();
     if (this.wireframe) {
       drawWireframe(
         ctx,
@@ -434,8 +535,18 @@ p.render = function (camera, viewport, stats) {
         vh,
         ctxStateBuffer,
       );
+    } else if (!this.fillEnabled) {
+      // Fill (and, downstream, shade/fog - they only ever composite onto what fill drew) is
+      // toggled off renderer-wide (see Canvas2dViewport#fillEnabled) - nothing to draw for this
+      // layer this frame. Still honor toClear, or a layer that was drawn before the toggle was
+      // flipped off would sit frozen on screen instead of going blank.
+      if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     } else {
-      drawTriangles(
+      // Fill always runs; it also reports (via the returned bitmask) whether this layer saw any
+      // face that needs a shade and/or fog pass - the gate for calling them at all lives here,
+      // not inside either function.
+      const fillStart = performance.now();
+      const passFlags = drawTriangles(
         ctx,
         vertexBuffer,
         vertexIndexBuffer,
@@ -448,13 +559,10 @@ p.render = function (camera, viewport, stats) {
         vw,
         vh,
         clipGeometryBuffer,
-        depthBuffer,
         camera.camera.fogType,
         camera.camera.fogColor,
         camera.camera.fogNearPane,
         camera.camera.fogFarPane,
-        camera.scene,
-        this.lightDirection,
         camera.camera.ambientLight,
         faceNormalsBuffer,
         vertexNormalsBuffer,
@@ -465,7 +573,107 @@ p.render = function (camera, viewport, stats) {
         lightsIndexBuffer,
         gameObjects,
         ctxStateBuffer,
+        statsBuffer,
+        batchStateBuffer,
+        batchCoordsBuffer,
+        batchIdentityBuffer,
+        batchWalkOrderBuffer,
       );
+      totalFillRasterTime += performance.now() - fillStart;
+
+      if (this.shadeEnabled && passFlags & NEEDS_SHADE_PASS) {
+        const shadeStart = performance.now();
+        shadeTriangles(
+          ctx,
+          shadeCtx,
+          vertexBuffer,
+          vertexIndexBuffer,
+          indexBuffer,
+          colorBuffer,
+          shaderTypeBuffer,
+          l,
+          0,
+          vw,
+          vh,
+          clipGeometryBuffer,
+          camera.camera.fogType,
+          camera.camera.fogColor,
+          camera.camera.fogNearPane,
+          camera.camera.fogFarPane,
+          camera.camera.ambientLight,
+          faceNormalsBuffer,
+          vertexNormalsBuffer,
+          meshIndexBuffer,
+          meshFaceIndexBuffer,
+          layerBuffers,
+          layerOffset + 1,
+          lightsIndexBuffer,
+          gameObjects,
+          ctxStateBuffer,
+          statsBuffer,
+          shadeBatchStateBuffer,
+          shadeBatchCoordsBuffer,
+          shadeBatchIdentityBuffer,
+          shadeBatchWalkOrderBuffer,
+        );
+        totalShadeRasterTime += performance.now() - shadeStart;
+      }
+
+      if (this.fogEnabled && passFlags & NEEDS_FOG_PASS) {
+        // Sorts this layer's flat-shaded faces the same way radixSort does (depth, then mesh),
+        // with fog bucket as an extra least-significant tie-break - depth stays dominant so
+        // fogCtx's draw order always matches fillCtx's real occlusion (see fog.js's fogSort).
+        const fogSortStart = performance.now();
+        const fogFaceCount = fogSort(
+          indexBuffer,
+          tempIndexBuffer,
+          fogSortScratchBuffer,
+          shaderTypeBuffer,
+          meshIndexBuffer,
+          depthBuffer,
+          clipGeometryBuffer,
+          counters,
+          l,
+          cam.nearClippingPane,
+          cam.farClippingPane,
+          camera.camera.fogType,
+          camera.camera.fogNearPane,
+          camera.camera.fogFarPane,
+        );
+        totalFogSortTime += performance.now() - fogSortStart;
+
+        const fogStart = performance.now();
+        fogTriangles(
+          ctx,
+          fogCtx,
+          vertexBuffer,
+          vertexIndexBuffer,
+          tempIndexBuffer,
+          meshIndexBuffer,
+          fogFaceCount,
+          vw,
+          vh,
+          clipGeometryBuffer,
+          camera.camera.fogType,
+          camera.camera.fogColor,
+          camera.camera.fogNearPane,
+          camera.camera.fogFarPane,
+          ctxStateBuffer,
+          statsBuffer,
+          fogBatchStateBuffer,
+          fogBatchCoordsBuffer,
+          fogBatchIdentityBuffer,
+          fogBatchWalkOrderBuffer,
+        );
+        totalFogRasterTime += performance.now() - fogStart;
+      }
+
+      // drawTriangles resets these slots itself (see its reset block) regardless of which passes
+      // actually ran - read them back here, right after, before the next layer's calls overwrite
+      // them.
+      fillDrawCalls += statsBuffer[STATS_FILL_DRAW_CALLS];
+      fogDrawCalls += statsBuffer[STATS_FOG_DRAW_CALLS];
+      shadeDrawCalls += statsBuffer[STATS_SHADE_DRAW_CALLS];
     }
 
     if (this.debugNormals) {
@@ -487,7 +695,6 @@ p.render = function (camera, viewport, stats) {
     }
 
     viewport.context.drawImage(ctx.canvas, 0, 0);
-    totalDrawTime += performance.now() - drawStart;
 
     drawCalls += l;
     faces += l;
@@ -506,11 +713,18 @@ p.render = function (camera, viewport, stats) {
   stats.visibleObjects = visibleObjectsBufferLen;
   stats.drawCalls = drawCalls;
   stats.faces = faces;
+  stats.fillDrawCalls = fillDrawCalls;
+  stats.fogDrawCalls = fogDrawCalls;
+  stats.shadeDrawCalls = shadeDrawCalls;
+  stats.drawCallsTotal = fillDrawCalls + fogDrawCalls + shadeDrawCalls;
   stats.sortTime = totalSortTime;
   stats.cullTime = cullTime;
   stats.groupTime = groupTime;
   stats.processTime = totalProcessTime;
-  stats.drawTime = totalDrawTime;
+  stats.fillRasterTime = totalFillRasterTime;
+  stats.shadeRasterTime = totalShadeRasterTime;
+  stats.fogSortTime = totalFogSortTime;
+  stats.fogRasterTime = totalFogRasterTime;
   stats.updateTime =
     camera.scene && camera.scene.world ? camera.scene.world.lastTickTime : 0;
   stats.retrieveTime = retrieveTime;
@@ -1300,7 +1514,14 @@ function drawWireframe(
 }
 
 /**
- * Draw
+ * Draws every face in [offset, offset+count) - the fill pass only: base color/texture for every
+ * face, every shader, onto `ctx`. Shading and fog are separate passes (shadeTriangles,
+ * fogTriangles below), called directly from render() instead of from inside this function - see
+ * NEEDS_SHADE_PASS/NEEDS_FOG_PASS. This split exists because alternating draw calls between two
+ * separate <canvas> elements per face measured ~25x more expensive per call than batching on
+ * Firefox, regardless of how much work each call does, so every `ctx` draw for a layer must
+ * happen before any `shadeCtx`/`fogCtx` draw. See shaderRegistry.js's registerShader doc comment
+ * for the full two-function shader contract this dispatches into.
  * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
  * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
  * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
@@ -1313,13 +1534,10 @@ function drawWireframe(
  * @param {number} w - Canvas width
  * @param {number} h - Canvas height
  * @param {Float32Array} clipGeometryBuffer - Array of clip geometry vertices in the format [x0, y0, z0, x1, y1, z1, ...]
- * @param {Float32Array} depthBuffer - Array of depth values for each face
  * @param {number} fogType - Fog type
  * @param {number[]} fogColor - Fog color
  * @param {number} fogNearPane - Near plane distance
  * @param {number} fogFarPane - Far plane distance
- * @param scene
- * @param {number} lightDirBuffer - Array of a light direction in the format [x, y, z]
  * @param {number} ambientLightRgb - Ambient light RGB color
  * @param {Float32Array} faceNormalsBuffer - Array of face normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
  * @param {Float32Array} vertexNormalsBuffer - Array of vertex normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
@@ -1329,9 +1547,17 @@ function drawWireframe(
  * @param {number} layerOffset - Starting index of the partition inside layerBuffers.
  * @param {Uint32Array} lightsIndexBuffer - Indices of active lights.
  * @param {Object} gameObjects - Dictionary of game objects in the scene.
- * @param {Int32Array} ctxStateBuffer - Persistent 3-slot fillStyle/strokeStyle/lineStyle dedup
- *   cache: [fillStyle key, strokeStyle key, lineStyle tag]. Shaders read/write these same slots directly,
- *   so a run of same-styled faces only touches the canvas once regardless of which case drew them.
+ * @param {Int32Array} ctxStateBuffer - Persistent per-layer state shaders read/write directly -
+ *   see shaderRegistry.js's registerShader doc comment for the full slot layout. A run of
+ *   same-styled faces only touches fillStyle/strokeStyle once regardless of which case drew them.
+ * @param {Int32Array} statsBuffer - Persistent per-layer draw-call counters, see
+ *   shaderRegistry.js's registerShader doc comment.
+ * @param {Int32Array} batchStateBuffer @param {Float32Array} batchCoordsBuffer
+ * @param {Uint32Array} batchIdentityBuffer @param {Uint32Array} batchWalkOrderBuffer -
+ *   batchedFlatFill's pending-batch state (fill pass only), see shaderRegistry.js's
+ *   batchedFlatFill doc comment for the merge algorithm these back.
+ * @returns {number} bitmask of NEEDS_SHADE_PASS / NEEDS_FOG_PASS - which of shadeTriangles /
+ *   fogTriangles render() should call for this layer.
  */
 function drawTriangles(
   ctx,
@@ -1346,13 +1572,10 @@ function drawTriangles(
   w,
   h,
   clipGeometryBuffer,
-  depthBuffer,
   fogType,
   fogColor,
   fogNearPane,
   fogFarPane,
-  scene,
-  lightDirBuffer,
   ambientLightRgb,
   faceNormalsBuffer,
   vertexNormalsBuffer,
@@ -1363,6 +1586,11 @@ function drawTriangles(
   lightsIndexBuffer,
   gameObjects,
   ctxStateBuffer,
+  statsBuffer,
+  batchStateBuffer,
+  batchCoordsBuffer,
+  batchIdentityBuffer,
+  batchWalkOrderBuffer,
 ) {
   const halfW = w * 0.5,
     halfH = h * 0.5;
@@ -1371,13 +1599,39 @@ function drawTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  // ctxStateBuffer *is* the fillStyle/strokeStyle/lineStyle dedup cache - shaders read/write the same 3 slots directly, so there's no copy in/out at
-  // the custom-shader boundary. Reset once per layer (drawTriangles is called per layer, see
-  // render() below): -1 = unset, forces an explicit ctx style set on the first face drawn.
-  ctxStateBuffer[0] = -1; // fillStyle: quantized color key in PALETTE16
-  ctxStateBuffer[1] = -1; // strokeStyle: quantized color key in PALETTE16
-  ctxStateBuffer[2] = -1; // lineStyle tag
+  // ctxStateBuffer's fillStyle dedup keys - reset once per layer (drawTriangles is called once
+  // per layer, see render() below): -1 = unset, forces an explicit style set on the first face
+  // drawn in each pass. Slots 1/2 are drawWireframe's own independent stroke-only state,
+  // untouched here. The shadeCtx/fogCtx keys are reset here too even though those passes run
+  // from separate functions gated in render() - each pass's first face must see -1, not
+  // whatever color the same slot held at the end of a previous layer.
+  ctxStateBuffer[0] = -1;
+  ctxStateBuffer[CTX_STATE_SHADE_FILL] = -1;
+  ctxStateBuffer[CTX_STATE_FOG] = -1;
+  ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING] = 0;
 
+  // Draw-call counters (see shaderRegistry.js's registerShader doc comment) - same per-layer
+  // reset reasoning as above: a layer that skips shade/fog entirely (gated in render()) must
+  // still report 0, not a stale count left over from whichever earlier layer last ran them.
+  statsBuffer[STATS_FILL_DRAW_CALLS] = 0;
+  statsBuffer[STATS_FOG_DRAW_CALLS] = 0;
+  statsBuffer[STATS_SHADE_DRAW_CALLS] = 0;
+
+  // No batch carries over from the previous layer's fill pass.
+  batchStateBuffer[BATCH_COLOR16] = -1;
+
+  // Set true the moment this pass sees a face whose shader has real shading to contribute -
+  // returned to render() as NEEDS_SHADE_PASS, the gate for calling shadeTriangles at all, so a
+  // layer that never needs deferred shading pays nothing beyond this one flag check per face.
+  let needsShadePass = false;
+
+  // Set true the moment this pass sees a flat-shaded (shaderKey 0) face - returned to render()
+  // as NEEDS_FOG_PASS, the gate for calling fogSort/fogTriangles at all (see fog.js). Only
+  // flatShader participates so far - other built-ins still blend fog into their
+  // own buffers.
+  let needsFogPass = false;
+
+  // FILL PASS: every face, every shader - base color/texture onto `ctx`.
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i]; //take face index
 
@@ -1431,11 +1685,19 @@ function drawTriangles(
     // Bound once so the default: branch (registered consumer shaders) can look up the same
     // key the switch dispatched on, without recomputing shaderTypeBuffer[idx].
     const shaderKey = shaderTypeBuffer[idx];
+
+    // Every other case below draws immediately, with no idea a flat batch might be pending -
+    // flush it first or a later-in-order face could paint before an earlier flat batch resolves,
+    // breaking depth order.
+    if (shaderKey !== 0) {
+      flushBatchedFlatFill(ctx, statsBuffer, batchStateBuffer, batchCoordsBuffer, batchWalkOrderBuffer);
+    }
+
     switch (shaderKey) {
       case 0: {
         // FLAT (light shading + fog) - see src/shaders/flatShader.js.
         // Fixed call site so the JIT keeps this monomorphic regardless of what's registered under other keys.
-        flatShader(
+        flatShaderFill(
           ctx,
           px0,
           py0,
@@ -1466,12 +1728,21 @@ function drawTriangles(
           fogColor,
           fogNearPane,
           fogFarPane,
+          mIdx,
           ctxStateBuffer,
+          statsBuffer,
+          batchStateBuffer,
+          batchCoordsBuffer,
+          batchIdentityBuffer,
+          batchWalkOrderBuffer,
         );
+        needsShadePass = true;
+        needsFogPass = true;
         break;
       }
       case 1: {
-        // EMISSIVE (no light shading, just fog) - see src/shaders/emissiveShader.js.
+        // EMISSIVE (no light shading, just fog) - see src/shaders/emissiveShader.js. Forward
+        // only - never contributes real shading, so it doesn't set needsShadePass.
         emissiveShader(
           ctx,
           px0,
@@ -1504,11 +1775,13 @@ function drawTriangles(
           fogNearPane,
           fogFarPane,
           ctxStateBuffer,
+          statsBuffer,
         );
         break;
       }
       case 2: {
         // UNLIT (no light shading, no fog, just mesh color) - see src/shaders/unlitShader.js.
+        // Forward only - never contributes real shading, so it doesn't set needsShadePass.
         unlitShader(
           ctx,
           px0,
@@ -1541,6 +1814,7 @@ function drawTriangles(
           fogNearPane,
           fogFarPane,
           ctxStateBuffer,
+          statsBuffer,
         );
         break;
       }
@@ -1548,7 +1822,7 @@ function drawTriangles(
         // AVG_FLAT - Averaged Vertex Flat Fill - see src/shaders/avgFlatShader.js. Uses the
         // switch case wireframe freed up, since wireframe is now handled entirely above,
         // before the switch, rather than occupying one of its case values.
-        avgFlatShader(
+        avgFlatShaderFill(
           ctx,
           px0,
           py0,
@@ -1580,12 +1854,14 @@ function drawTriangles(
           fogNearPane,
           fogFarPane,
           ctxStateBuffer,
+          statsBuffer,
         );
+        needsShadePass = true;
         break;
       }
       case 4: {
         // SMOOTH (Gouraud Shading) - see src/shaders/smoothShader.js.
-        smoothShader(
+        smoothShaderFill(
           ctx,
           px0,
           py0,
@@ -1617,21 +1893,15 @@ function drawTriangles(
           fogNearPane,
           fogFarPane,
           ctxStateBuffer,
+          statsBuffer,
         );
+        needsShadePass = true;
         break;
       }
       default: {
-        // Registered consumer shader (see registerShader in shaders/shaderRegistry.js) - keyed
-        // by shaderKey, not a fixed call site like the built-in cases above, so if many meshes
-        // carry distinct registered shaders it can go megamorphic. That cost is opt-in and
-        // confined to meshes using a registered key instead of one of the built-ins.
+        const fillFn = shaderRegistry[shaderKey];
 
-        const shaderFn = shaderRegistry[shaderKey];
-
-        // ctxStateBuffer is passed straight through - the registered shader reads/writes the
-        // same 3 slots the built-in cases above just used, so the dedup cache stays coherent
-        // across built-in and registered faces with no copy in/out at this boundary.
-        shaderFn(
+        fillFn(
           ctx,
           px0,
           py0,
@@ -1663,10 +1933,363 @@ function drawTriangles(
           fogNearPane,
           fogFarPane,
           ctxStateBuffer,
+          statsBuffer,
         );
-
+        if (shadeShaderRegistry[shaderKey]) needsShadePass = true;
         break;
       }
     }
   }
+
+  // The last group of faces is still sitting in an open (unflushed) batch until this runs.
+  flushBatchedFlatFill(ctx, statsBuffer, batchStateBuffer, batchCoordsBuffer, batchWalkOrderBuffer);
+
+  return (
+    (needsShadePass ? NEEDS_SHADE_PASS : 0) |
+    (needsFogPass ? NEEDS_FOG_PASS : 0)
+  );
+}
+
+/**
+ * Shade pass: only runs at all if drawTriangles' return value included NEEDS_SHADE_PASS for this
+ * layer (see render()). Real shading for shaders that have it, a defensive opaque-white fill
+ * (whiteFillShade) for every other face, since a real neighbor's shading footprint is
+ * deliberately drawn slightly oversized (epx/epy, not px/py) for anti-seam overlap and could
+ * otherwise bleed a few pixels onto this face's own silhouette. Geometry (px/py/epx/epy) is
+ * recomputed rather than cached from the fill pass - cheap ALU work, not worth a cache buffer
+ * for. Ends by compositing `shadeCtx` onto `ctx` via `multiply`, if anything real was drawn.
+ * @param {CanvasRenderingContext2D} ctx - this layer's fill buffer, composited onto at the end.
+ * @param {CanvasRenderingContext2D} shadeCtx - this layer's shading buffer.
+ * @param {Float32Array} vertexBuffer
+ * @param {Uint32Array} vertexIndexBuffer
+ * @param {Uint32Array} indexBuffer - depth-sorted face indices, same order drawTriangles used.
+ * @param {Uint32Array} colorBuffer
+ * @param {Uint8Array} shaderTypeBuffer
+ * @param {number} count @param {number} offset
+ * @param {number} w - ctx's (not shadeCtx's) width, for the final composite drawImage.
+ * @param {number} h - ctx's (not shadeCtx's) height, for the final composite drawImage.
+ * @param {Float32Array} clipGeometryBuffer
+ * @param {number} fogType @param {number} fogColor @param {number} fogNearPane @param {number} fogFarPane
+ * @param {number} ambientLightRgb
+ * @param {Float32Array} faceNormalsBuffer @param {Float32Array} vertexNormalsBuffer
+ * @param {Uint32Array} meshIndexBuffer @param {Uint32Array} meshFaceIndexBuffer
+ * @param {Uint32Array} layerBuffers @param {number} layerOffset
+ * @param {Uint32Array} lightsIndexBuffer @param {Object} gameObjects
+ * @param {Int32Array} ctxStateBuffer
+ * @param {Int32Array} statsBuffer
+ */
+function shadeTriangles(
+  ctx,
+  shadeCtx,
+  vertexBuffer,
+  vertexIndexBuffer,
+  indexBuffer,
+  colorBuffer,
+  shaderTypeBuffer,
+  count,
+  offset,
+  w,
+  h,
+  clipGeometryBuffer,
+  fogType,
+  fogColor,
+  fogNearPane,
+  fogFarPane,
+  ambientLightRgb,
+  faceNormalsBuffer,
+  vertexNormalsBuffer,
+  meshIndexBuffer,
+  meshFaceIndexBuffer,
+  layerBuffers,
+  layerOffset,
+  lightsIndexBuffer,
+  gameObjects,
+  ctxStateBuffer,
+  statsBuffer,
+  shadeBatchStateBuffer,
+  shadeBatchCoordsBuffer,
+  shadeBatchIdentityBuffer,
+  shadeBatchWalkOrderBuffer,
+) {
+  // shadeCtx is half-resolution (see Canvas2dViewport.js) - its own scale factors, derived from
+  // the buffer's actual size rather than w/h/2, so they stay correct even if the half-res
+  // rounding (Math.ceil) doesn't land exactly on w/2.
+  const halfShadeW = shadeCtx.canvas.width * 0.5,
+    halfShadeH = shadeCtx.canvas.height * 0.5;
+
+  // No batch carries over from the previous layer's shade pass.
+  shadeBatchStateBuffer[BATCH_COLOR16] = -1;
+
+  const len = offset + count;
+
+  for (let i = offset; i < len; i++) {
+    const idx = indexBuffer[i];
+
+    const v0Idx = vertexIndexBuffer[idx * 3];
+    const v1Idx = vertexIndexBuffer[idx * 3 + 1];
+    const v2Idx = vertexIndexBuffer[idx * 3 + 2];
+
+    // Scaled into shadeCtx's own half-resolution pixel space, not ctx's (see halfShadeW/H above).
+    const px0 = vertexBuffer[v0Idx] * halfShadeW + halfShadeW;
+    const py0 = vertexBuffer[v0Idx + 1] * halfShadeH + halfShadeH;
+    const px1 = vertexBuffer[v1Idx] * halfShadeW + halfShadeW;
+    const py1 = vertexBuffer[v1Idx + 1] * halfShadeH + halfShadeH;
+    const px2 = vertexBuffer[v2Idx] * halfShadeW + halfShadeW;
+    const py2 = vertexBuffer[v2Idx + 1] * halfShadeH + halfShadeH;
+
+    const cx = (px0 + px1 + px2) * 0.33333;
+    const cy = (py0 + py1 + py2) * 0.33333;
+
+    const dx0 = px0 - cx;
+    const dy0 = py0 - cy;
+    const a0 = Math.abs(dx0);
+    const b0 = Math.abs(dy0);
+    const len0 = a0 > b0 ? a0 + 0.4 * b0 : b0 + 0.4 * a0;
+    const invLen0 = len0 > 0 ? EXPANSION_COEFFICIENT / len0 : 0;
+    const epx0 = px0 + dx0 * invLen0;
+    const epy0 = py0 + dy0 * invLen0;
+
+    const dx1 = px1 - cx;
+    const dy1 = py1 - cy;
+    const a1 = Math.abs(dx1);
+    const b1 = Math.abs(dy1);
+    const len1 = a1 > b1 ? a1 + 0.4 * b1 : b1 + 0.4 * a1;
+    const invLen1 = len1 > 0 ? EXPANSION_COEFFICIENT / len1 : 0;
+    const epx1 = px1 + dx1 * invLen1;
+    const epy1 = py1 + dy1 * invLen1;
+
+    const dx2 = px2 - cx;
+    const dy2 = py2 - cy;
+    const a2 = Math.abs(dx2);
+    const b2 = Math.abs(dy2);
+    const len2 = a2 > b2 ? a2 + 0.4 * b2 : b2 + 0.4 * a2;
+    const invLen2 = len2 > 0 ? EXPANSION_COEFFICIENT / len2 : 0;
+    const epx2 = px2 + dx2 * invLen2;
+    const epy2 = py2 + dy2 * invLen2;
+
+    const mIdx = meshIndexBuffer[idx];
+    const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
+
+    const shaderKey = shaderTypeBuffer[idx];
+
+    // Same reasoning as the fill pass' equivalent guard: every other case below draws
+    // immediately with no idea a shade batch might be pending.
+    if (shaderKey !== 0) {
+      flushBatchedShadeFill(
+        shadeCtx,
+        statsBuffer,
+        shadeBatchStateBuffer,
+        shadeBatchCoordsBuffer,
+        shadeBatchWalkOrderBuffer,
+      );
+    }
+
+    switch (shaderKey) {
+      case 0: {
+        flatShaderShade(
+          shadeCtx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          mIdx,
+          ctxStateBuffer,
+          statsBuffer,
+          shadeBatchStateBuffer,
+          shadeBatchCoordsBuffer,
+          shadeBatchIdentityBuffer,
+          shadeBatchWalkOrderBuffer,
+        );
+        break;
+      }
+      case 1:
+      case 2: {
+        // EMISSIVE / UNLIT - forward-only, nothing real to shade.
+        whiteFillShade(
+          shadeCtx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          ctxStateBuffer,
+          statsBuffer,
+        );
+        break;
+      }
+      case 3: {
+        avgFlatShaderShade(
+          shadeCtx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+          statsBuffer,
+        );
+        break;
+      }
+      case 4: {
+        smoothShaderShade(
+          shadeCtx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          v0Idx,
+          v1Idx,
+          v2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          ctxStateBuffer,
+          statsBuffer,
+        );
+        break;
+      }
+      default: {
+        // Registered consumer shader - shadeShaderRegistry only has an entry for keys that
+        // opted into a shade function at registerShader() time; anything else (including a
+        // registered shader with no shadeFn) falls back to the same defensive white fill
+        // emissive/unlit use above.
+        const shadeFn = shadeShaderRegistry[shaderKey];
+        if (shadeFn) {
+          shadeFn(
+            shadeCtx,
+            px0,
+            py0,
+            px1,
+            py1,
+            px2,
+            py2,
+            epx0,
+            epy0,
+            epx1,
+            epy1,
+            epx2,
+            epy2,
+            clipGeometryBuffer,
+            colorBuffer,
+            vertexNormalsBuffer,
+            faceNormalsBuffer,
+            v0Idx,
+            v1Idx,
+            v2Idx,
+            idx,
+            mesh,
+            meshFaceIndexBuffer[idx],
+            ambientLightRgb,
+            lightsIndexBuffer,
+            gameObjects,
+            fogType,
+            fogColor,
+            fogNearPane,
+            fogFarPane,
+            ctxStateBuffer,
+            statsBuffer,
+          );
+        } else {
+          whiteFillShade(
+            shadeCtx,
+            px0,
+            py0,
+            px1,
+            py1,
+            px2,
+            py2,
+            ctxStateBuffer,
+            statsBuffer,
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  flushBatchedShadeFill(
+    shadeCtx,
+    statsBuffer,
+    shadeBatchStateBuffer,
+    shadeBatchCoordsBuffer,
+    shadeBatchWalkOrderBuffer,
+  );
+
+  if (ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING]) {
+    // Composite this layer's shading buffer onto the fill buffer.
+    ctx.globalCompositeOperation = "multiply";
+    ctx.drawImage(shadeCtx.canvas, 0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  shadeCtx.clearRect(0, 0, shadeCtx.canvas.width, shadeCtx.canvas.height);
 }

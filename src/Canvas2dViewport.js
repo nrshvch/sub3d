@@ -6,7 +6,8 @@ const mat4Mul = math.mat4Mul;
 
 export default function Canvas2dViewport(camera, canvas) {
   this.canvas = canvas || document.createElement("canvas");
-  this.context = this.canvas.getContext("2d");
+  this.canvas.style.filter = "url(#stripBlue)";
+  this.context = this.canvas.getContext("2d", {alpha: true});
   this.context.imageSmoothingEnabled = false;
   this.context.webkitImageSmoothingEnabled = false;
   this.width = 0;
@@ -23,11 +24,23 @@ export default function Canvas2dViewport(camera, canvas) {
 
   //generate layers
   this.layers = [];
+  this.shadeLayers = [];
+  this.fogLayers = [];
   for (var i = 0; i < config.layersCount; i++) {
     var cnv = document.createElement("canvas");
     this.layers[i] = cnv.getContext("2d");
     this.layers[i].imageSmoothingEnabled = false;
     this.layers[i].webkitImageSmoothingEnabled = false;
+
+    var shadeCnv = document.createElement("canvas");
+    this.shadeLayers[i] = shadeCnv.getContext("2d");
+    this.shadeLayers[i].imageSmoothingEnabled = false;
+    this.shadeLayers[i].webkitImageSmoothingEnabled = false;
+
+    var fogCnv = document.createElement("canvas");
+    this.fogLayers[i] = fogCnv.getContext("2d");
+    this.fogLayers[i].imageSmoothingEnabled = false;
+    this.fogLayers[i].webkitImageSmoothingEnabled = false;
   }
 
   var viewport = this;
@@ -43,7 +56,6 @@ export default function Canvas2dViewport(camera, canvas) {
     cullTime: 0,
     groupTime: 0,
     processTime: 0,
-    drawTime: 0,
     updateTime: 0,
     retrieveTime: 0
   };
@@ -153,6 +165,49 @@ Object.defineProperty(p, "debugAxis", {
   },
 });
 
+/**
+ * Renderer-wide override - when false, the fill pass (base color/texture) is skipped entirely
+ * for every layer (see Canvas2dRenderer's `fillEnabled` param). On by default; shade and fog
+ * composite onto fill's output, so turning fill off blanks the layer regardless of their toggles.
+ * @type {boolean}
+ */
+Object.defineProperty(p, "fillEnabled", {
+  get: function () {
+    return this.renderer.fillEnabled;
+  },
+  set: function (value) {
+    this.renderer.fillEnabled = value;
+  },
+});
+
+/**
+ * Renderer-wide override - when false, the shade (deferred lighting) pass is skipped for every
+ * layer (see Canvas2dRenderer's `shadeEnabled` param). On by default.
+ * @type {boolean}
+ */
+Object.defineProperty(p, "shadeEnabled", {
+  get: function () {
+    return this.renderer.shadeEnabled;
+  },
+  set: function (value) {
+    this.renderer.shadeEnabled = value;
+  },
+});
+
+/**
+ * Renderer-wide override - when false, the fog pass is skipped for every layer (see
+ * Canvas2dRenderer's `fogEnabled` param). On by default.
+ * @type {boolean}
+ */
+Object.defineProperty(p, "fogEnabled", {
+  get: function () {
+    return this.renderer.fogEnabled;
+  },
+  set: function (value) {
+    this.renderer.fogEnabled = value;
+  },
+});
+
 p.start = function () {
   this.setSize(this.canvas.offsetWidth, this.canvas.offsetHeight);
 
@@ -189,6 +244,14 @@ p.setSize = function (width, height) {
     var ctx = this.layers[i];
     ctx.canvas.width = dpiW;
     ctx.canvas.height = dpiH;
+
+    var shadeCtx = this.shadeLayers[i];
+    shadeCtx.canvas.width = Math.ceil(dpiW / 1);
+    shadeCtx.canvas.height = Math.ceil(dpiH / 1);
+
+    var fogCtx = this.fogLayers[i];
+    fogCtx.canvas.width = Math.ceil(dpiW / 1);
+    fogCtx.canvas.height = Math.ceil(dpiH / 1);
   }
 
   this.camera.setup(width, height);
