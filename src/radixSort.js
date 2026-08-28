@@ -115,6 +115,29 @@ export default function radixSort(
   // =========================================================================
   // PASS 3: Sort by Depth lower 8 bits (middle-high significant key)
   // Read from indexBuffer -> Write to tempIndexBuffer
+  //
+  // Serpentine tie-break: this pass's own bucket number is also, incidentally, bit 0 of the
+  // full 16-bit depth key (pass 4 only ever contributes higher bits), so an odd-numbered bucket
+  // here IS an odd-numbered exact depth tie. For odd buckets we fill top-down instead of
+  // bottom-up - this never changes which bucket an element lands in, or the relative order
+  // *between* buckets (bucket N's elements still entirely precede bucket N+1's), only which end
+  // of its own bucket's range an element starts from. That's what makes it safe to do here and
+  // only here: pass 4 (stable, high-byte, runs after) re-separates elements that turn out to
+  // differ on the next key regardless of what this pass did to their relative order - only
+  // elements still tied after pass 4 too (genuinely exact-matching full depth key) keep the
+  // order this pass gave them. Reversing pass 4 itself would be wrong for the same reason in
+  // the other direction: it's the final pass, so reversing it would reorder elements that share
+  // a high byte but differ in low byte - i.e. elements that are NOT tied, whose relative order
+  // is real occlusion information.
+  //
+  // Net effect: when a mesh's faces span two adjacent exact-depth-tie buckets and a different
+  // mesh occupies the far end of one and the near end of the next, alternating fill direction
+  // gives whichever mesh sits at the extremal (highest- or lowest-index) end of each boundary a
+  // systematic chance to end up contiguous across it, instead of purely by accident - which
+  // helps batchedFlatFill/batchedShadeFill (shaderRegistry.js) merge more triangles into fewer
+  // draw calls. It's a cheap proxy (bucket parity, not true occurrence-rank parity), so it
+  // engages at roughly half of real tie-group boundaries and is a harmless no-op at the other
+  // half - never a regression, just not a 100%-hit-rate fix.
   // =========================================================================
   counters.fill(0);
   for (let i = 0; i < count; i++) {
@@ -132,7 +155,8 @@ export default function radixSort(
   offset = 0;
   for (let i = 0; i < 256; i++) {
     const tempCount = counters[i];
-    counters[i] = offset;
+    // Odd buckets fill from the top down (see serpentine note above); even buckets unchanged.
+    counters[i] = (i & 1) ? offset + tempCount - 1 : offset;
     offset += tempCount;
   }
 
@@ -144,8 +168,9 @@ export default function radixSort(
     if (t < 0) t = 0;
     else if (t > 65535) t = 65535;
     const depthKey = (65535 - (t | 0)) & 0xff;
-    
-    tempIndexBuffer[counters[depthKey]++] = idx;
+
+    if (depthKey & 1) tempIndexBuffer[counters[depthKey]--] = idx;
+    else tempIndexBuffer[counters[depthKey]++] = idx;
   }
 
   // =========================================================================
