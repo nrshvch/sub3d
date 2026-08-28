@@ -11,7 +11,7 @@ npm run build       # build production bundle to dist/sub3d.js
 npm run preview      # preview the production build
 ```
 
-There is no real test suite yet (`npm test` is a stub). `bench/` contains performance benchmarks (e.g. `bench/flatShader.bench.test.js`) with support helpers in `bench/support/`.
+`npm test` runs unit tests via vitest (plain Node, no browser needed — e.g. `src/radixSort.test.js`, colocated with the source it covers). `bench/` contains performance benchmarks (e.g. `bench/flatShader.bench.test.js`, a separate vitest-browser-mode test excluded from `npm test` via `vitest.config.js` since it needs a configured browser provider) with support helpers in `bench/support/`.
 
 ## Layout
 
