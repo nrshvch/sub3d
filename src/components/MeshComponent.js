@@ -82,6 +82,14 @@ p.vertexNormals = null;
 p.bounds = null;
 
 /**
+ * Canonical-position vertex map, only computed by calling updateWeldMap() - weldMap[i] is the lowest raw vertex index
+ * sharing i's practical position, so two "split" vertices (distinct buffer indices, placed at the same physical spot)
+ * resolve to the same id.
+ * @type {Uint32Array|null}
+ */
+p.weldMap = null;
+
+/**
  * Generates both face and vertex normals.
  * Uses area-weighting for vertex normals to provide smoother shading.
  * @param {number} winding - Set to 1 for CCW (Standard), -1 for CW.
@@ -162,6 +170,16 @@ p.updateNormals = function (winding = 1) {
       this.vertexNormals[i + 1] = 1.0;
     }
   }
+};
+
+/**
+ * Computes weldMap from the mesh's current vertex positions - see
+ * weldMap's own doc comment above.
+ * Call explicitly after vertices are finalized, and again any time those positions change.
+ * @param {number} [epsilon].
+ */
+p.updateWeldMap = function (epsilon) {
+  this.weldMap = Mesh.computeWeldMap(this.vertices, this.weldMap, epsilon);
 };
 
 p.setGameObject = function (gameObject) {
@@ -327,4 +345,44 @@ Mesh.computeBoundingSphere = function (out, offset, vertices) {
   out[offset + 1] = cy;
   out[offset + 2] = cz;
   out[offset + 3] = radius;
+};
+
+/**
+ * Groups vertices by practical position and returns a Uint32Array where result[i] is the lowest raw vertex index
+ * sharing i's position - i.e. a canonical id two "split" vertices at the same spot both resolve
+ * to.
+ *
+ * @param {Float32Array} vertices - [x, y, z, x, y, z, ...]
+ * @param {Uint32Array|null} [out] - Reused if its length already matches the vertex count (same
+ *   reuse-if-same-size convention as updateNormals()), else a fresh array is allocated.
+ * @param {number} [epsilon] - Positions within this of zero snap to exactly zero before
+ *   rounding, so e.g. a pole vertex's sin(PI) (not quite 0) still keys the same as an exact 0.
+ * @returns {Uint32Array}
+ */
+Mesh.computeWeldMap = function (vertices, out, epsilon = 1e-4) {
+  const vertexCount = (vertices.length / 3) | 0;
+  const weldMap =
+    out && out.length === vertexCount ? out : new Uint32Array(vertexCount);
+  const positionGroups = {};
+
+  for (let i = 0; i < vertexCount; i++) {
+    const o = i * 3;
+    let vx = vertices[o];
+    let vy = vertices[o + 1];
+    let vz = vertices[o + 2];
+    if (Math.abs(vx) < epsilon) vx = 0;
+    if (Math.abs(vy) < epsilon) vy = 0;
+    if (Math.abs(vz) < epsilon) vz = 0;
+
+    const key = vx.toFixed(4) + "," + vy.toFixed(4) + "," + vz.toFixed(4);
+    const canonical = positionGroups[key];
+    if (canonical === undefined) {
+      positionGroups[key] = i;
+      weldMap[i] = i;
+    } else {
+      weldMap[i] = canonical;
+    }
+  }
+
+  return weldMap;
 };
