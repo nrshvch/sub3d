@@ -28,7 +28,7 @@ import {
   avgFlatShaderShade,
 } from "./shaders/avgFlatFill/index.js";
 import { registerShader } from "./shaders/shaderRegistry.js";
-import { whiteFillShade } from "./shared/shaders.js";
+import { identityFill } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
 import { smoothShaderShade } from "./shaders/smoothShade.js";
 
@@ -53,7 +53,7 @@ export default window.scaliaEngine = {
   Canvas2dViewport: Canvas2dViewport,
   showDebug: showDebug,
   registerShader: registerShader,
-  whiteFillShade: whiteFillShade,
+  whiteFillShade: identityFill,
   shaders: {
     flat: { fill: flatShaderFill, shade: flatShaderShade },
     emissive: emissiveShader,

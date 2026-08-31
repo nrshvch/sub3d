@@ -22,6 +22,7 @@ export function unlitShader(
   faceIdx, mesh, meshFaceIdx,
   ambientLightRgb, lightsIndexBuffer, gameObjects,
   fogType, fogColor, fogNearPane, fogFarPane,
+  meshIdx,
   ctxStateBuffer,
   statsBuffer,
 ) {

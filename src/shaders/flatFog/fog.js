@@ -4,15 +4,23 @@ import { findBoundaryEdge } from "../../shared/shaders.js";
 
 // How many vertices the merged boundary polygon can hold before a fog batch is forced to flush -
 // separate from fill.js's FILL_BATCH_CAPACITY since fog runs as its own pass with its own
-// buffers, even though the mechanism (see batchedFogFace) is identical.
-export const FOG_BATCH_CAPACITY = 16;
+// shaderData, even though the mechanism (see batchedFogFace) is identical.
+const FOG_BATCH_CAPACITY = 16;
 
-// fogBatchStateBuffer layout (Int32Array(3), see Canvas2dRenderer.js) - private, unlike fill's
-// BATCH_COLOR16: fogTriangles owns its own reset/flush lifecycle, so nothing outside fog.js needs
-// to know these slot numbers.
-const FOG_BATCH_COLOR16 = 0; // -1 = no pending batch
-const FOG_BATCH_MESH = 1;
-const FOG_BATCH_LENGTH = 2;
+// This shader's own private layout inside its own module-scoped shaderData below - fog is always
+// the flat shader's own routine (fogSort only ever emits shaderKey-0 faces), so this is the one
+// and only user of it.
+const SD_CALL_ID = 0; // last frameId this shaderData was touched under - mismatch means stale
+const SD_COLOR16 = 1; // -1 = no pending batch
+const SD_MESH = 2;
+const SD_LENGTH = 3;
+const SD_COORDS = 4; // FOG_BATCH_CAPACITY*2 floats
+const SD_IDENTITY = SD_COORDS + FOG_BATCH_CAPACITY * 2; // FOG_BATCH_CAPACITY floats
+const SD_WALKORDER = SD_IDENTITY + FOG_BATCH_CAPACITY; // FOG_BATCH_CAPACITY floats
+
+// This shader's entire pending-batch state, private to this module for the life of the page -
+// the renderer never allocates, passes, or knows about this.
+const shaderData = new Float32Array(SD_WALKORDER + FOG_BATCH_CAPACITY);
 
 // Slots into the shared ctxStateBuffer/statsBuffer Canvas2dRenderer.js owns (see
 // shaderRegistry.js's registerShader doc comment for the full layout of the rest).
@@ -228,12 +236,15 @@ export function fogSort(
 }
 
 /**
- * Fog-pass mirror of shaderRegistry.js's batchedFlatFill: merges consecutive same-fog-color,
+ * Fog-pass mirror of flatFill/flatShader.js's batchedFlatFill: merges consecutive same-fog-color,
  * same-mesh triangles that share an edge into one continuous path, same findBoundaryEdge
- * mechanism, same append-only batchCoords/batchIdentity + spliced batchWalkOrder shape. Draws
- * every face unconditionally (no fogAmount-based skip - a "fully fogged" face still has to be
- * drawn to correctly occlude whatever's underneath it in fogCtx, since depth-dominant draw order
- * means it's no longer safe to assume nothing but background is there).
+ * mechanism, same append-only coords/identity + spliced walk-order shape inside its own
+ * shaderData. Draws every face unconditionally (no fogAmount-based skip - a "fully fogged" face
+ * still has to be drawn to correctly occlude whatever's underneath it in fogCtx, since
+ * depth-dominant draw order means it's no longer safe to assume nothing but background is
+ * there). `last` (true only for the final face fogTriangles passes in) is handled the same way
+ * batchedFlatFill handles it: this face is merged/started normally first, then, since no more
+ * faces are coming, whatever's now pending is flushed before returning.
  * @param {CanvasRenderingContext2D} fogCtx - this layer's half-resolution fog buffer.
  * @param {number} px0 @param {number} py0
  * @param {number} px1 @param {number} py1
@@ -244,8 +255,8 @@ export function fogSort(
  * @param {number} faceIdx @param {number} meshIdx
  * @param {number} fogType @param {number} fogNearPane @param {number} fogFarPane
  * @param {Int32Array} ctxStateBuffer @param {Int32Array} statsBuffer
- * @param {Int32Array} batchStateBuffer @param {Float32Array} batchCoords
- * @param {Uint32Array} batchIdentity @param {Uint32Array} batchWalkOrder
+ * @param {number} frameId @param {boolean} last - see shaderRegistry.js's registerShader doc
+ *   comment for the frameId/last contract.
  */
 function batchedFogFace(
   fogCtx,
@@ -266,10 +277,8 @@ function batchedFogFace(
   fogFarPane,
   ctxStateBuffer,
   statsBuffer,
-  batchStateBuffer,
-  batchCoords,
-  batchIdentity,
-  batchWalkOrder,
+  frameId,
+  last,
 ) {
   const fogAmount = computeFogAmount(
     faceIdx,
@@ -285,11 +294,14 @@ function batchedFogFace(
   const color16 =
     ((keep & 0xf8) << 8) | ((keep & 0xfc) << 3) | ((keep & 0xf8) >> 3);
 
+  const stale = shaderData[SD_CALL_ID] !== frameId;
+
   if (
-    batchStateBuffer[FOG_BATCH_COLOR16] === color16 &&
-    batchStateBuffer[FOG_BATCH_MESH] === meshIdx
+    !stale &&
+    shaderData[SD_COLOR16] === color16 &&
+    shaderData[SD_MESH] === meshIdx
   ) {
-    const length = batchStateBuffer[FOG_BATCH_LENGTH];
+    const length = shaderData[SD_LENGTH];
 
     let matchPos = -1;
     let matchCount = 0;
@@ -297,7 +309,7 @@ function batchedFogFace(
       newPy = 0,
       newVIdx = 0;
 
-    let pos = findBoundaryEdge(v0Idx, v1Idx, batchWalkOrder, batchIdentity, length);
+    let pos = findBoundaryEdge(v0Idx, v1Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
     if (pos !== -1) {
       matchPos = pos;
       matchCount++;
@@ -305,7 +317,7 @@ function batchedFogFace(
       newPy = py2;
       newVIdx = v2Idx;
     }
-    pos = findBoundaryEdge(v1Idx, v2Idx, batchWalkOrder, batchIdentity, length);
+    pos = findBoundaryEdge(v1Idx, v2Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
     if (pos !== -1) {
       matchPos = pos;
       matchCount++;
@@ -313,7 +325,7 @@ function batchedFogFace(
       newPy = py0;
       newVIdx = v0Idx;
     }
-    pos = findBoundaryEdge(v2Idx, v0Idx, batchWalkOrder, batchIdentity, length);
+    pos = findBoundaryEdge(v2Idx, v0Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
     if (pos !== -1) {
       matchPos = pos;
       matchCount++;
@@ -323,22 +335,23 @@ function batchedFogFace(
     }
 
     if (matchCount === 1 && length < FOG_BATCH_CAPACITY) {
-      batchCoords[length * 2] = newPx;
-      batchCoords[length * 2 + 1] = newPy;
-      batchIdentity[length] = newVIdx;
+      shaderData[SD_COORDS + length * 2] = newPx;
+      shaderData[SD_COORDS + length * 2 + 1] = newPy;
+      shaderData[SD_IDENTITY + length] = newVIdx;
 
       for (let i = length; i > matchPos + 1; i--) {
-        batchWalkOrder[i] = batchWalkOrder[i - 1];
+        shaderData[SD_WALKORDER + i] = shaderData[SD_WALKORDER + i - 1];
       }
-      batchWalkOrder[matchPos + 1] = length;
+      shaderData[SD_WALKORDER + matchPos + 1] = length;
 
-      batchStateBuffer[FOG_BATCH_LENGTH] = length + 1;
+      shaderData[SD_LENGTH] = length + 1;
+      if (last) flushBatchedFogFace(fogCtx, statsBuffer);
       return;
     }
 
-    flushBatchedFogFace(fogCtx, statsBuffer, batchStateBuffer, batchCoords, batchWalkOrder);
-  } else if (batchStateBuffer[FOG_BATCH_COLOR16] !== -1) {
-    flushBatchedFogFace(fogCtx, statsBuffer, batchStateBuffer, batchCoords, batchWalkOrder);
+    flushBatchedFogFace(fogCtx, statsBuffer);
+  } else if (!stale && shaderData[SD_COLOR16] !== -1) {
+    flushBatchedFogFace(fogCtx, statsBuffer);
   }
 
   if (ctxStateBuffer[CTX_STATE_FOG] !== color16) {
@@ -350,41 +363,38 @@ function batchedFogFace(
     ctxStateBuffer[CTX_STATE_FOG] = color16;
   }
 
-  batchCoords[0] = px0;
-  batchCoords[1] = py0;
-  batchCoords[2] = px1;
-  batchCoords[3] = py1;
-  batchCoords[4] = px2;
-  batchCoords[5] = py2;
-  batchIdentity[0] = v0Idx;
-  batchIdentity[1] = v1Idx;
-  batchIdentity[2] = v2Idx;
-  batchWalkOrder[0] = 0;
-  batchWalkOrder[1] = 1;
-  batchWalkOrder[2] = 2;
+  shaderData[SD_CALL_ID] = frameId;
+  shaderData[SD_COORDS] = px0;
+  shaderData[SD_COORDS + 1] = py0;
+  shaderData[SD_COORDS + 2] = px1;
+  shaderData[SD_COORDS + 3] = py1;
+  shaderData[SD_COORDS + 4] = px2;
+  shaderData[SD_COORDS + 5] = py2;
+  shaderData[SD_IDENTITY] = v0Idx;
+  shaderData[SD_IDENTITY + 1] = v1Idx;
+  shaderData[SD_IDENTITY + 2] = v2Idx;
+  shaderData[SD_WALKORDER] = 0;
+  shaderData[SD_WALKORDER + 1] = 1;
+  shaderData[SD_WALKORDER + 2] = 2;
 
-  batchStateBuffer[FOG_BATCH_COLOR16] = color16;
-  batchStateBuffer[FOG_BATCH_MESH] = meshIdx;
-  batchStateBuffer[FOG_BATCH_LENGTH] = 3;
+  shaderData[SD_COLOR16] = color16;
+  shaderData[SD_MESH] = meshIdx;
+  shaderData[SD_LENGTH] = 3;
+
+  if (last) flushBatchedFogFace(fogCtx, statsBuffer);
 }
 
-function flushBatchedFogFace(
-  fogCtx,
-  statsBuffer,
-  batchStateBuffer,
-  batchCoords,
-  batchWalkOrder,
-) {
-  if (batchStateBuffer[FOG_BATCH_COLOR16] === -1) return;
+function flushBatchedFogFace(fogCtx, statsBuffer) {
+  if (shaderData[SD_COLOR16] === -1) return;
 
-  const length = batchStateBuffer[FOG_BATCH_LENGTH];
-  const first = batchWalkOrder[0];
+  const length = shaderData[SD_LENGTH];
+  const first = shaderData[SD_WALKORDER];
 
   fogCtx.beginPath();
-  fogCtx.moveTo(batchCoords[first * 2], batchCoords[first * 2 + 1]);
+  fogCtx.moveTo(shaderData[SD_COORDS + first * 2], shaderData[SD_COORDS + first * 2 + 1]);
   for (let i = 1; i < length; i++) {
-    const p = batchWalkOrder[i];
-    fogCtx.lineTo(batchCoords[p * 2], batchCoords[p * 2 + 1]);
+    const p = shaderData[SD_WALKORDER + i];
+    fogCtx.lineTo(shaderData[SD_COORDS + p * 2], shaderData[SD_COORDS + p * 2 + 1]);
   }
   fogCtx.closePath();
 
@@ -392,7 +402,7 @@ function flushBatchedFogFace(
   fogCtx.fill();
   statsBuffer[STATS_FOG_DRAW_CALLS]++;
 
-  batchStateBuffer[FOG_BATCH_COLOR16] = -1;
+  shaderData[SD_COLOR16] = -1;
 }
 
 let filterInvertSupported = null;
@@ -486,9 +496,8 @@ let pass = 0;
  * @param {number} fogFarPane
  * @param {Int32Array} ctxStateBuffer
  * @param {Int32Array} statsBuffer
- * @param {Int32Array} batchStateBuffer @param {Float32Array} batchCoordsBuffer
- * @param {Uint32Array} batchIdentityBuffer @param {Uint32Array} batchWalkOrderBuffer -
- *   batchedFogFace's pending-batch state, see its doc comment for the merge algorithm.
+ * @param {number} frameId - this frame's id, see batchedFogFace's doc comment and
+ *   shaderRegistry.js's registerShader for the frameId/last contract.
  */
 export function fogTriangles(
   ctx,
@@ -507,10 +516,7 @@ export function fogTriangles(
   fogFarPane,
   ctxStateBuffer,
   statsBuffer,
-  batchStateBuffer,
-  batchCoordsBuffer,
-  batchIdentityBuffer,
-  batchWalkOrderBuffer,
+  frameId,
 ) {
   const halfFogW = fogCtx.canvas.width * 0.5,
     halfFogH = fogCtx.canvas.height * 0.5;
@@ -518,9 +524,6 @@ export function fogTriangles(
   // Reset every frame - compositeFogPass mutates fogCtx in place, so stale pixels would leak.
   fogCtx.fillStyle = "#000000";
   fogCtx.fillRect(0, 0, fogCtx.canvas.width, fogCtx.canvas.height);
-
-  // No batch carries over from the previous layer's fog pass.
-  batchStateBuffer[FOG_BATCH_COLOR16] = -1;
 
   for (let i = 0; i < count; i++) {
     const idx = tempIndexBuffer[i];
@@ -536,6 +539,10 @@ export function fogTriangles(
     const fpy1 = vertexBuffer[v1Idx + 1] * halfFogH + halfFogH;
     const fpx2 = vertexBuffer[v2Idx] * halfFogW + halfFogW;
     const fpy2 = vertexBuffer[v2Idx + 1] * halfFogH + halfFogH;
+
+    // Fog is always the flat shader's own single routine (fogSort only ever emits shaderKey-0
+    // faces), so the only run boundary that matters is the very last face in this pass.
+    const last = i === count - 1;
 
     batchedFogFace(
       fogCtx,
@@ -556,14 +563,10 @@ export function fogTriangles(
       fogFarPane,
       ctxStateBuffer,
       statsBuffer,
-      batchStateBuffer,
-      batchCoordsBuffer,
-      batchIdentityBuffer,
-      batchWalkOrderBuffer,
+      frameId,
+      last,
     );
   }
-
-  flushBatchedFogFace(fogCtx, statsBuffer, batchStateBuffer, batchCoordsBuffer, batchWalkOrderBuffer);
 
   compositeFogPass(ctx, fogCtx, fogColor, w, h);
 }

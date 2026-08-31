@@ -1,6 +1,6 @@
 import { PALETTE_16BIT } from "../../palette.js";
 import {
-  whiteFillShade,
+  identityFill,
   flatFill,
   CTX_STATE_SHADE_FILL,
   STATS_FILL_DRAW_CALLS,
@@ -110,6 +110,7 @@ export function avgFlatShaderFill(
   fogColor,
   fogNearPane,
   fogFarPane,
+  meshIdx,
   ctxStateBuffer,
   statsBuffer,
 ) {
@@ -297,8 +298,11 @@ export function avgFlatShaderShade(
   fogColor,
   fogNearPane,
   fogFarPane,
+  meshIdx,
   ctxStateBuffer,
   statsBuffer,
+  frameId,
+  last,
 ) {
   const avgFog = computeAvgFog(
     faceIdx,
@@ -311,7 +315,43 @@ export function avgFlatShaderShade(
   // Matches avgFlatShaderFill's early-out: a fully-fogged face already has its complete final
   // look, drawn in the fill pass - nothing to shade.
   if (avgFog >= 1) {
-    whiteFillShade(shadeCtx, px0, py0, px1, py1, px2, py2, ctxStateBuffer, statsBuffer);
+    identityFill(
+      shadeCtx,
+      px0,
+      py0,
+      px1,
+      py1,
+      px2,
+      py2,
+      epx0,
+      epy0,
+      epx1,
+      epy1,
+      epx2,
+      epy2,
+      clipGeometryBuffer,
+      colorBuffer,
+      vertexNormalsBuffer,
+      faceNormalsBuffer,
+      v0Idx,
+      v1Idx,
+      v2Idx,
+      faceIdx,
+      mesh,
+      meshFaceIdx,
+      ambientLightRgb,
+      lightsIndexBuffer,
+      gameObjects,
+      fogType,
+      fogColor,
+      fogNearPane,
+      fogFarPane,
+      meshIdx,
+      ctxStateBuffer,
+      statsBuffer,
+      frameId,
+      last,
+    );
     return;
   }
 
