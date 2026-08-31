@@ -6,25 +6,34 @@ import {
   findBoundaryEdge,
 } from "../../shared/shaders.js";
 
-// Same mechanism as fill.js's FILL_BATCH_CAPACITY, shade's own pass/buffers - see
+// Same mechanism as fill.js's FILL_BATCH_CAPACITY, shade's own pass/shaderData - see
 // batchedShadeFill. Independently tunable, even though it starts at the same value.
-export const SHADE_BATCH_CAPACITY = 16;
+const SHADE_BATCH_CAPACITY = 16;
 
-// batchStateBuffer layout (Int32Array(3), see Canvas2dRenderer.js):
-const BATCH_COLOR16 = 0; // -1 = no pending batch
-const BATCH_MESH = 1;
-const BATCH_LENGTH = 2;
+// This shader's own private layout inside its own module-scoped shaderData below - same slot
+// numbers as fill.js's, safe to reuse since this is a wholly separate array instance.
+const SD_CALL_ID = 0;
+const SD_COLOR16 = 1; // -1 = no pending batch
+const SD_MESH = 2;
+const SD_LENGTH = 3;
+const SD_COORDS = 4; // SHADE_BATCH_CAPACITY*2 floats
+const SD_IDENTITY = SD_COORDS + SHADE_BATCH_CAPACITY * 2; // SHADE_BATCH_CAPACITY floats
+const SD_WALKORDER = SD_IDENTITY + SHADE_BATCH_CAPACITY; // SHADE_BATCH_CAPACITY floats
+
+// This shader's entire pending-batch state, private to this module for the life of the page -
+// the renderer never allocates, passes, or knows about this.
+const shaderData = new Float32Array(SD_WALKORDER + SHADE_BATCH_CAPACITY);
 
 /**
  * Shade-pass mirror of fill.js's batchedFlatFill: identical merge algorithm (same
- * findBoundaryEdge, same append-only batchCoords/batchIdentity + spliced batchWalkOrder shape,
- * same BATCH_COLOR16/BATCH_MESH/BATCH_LENGTH slot numbers - safe to reuse since this is a wholly
- * separate buffer instance), just targeting CTX_STATE_SHADE_FILL/STATS_SHADE_DRAW_CALLS instead
- * of fill's slot 0. Keeps flatFill's CTX_STATE_SAW_REAL_SHADING flag-set (only on an actual
- * fillStyle change, only for a real - non-white - shade color) so shadeCtx compositing still
- * gates correctly.
+ * findBoundaryEdge, same append-only coords/identity + spliced walk-order shape inside its own
+ * shaderData), just targeting CTX_STATE_SHADE_FILL/STATS_SHADE_DRAW_CALLS instead of fill's slot
+ * 0. Keeps flatFill's CTX_STATE_SAW_REAL_SHADING flag-set (only on an actual fillStyle change,
+ * only for a real - non-white - shade color) so shadeCtx compositing still gates correctly.
+ * `last` (see shaderRegistry.js's registerShader doc comment) means this triangle is the last of
+ * a contiguous run of this shaderKey - handled normally, then flushed before returning.
  */
-export function batchedShadeFill(
+function batchedShadeFill(
   targetCtx,
   px0,
   py0,
@@ -39,16 +48,17 @@ export function batchedShadeFill(
   meshIdx,
   ctxStateBuffer,
   statsBuffer,
-  batchStateBuffer,
-  batchCoords,
-  batchIdentity,
-  batchWalkOrder,
+  frameId,
+  last,
 ) {
+  const stale = shaderData[SD_CALL_ID] !== frameId;
+
   if (
-    batchStateBuffer[BATCH_COLOR16] === color16 &&
-    batchStateBuffer[BATCH_MESH] === meshIdx
+    !stale &&
+    shaderData[SD_COLOR16] === color16 &&
+    shaderData[SD_MESH] === meshIdx
   ) {
-    const length = batchStateBuffer[BATCH_LENGTH];
+    const length = shaderData[SD_LENGTH];
 
     let matchPos = -1;
     let matchCount = 0;
@@ -56,7 +66,7 @@ export function batchedShadeFill(
       newPy = 0,
       newVIdx = 0;
 
-    let pos = findBoundaryEdge(v0Idx, v1Idx, batchWalkOrder, batchIdentity, length);
+    let pos = findBoundaryEdge(v0Idx, v1Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
     if (pos !== -1) {
       matchPos = pos;
       matchCount++;
@@ -64,7 +74,7 @@ export function batchedShadeFill(
       newPy = py2;
       newVIdx = v2Idx;
     }
-    pos = findBoundaryEdge(v1Idx, v2Idx, batchWalkOrder, batchIdentity, length);
+    pos = findBoundaryEdge(v1Idx, v2Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
     if (pos !== -1) {
       matchPos = pos;
       matchCount++;
@@ -72,7 +82,7 @@ export function batchedShadeFill(
       newPy = py0;
       newVIdx = v0Idx;
     }
-    pos = findBoundaryEdge(v2Idx, v0Idx, batchWalkOrder, batchIdentity, length);
+    pos = findBoundaryEdge(v2Idx, v0Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
     if (pos !== -1) {
       matchPos = pos;
       matchCount++;
@@ -82,22 +92,23 @@ export function batchedShadeFill(
     }
 
     if (matchCount === 1 && length < SHADE_BATCH_CAPACITY) {
-      batchCoords[length * 2] = newPx;
-      batchCoords[length * 2 + 1] = newPy;
-      batchIdentity[length] = newVIdx;
+      shaderData[SD_COORDS + length * 2] = newPx;
+      shaderData[SD_COORDS + length * 2 + 1] = newPy;
+      shaderData[SD_IDENTITY + length] = newVIdx;
 
       for (let i = length; i > matchPos + 1; i--) {
-        batchWalkOrder[i] = batchWalkOrder[i - 1];
+        shaderData[SD_WALKORDER + i] = shaderData[SD_WALKORDER + i - 1];
       }
-      batchWalkOrder[matchPos + 1] = length;
+      shaderData[SD_WALKORDER + matchPos + 1] = length;
 
-      batchStateBuffer[BATCH_LENGTH] = length + 1;
+      shaderData[SD_LENGTH] = length + 1;
+      if (last) flushBatchedShadeFill(targetCtx, statsBuffer);
       return;
     }
 
-    flushBatchedShadeFill(targetCtx, statsBuffer, batchStateBuffer, batchCoords, batchWalkOrder);
-  } else if (batchStateBuffer[BATCH_COLOR16] !== -1) {
-    flushBatchedShadeFill(targetCtx, statsBuffer, batchStateBuffer, batchCoords, batchWalkOrder);
+    flushBatchedShadeFill(targetCtx, statsBuffer);
+  } else if (!stale && shaderData[SD_COLOR16] !== -1) {
+    flushBatchedShadeFill(targetCtx, statsBuffer);
   }
 
   if (ctxStateBuffer[CTX_STATE_SHADE_FILL] !== color16) {
@@ -113,48 +124,45 @@ export function batchedShadeFill(
     }
   }
 
-  batchCoords[0] = px0;
-  batchCoords[1] = py0;
-  batchCoords[2] = px1;
-  batchCoords[3] = py1;
-  batchCoords[4] = px2;
-  batchCoords[5] = py2;
-  batchIdentity[0] = v0Idx;
-  batchIdentity[1] = v1Idx;
-  batchIdentity[2] = v2Idx;
-  batchWalkOrder[0] = 0;
-  batchWalkOrder[1] = 1;
-  batchWalkOrder[2] = 2;
+  shaderData[SD_CALL_ID] = frameId;
+  shaderData[SD_COORDS] = px0;
+  shaderData[SD_COORDS + 1] = py0;
+  shaderData[SD_COORDS + 2] = px1;
+  shaderData[SD_COORDS + 3] = py1;
+  shaderData[SD_COORDS + 4] = px2;
+  shaderData[SD_COORDS + 5] = py2;
+  shaderData[SD_IDENTITY] = v0Idx;
+  shaderData[SD_IDENTITY + 1] = v1Idx;
+  shaderData[SD_IDENTITY + 2] = v2Idx;
+  shaderData[SD_WALKORDER] = 0;
+  shaderData[SD_WALKORDER + 1] = 1;
+  shaderData[SD_WALKORDER + 2] = 2;
 
-  batchStateBuffer[BATCH_COLOR16] = color16;
-  batchStateBuffer[BATCH_MESH] = meshIdx;
-  batchStateBuffer[BATCH_LENGTH] = 3;
+  shaderData[SD_COLOR16] = color16;
+  shaderData[SD_MESH] = meshIdx;
+  shaderData[SD_LENGTH] = 3;
+
+  if (last) flushBatchedShadeFill(targetCtx, statsBuffer);
 }
 
-export function flushBatchedShadeFill(
-  targetCtx,
-  statsBuffer,
-  batchStateBuffer,
-  batchCoords,
-  batchWalkOrder,
-) {
-  if (batchStateBuffer[BATCH_COLOR16] === -1) return;
+function flushBatchedShadeFill(targetCtx, statsBuffer) {
+  if (shaderData[SD_COLOR16] === -1) return;
 
-  const length = batchStateBuffer[BATCH_LENGTH];
-  const first = batchWalkOrder[0];
+  const length = shaderData[SD_LENGTH];
+  const first = shaderData[SD_WALKORDER];
 
   targetCtx.beginPath();
-  targetCtx.moveTo(batchCoords[first * 2], batchCoords[first * 2 + 1]);
+  targetCtx.moveTo(shaderData[SD_COORDS + first * 2], shaderData[SD_COORDS + first * 2 + 1]);
   for (let i = 1; i < length; i++) {
-    const p = batchWalkOrder[i];
-    targetCtx.lineTo(batchCoords[p * 2], batchCoords[p * 2 + 1]);
+    const p = shaderData[SD_WALKORDER + i];
+    targetCtx.lineTo(shaderData[SD_COORDS + p * 2], shaderData[SD_COORDS + p * 2 + 1]);
   }
   targetCtx.closePath();
   targetCtx.stroke();
   targetCtx.fill();
   statsBuffer[STATS_SHADE_DRAW_CALLS]++;
 
-  batchStateBuffer[BATCH_COLOR16] = -1;
+  shaderData[SD_COLOR16] = -1;
 }
 
 export function flatShaderShade(
@@ -191,10 +199,8 @@ export function flatShaderShade(
   meshIdx,
   ctxStateBuffer,
   statsBuffer,
-  shadeBatchStateBuffer,
-  shadeBatchCoordsBuffer,
-  shadeBatchIdentityBuffer,
-  shadeBatchWalkOrderBuffer,
+  frameId,
+  last,
 ) {
   // Shading is texture-independent - the same lit intensity multiplies either the raw albedo or
   // the texture once composited, so there's no texture branch here at all. It's fog-independent
@@ -266,9 +272,7 @@ export function flatShaderShade(
     meshIdx,
     ctxStateBuffer,
     statsBuffer,
-    shadeBatchStateBuffer,
-    shadeBatchCoordsBuffer,
-    shadeBatchIdentityBuffer,
-    shadeBatchWalkOrderBuffer,
+    frameId,
+    last,
   );
 }

@@ -44,6 +44,7 @@ export function emissiveShader(
   fogColor,
   fogNearPane,
   fogFarPane,
+  meshIdx,
   ctxStateBuffer,
   statsBuffer,
 ) {

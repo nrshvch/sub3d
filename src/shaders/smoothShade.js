@@ -37,6 +37,7 @@ export function smoothShaderShade(
   fogColor,
   fogNearPane,
   fogFarPane,
+  meshIdx,
   ctxStateBuffer,
   statsBuffer,
 ) {
