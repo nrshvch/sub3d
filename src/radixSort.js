@@ -134,7 +134,7 @@ export default function radixSort(
   // mesh occupies the far end of one and the near end of the next, alternating fill direction
   // gives whichever mesh sits at the extremal (highest- or lowest-index) end of each boundary a
   // systematic chance to end up contiguous across it, instead of purely by accident - which
-  // helps batchedFlatFill/batchedShadeFill (shaderRegistry.js) merge more triangles into fewer
+  // helps the flat shader's batching merge more triangles into fewer
   // draw calls. It's a cheap proxy (bucket parity, not true occurrence-rank parity), so it
   // engages at roughly half of real tie-group boundaries and is a harmless no-op at the other
   // half - never a regression, just not a 100%-hit-rate fix.
