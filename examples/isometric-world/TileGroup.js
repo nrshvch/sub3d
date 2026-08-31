@@ -396,6 +396,15 @@ export default class TileGroup {
     this.terrain.meshRenderer.updateNormals();
     Terrain.smoothTerrainNormals(this.terrain.meshRenderer, materials);
 
+    // Same "same position, still fully split" idea as the normals pass above, but for flat-fill
+    // batching's adjacency check instead of lighting: lets same-color triangles on opposite sides
+    // of a tile boundary still be detected as touching and merged into one fill, without changing
+    // which vertices exist or how they're colored/shaded (see MeshComponent.js's weldMap doc
+    // comment). Must be recomputed here, after heights are finalized above - this chunk's
+    // vertices Float32Array is pool-reused in place (see TerrainPool.js), so positions can
+    // genuinely differ between acquires even though the array object doesn't change.
+    this.terrain.meshRenderer.updateWeldMap();
+
     // 6. Set shader options
     this.terrain.meshRenderer.layer = 0;
     this.terrain.meshRenderer.shaderType = isSmooth ? 3 : 0;
