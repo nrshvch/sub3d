@@ -11,37 +11,39 @@ import { PALETTE_16BIT } from "./palette.js";
 import * as debug from "./debug/debug.js";
 import radixSort from "./radixSort.js";
 import {
-  fogSort,
-  CTX_STATE_FOG,
-  STATS_FOG_DRAW_CALLS,
-  fogTriangles,
-  FOG_BATCH_CAPACITY,
-} from "./fog.js";
-import {
   flatShaderFill,
-  flatShaderShade,
-} from "./shaders/flatShader.js";
+  flushBatchedFlatFill,
+  BATCH_COLOR16,
+  FILL_BATCH_CAPACITY,
+} from "./shaders/flatFill/index.js";
 import { emissiveShader } from "./shaders/emissiveShader.js";
 import { unlitShader } from "./shaders/unlitShader.js";
-import { smoothShaderFill, smoothShaderShade } from "./shaders/smoothShader.js";
+import { smoothShaderFill } from "./shaders/smoothFill.js";
 import {
   avgFlatShaderFill,
   avgFlatShaderShade,
-} from "./shaders/avgFlatShader.js";
+} from "./shaders/avgFlatFill/index.js";
+import { shaderRegistry, shadeShaderRegistry } from "./shaders/shaderRegistry.js";
 import {
-  shaderRegistry,
-  shadeShaderRegistry,
   whiteFillShade,
-  flushBatchedFlatFill,
-  flushBatchedShadeFill,
-  BATCH_COLOR16,
-  FILL_BATCH_CAPACITY,
-  SHADE_BATCH_CAPACITY,
   CTX_STATE_SHADE_FILL,
   CTX_STATE_SAW_REAL_SHADING,
   STATS_FILL_DRAW_CALLS,
   STATS_SHADE_DRAW_CALLS,
-} from "./shaders/shaderRegistry.js";
+} from "./shared/shaders.js";
+import {
+  flatShaderShade,
+  flushBatchedShadeFill,
+  SHADE_BATCH_CAPACITY,
+} from "./shaders/flatShade/index.js";
+import { smoothShaderShade } from "./shaders/smoothShade.js";
+import {
+  CTX_STATE_FOG,
+  FOG_BATCH_CAPACITY,
+  fogSort,
+  fogTriangles,
+  STATS_FOG_DRAW_CALLS,
+} from "./shaders/flatFog/index.js";
 
 const computeNormalMatrix = MeshComponent.computeNormalMatrix;
 const vec3TransformMat4 = math.vec3TransformMat4;
@@ -141,15 +143,15 @@ export default function Canvas2dRenderer() {
   this.fogSortScratchBuffer = new Uint32Array(0);
   this.counters = new Uint32Array(256);
   /*
-  Persistent per-layer state shaders read/write directly via flatFill - see shaderRegistry.js's
+  Persistent per-layer state shaders read/write directly via flatFill - see shared/shaders.js's
   registerShader doc comment for the full slot layout (fillStyle dedup keys, saw-real-shading
   flag). Slots 1/2 are reserved for drawWireframe's own independent stroke-only rendering.
    */
   this.ctxStateBuffer = new Int32Array(10);
   // Separate from ctxStateBuffer on purpose - pure draw-call counters with no bearing on how
-  // anything renders (see shaderRegistry.js's registerShader doc comment for the layout).
+  // anything renders (see shared/shaders.js's registerShader doc comment for the layout).
   this.statsBuffer = new Int32Array(3);
-  // batchedFlatFill's pending-batch state (fill pass only) - see shaderRegistry.js's
+  // batchedFlatFill's pending-batch state (fill pass only) - see flatShader/fill/fill.js's
   // batchedFlatFill doc comment for the merge algorithm these back.
   this.batchStateBuffer = new Int32Array(3); // color16, meshIdx, length
   this.batchCoordsBuffer = new Float32Array(FILL_BATCH_CAPACITY * 2);
@@ -1520,8 +1522,8 @@ function drawWireframe(
  * NEEDS_SHADE_PASS/NEEDS_FOG_PASS. This split exists because alternating draw calls between two
  * separate <canvas> elements per face measured ~25x more expensive per call than batching on
  * Firefox, regardless of how much work each call does, so every `ctx` draw for a layer must
- * happen before any `shadeCtx`/`fogCtx` draw. See shaderRegistry.js's registerShader doc comment
- * for the full two-function shader contract this dispatches into.
+ * happen before any `shadeCtx`/`fogCtx` draw. See shaderRegistry.js's registerShader for the
+ * full two-function shader contract this dispatches into.
  * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
  * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
  * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
@@ -1548,13 +1550,13 @@ function drawWireframe(
  * @param {Uint32Array} lightsIndexBuffer - Indices of active lights.
  * @param {Object} gameObjects - Dictionary of game objects in the scene.
  * @param {Int32Array} ctxStateBuffer - Persistent per-layer state shaders read/write directly -
- *   see shaderRegistry.js's registerShader doc comment for the full slot layout. A run of
+ *   see shared/shaders.js and flatShader/fog/fog.js for the full slot layout. A run of
  *   same-styled faces only touches fillStyle/strokeStyle once regardless of which case drew them.
  * @param {Int32Array} statsBuffer - Persistent per-layer draw-call counters, see
- *   shaderRegistry.js's registerShader doc comment.
+ *   shared/shaders.js and flatShader/fog/fog.js.
  * @param {Int32Array} batchStateBuffer @param {Float32Array} batchCoordsBuffer
  * @param {Uint32Array} batchIdentityBuffer @param {Uint32Array} batchWalkOrderBuffer -
- *   batchedFlatFill's pending-batch state (fill pass only), see shaderRegistry.js's
+ *   batchedFlatFill's pending-batch state (fill pass only), see flatShader/fill/fill.js's
  *   batchedFlatFill doc comment for the merge algorithm these back.
  * @returns {number} bitmask of NEEDS_SHADE_PASS / NEEDS_FOG_PASS - which of shadeTriangles /
  *   fogTriangles render() should call for this layer.
@@ -1610,7 +1612,7 @@ function drawTriangles(
   ctxStateBuffer[CTX_STATE_FOG] = -1;
   ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING] = 0;
 
-  // Draw-call counters (see shaderRegistry.js's registerShader doc comment) - same per-layer
+  // Draw-call counters (see shared/shaders.js and flatShader/fog/fog.js) - same per-layer
   // reset reasoning as above: a layer that skips shade/fog entirely (gated in render()) must
   // still report 0, not a stale count left over from whichever earlier layer last ran them.
   statsBuffer[STATS_FILL_DRAW_CALLS] = 0;
@@ -1695,7 +1697,7 @@ function drawTriangles(
 
     switch (shaderKey) {
       case 0: {
-        // FLAT (light shading + fog) - see src/shaders/flatShader.js.
+        // FLAT (light shading + fog) - see src/shaders/flatShader/.
         // Fixed call site so the JIT keeps this monomorphic regardless of what's registered under other keys.
         flatShaderFill(
           ctx,
@@ -1819,7 +1821,7 @@ function drawTriangles(
         break;
       }
       case 3: {
-        // AVG_FLAT - Averaged Vertex Flat Fill - see src/shaders/avgFlatShader.js. Uses the
+        // AVG_FLAT - Averaged Vertex Flat Fill - see src/shaders/avgFlatShader/. Uses the
         // switch case wireframe freed up, since wireframe is now handled entirely above,
         // before the switch, rather than occupying one of its case values.
         avgFlatShaderFill(
@@ -1860,7 +1862,7 @@ function drawTriangles(
         break;
       }
       case 4: {
-        // SMOOTH (Gouraud Shading) - see src/shaders/smoothShader.js.
+        // SMOOTH (Gouraud Shading) - see src/shaders/smoothShader/.
         smoothShaderFill(
           ctx,
           px0,

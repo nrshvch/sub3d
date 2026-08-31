@@ -2,7 +2,7 @@ import { PALETTE_16BIT } from "../palette.js";
 import {
   flatFill,
   STATS_FILL_DRAW_CALLS,
-} from "./shaderRegistry.js";
+} from "../shared/shaders.js";
 
 /**
  * Predefined shader (see registerShader in shaderRegistry.js for the full argument contract),

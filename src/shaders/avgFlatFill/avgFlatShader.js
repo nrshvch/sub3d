@@ -1,10 +1,10 @@
-import { PALETTE_16BIT } from "../palette.js";
+import { PALETTE_16BIT } from "../../palette.js";
 import {
   whiteFillShade,
   flatFill,
   CTX_STATE_SHADE_FILL,
   STATS_FILL_DRAW_CALLS,
-} from "./shaderRegistry.js";
+} from "../../shared/shaders.js";
 
 /**
  * Predefined shader (see registerShader in shaderRegistry.js for the full two-pass argument

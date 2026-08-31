@@ -17,18 +17,20 @@ import Ball from "./primitives/Ball.js";
 import Canvas2dViewport from "./Canvas2dViewport.js";
 import Light from "./Light.js";
 import { showDebug } from "./debug/showDebug.jsx";
-import { flatShaderFill, flatShaderShade } from "./shaders/flatShader.js";
+import { flatShaderFill } from "./shaders/flatFill/index.js";
 import { emissiveShader } from "./shaders/emissiveShader.js";
 import { unlitShader } from "./shaders/unlitShader.js";
 import {
   smoothShaderFill,
-  smoothShaderShade,
-} from "./shaders/smoothShader.js";
+} from "./shaders/smoothFill.js";
 import {
   avgFlatShaderFill,
   avgFlatShaderShade,
-} from "./shaders/avgFlatShader.js";
-import { registerShader, whiteFillShade } from "./shaders/shaderRegistry.js";
+} from "./shaders/avgFlatFill/index.js";
+import { registerShader } from "./shaders/shaderRegistry.js";
+import { whiteFillShade } from "./shared/shaders.js";
+import { flatShaderShade } from "./shaders/flatShade/index.js";
+import { smoothShaderShade } from "./shaders/smoothShade.js";
 
 export default window.scaliaEngine = {
   config: config,

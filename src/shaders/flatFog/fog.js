@@ -1,9 +1,10 @@
-import { PALETTE_16BIT } from "./palette.js";
-import { findBoundaryEdge } from "./shaders/shaderRegistry.js";
+import { PALETTE_16BIT } from "../../palette.js";
+
+import { findBoundaryEdge } from "../../shared/shaders.js";
 
 // How many vertices the merged boundary polygon can hold before a fog batch is forced to flush -
-// separate from shaderRegistry.js's FILL_BATCH_CAPACITY since fog runs as its own pass with its
-// own buffers, even though the mechanism (see batchedFogFace) is identical.
+// separate from fill.js's FILL_BATCH_CAPACITY since fog runs as its own pass with its own
+// buffers, even though the mechanism (see batchedFogFace) is identical.
 export const FOG_BATCH_CAPACITY = 16;
 
 // fogBatchStateBuffer layout (Int32Array(3), see Canvas2dRenderer.js) - private, unlike fill's
