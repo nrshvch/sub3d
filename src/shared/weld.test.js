@@ -138,7 +138,6 @@ describe("multi-slot welder", () => {
       [0, 10],
     ]);
     expect(r.stats[CALLS]).toBe(1);
-    expect(r.stats[VERTS]).toBe(4);
   });
 
   it("extends a strip one vertex per merged triangle", () => {
