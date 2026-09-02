@@ -1,26 +1,19 @@
 import { PALETTE_16BIT } from "../../palette.js";
 
-import { findBoundaryEdge } from "../../shared/shaders.js";
+import {
+  createWeldState,
+  weldAddFace,
+  weldFlushAll,
+  weldReset,
+} from "../../shared/weld.js";
 
-// How many vertices the merged boundary polygon can hold before a fog batch is forced to flush -
-// separate from fill.js's FILL_BATCH_CAPACITY since fog runs as its own pass with its own
-// shaderData, even though the mechanism (see batchedFogFace) is identical.
-const FOG_BATCH_CAPACITY = 16;
+// This pass's own welder state, private to this module for the life of the page. Separate from the
+// fill and shade passes': all three run over different colour spaces (fog level, albedo, lit
+// intensity) and interleave in time, so they cannot share open polygons.
+const weldState = createWeldState();
 
-// This shader's own private layout inside its own module-scoped shaderData below - fog is always
-// the flat shader's own routine (fogSort only ever emits shaderKey-0 faces), so this is the one
-// and only user of it.
-const SD_CALL_ID = 0; // last frameId this shaderData was touched under - mismatch means stale
-const SD_COLOR16 = 1; // -1 = no pending batch
-const SD_MESH = 2;
-const SD_LENGTH = 3;
-const SD_COORDS = 4; // FOG_BATCH_CAPACITY*2 floats
-const SD_IDENTITY = SD_COORDS + FOG_BATCH_CAPACITY * 2; // FOG_BATCH_CAPACITY floats
-const SD_WALKORDER = SD_IDENTITY + FOG_BATCH_CAPACITY; // FOG_BATCH_CAPACITY floats
-
-// This shader's entire pending-batch state, private to this module for the life of the page -
-// the renderer never allocates, passes, or knows about this.
-const shaderData = new Float32Array(SD_WALKORDER + FOG_BATCH_CAPACITY);
+// Perpendicular deviation, in fogCtx pixels, below which a boundary vertex is dropped at flush.
+const COLLINEAR_EPS = 0.05;
 
 // Slots into the shared ctxStateBuffer/statsBuffer Canvas2dRenderer.js owns (see
 // shaderRegistry.js's registerShader doc comment for the full layout of the rest).
@@ -236,15 +229,19 @@ export function fogSort(
 }
 
 /**
- * Fog-pass mirror of flatFill/flatShader.js's batchedFlatFill: merges consecutive same-fog-color,
- * same-mesh triangles that share an edge into one continuous path, same findBoundaryEdge
- * mechanism, same append-only coords/identity + spliced walk-order shape inside its own
- * shaderData. Draws every face unconditionally (no fogAmount-based skip - a "fully fogged" face
- * still has to be drawn to correctly occlude whatever's underneath it in fogCtx, since
- * depth-dominant draw order means it's no longer safe to assume nothing but background is
- * there). `last` (true only for the final face fogTriangles passes in) is handled the same way
- * batchedFlatFill handles it: this face is merged/started normally first, then, since no more
- * faces are coming, whatever's now pending is flushed before returning.
+ * Quantises this face's fog amount to a colour and hands it to the shared multi-slot welder (see
+ * src/shared/weld.js), which merges edge-adjacent same-fog-colour faces into one polygon and
+ * flushes on a fog-colour change.
+ *
+ * Draws every face unconditionally - no fogAmount-based skip. A "fully fogged" face still has to
+ * be drawn to correctly occlude whatever is underneath it in fogCtx, since depth-dominant draw
+ * order means it is no longer safe to assume nothing but background is there. (The reverse case,
+ * skipping the ~60% of faces whose fog amount is zero, would need fogCtx reset to white and an
+ * alpha-aware composite: the buffer's black background currently means "fully fogged", which is
+ * what makes the empty sky come out exactly fogColor.)
+ *
+ * `last` is true only for the final face fogTriangles passes in, so it is this pass's single
+ * drain: the face is merged normally first, then every open polygon is flushed.
  * @param {CanvasRenderingContext2D} fogCtx - this layer's half-resolution fog buffer.
  * @param {number} px0 @param {number} py0
  * @param {number} px1 @param {number} py1
@@ -294,115 +291,48 @@ function batchedFogFace(
   const color16 =
     ((keep & 0xf8) << 8) | ((keep & 0xfc) << 3) | ((keep & 0xf8) >> 3);
 
-  const stale = shaderData[SD_CALL_ID] !== frameId;
-
-  if (
-    !stale &&
-    shaderData[SD_COLOR16] === color16 &&
-    shaderData[SD_MESH] === meshIdx
-  ) {
-    const length = shaderData[SD_LENGTH];
-
-    let matchPos = -1;
-    let matchCount = 0;
-    let newPx = 0,
-      newPy = 0,
-      newVIdx = 0;
-
-    let pos = findBoundaryEdge(v0Idx, v1Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
-    if (pos !== -1) {
-      matchPos = pos;
-      matchCount++;
-      newPx = px2;
-      newPy = py2;
-      newVIdx = v2Idx;
-    }
-    pos = findBoundaryEdge(v1Idx, v2Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
-    if (pos !== -1) {
-      matchPos = pos;
-      matchCount++;
-      newPx = px0;
-      newPy = py0;
-      newVIdx = v0Idx;
-    }
-    pos = findBoundaryEdge(v2Idx, v0Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
-    if (pos !== -1) {
-      matchPos = pos;
-      matchCount++;
-      newPx = px1;
-      newPy = py1;
-      newVIdx = v1Idx;
-    }
-
-    if (matchCount === 1 && length < FOG_BATCH_CAPACITY) {
-      shaderData[SD_COORDS + length * 2] = newPx;
-      shaderData[SD_COORDS + length * 2 + 1] = newPy;
-      shaderData[SD_IDENTITY + length] = newVIdx;
-
-      for (let i = length; i > matchPos + 1; i--) {
-        shaderData[SD_WALKORDER + i] = shaderData[SD_WALKORDER + i - 1];
-      }
-      shaderData[SD_WALKORDER + matchPos + 1] = length;
-
-      shaderData[SD_LENGTH] = length + 1;
-      if (last) flushBatchedFogFace(fogCtx, statsBuffer);
-      return;
-    }
-
-    flushBatchedFogFace(fogCtx, statsBuffer);
-  } else if (!stale && shaderData[SD_COLOR16] !== -1) {
-    flushBatchedFogFace(fogCtx, statsBuffer);
+  if (weldState.frameId !== frameId) {
+    // State from a frame that is over: drop it rather than painting last frame's geometry.
+    weldReset(weldState);
+    weldState.frameId = frameId;
   }
 
-  if (ctxStateBuffer[CTX_STATE_FOG] !== color16) {
-    const style = PALETTE_16BIT[color16];
-    fogCtx.fillStyle = style;
-    fogCtx.strokeStyle = style;
-    fogCtx.lineWidth = 1;
-    fogCtx.lineJoin = "miter";
-    ctxStateBuffer[CTX_STATE_FOG] = color16;
+  weldAddFace(
+    weldState,
+    fogCtx,
+    ctxStateBuffer,
+    CTX_STATE_FOG,
+    -1,
+    statsBuffer,
+    STATS_FOG_DRAW_CALLS,
+    COLLINEAR_EPS,
+    color16,
+    meshIdx,
+    px0,
+    py0,
+    v0Idx,
+    px1,
+    py1,
+    v1Idx,
+    px2,
+    py2,
+    v2Idx,
+  );
+
+  // Fog's `last` only fires on the final face of the whole pass (fogSort emits shaderKey-0 faces
+  // only), so this is the single drain for the pass.
+  if (last) {
+    weldFlushAll(
+      weldState,
+      fogCtx,
+      ctxStateBuffer,
+      CTX_STATE_FOG,
+      -1,
+      statsBuffer,
+      STATS_FOG_DRAW_CALLS,
+      COLLINEAR_EPS,
+    );
   }
-
-  shaderData[SD_CALL_ID] = frameId;
-  shaderData[SD_COORDS] = px0;
-  shaderData[SD_COORDS + 1] = py0;
-  shaderData[SD_COORDS + 2] = px1;
-  shaderData[SD_COORDS + 3] = py1;
-  shaderData[SD_COORDS + 4] = px2;
-  shaderData[SD_COORDS + 5] = py2;
-  shaderData[SD_IDENTITY] = v0Idx;
-  shaderData[SD_IDENTITY + 1] = v1Idx;
-  shaderData[SD_IDENTITY + 2] = v2Idx;
-  shaderData[SD_WALKORDER] = 0;
-  shaderData[SD_WALKORDER + 1] = 1;
-  shaderData[SD_WALKORDER + 2] = 2;
-
-  shaderData[SD_COLOR16] = color16;
-  shaderData[SD_MESH] = meshIdx;
-  shaderData[SD_LENGTH] = 3;
-
-  if (last) flushBatchedFogFace(fogCtx, statsBuffer);
-}
-
-function flushBatchedFogFace(fogCtx, statsBuffer) {
-  if (shaderData[SD_COLOR16] === -1) return;
-
-  const length = shaderData[SD_LENGTH];
-  const first = shaderData[SD_WALKORDER];
-
-  fogCtx.beginPath();
-  fogCtx.moveTo(shaderData[SD_COORDS + first * 2], shaderData[SD_COORDS + first * 2 + 1]);
-  for (let i = 1; i < length; i++) {
-    const p = shaderData[SD_WALKORDER + i];
-    fogCtx.lineTo(shaderData[SD_COORDS + p * 2], shaderData[SD_COORDS + p * 2 + 1]);
-  }
-  fogCtx.closePath();
-
-  fogCtx.stroke();
-  fogCtx.fill();
-  statsBuffer[STATS_FOG_DRAW_CALLS]++;
-
-  shaderData[SD_COLOR16] = -1;
 }
 
 let filterInvertSupported = null;
@@ -484,6 +414,7 @@ let pass = 0;
  * @param {CanvasRenderingContext2D} fogCtx - this layer's half-resolution fog buffer.
  * @param {Float32Array} vertexBuffer
  * @param {Uint32Array} vertexIndexBuffer
+ * @param {Uint32Array} weldIdBuffer
  * @param {Uint32Array} tempIndexBuffer - fogSort's output face indices.
  * @param {Uint32Array} meshIndexBuffer - per-face mesh index within this layer (see destructMesh).
  * @param {number} count - total valid entries in tempIndexBuffer, from fogSort.
@@ -504,6 +435,7 @@ export function fogTriangles(
   fogCtx,
   vertexBuffer,
   vertexIndexBuffer,
+  weldIdBuffer,
   tempIndexBuffer,
   meshIndexBuffer,
   count,
@@ -532,6 +464,13 @@ export function fogTriangles(
     const v1Idx = vertexIndexBuffer[idx * 3 + 1];
     const v2Idx = vertexIndexBuffer[idx * 3 + 2];
 
+    // Coordinates from the vertexBuffer offsets above; edge-match identities from weldIdBuffer,
+    // so split vertices at one physical position are seen as one (see Canvas2dRenderer's
+    // destructMesh and MeshComponent#updateWeldMap).
+    const w0Idx = weldIdBuffer[idx * 3];
+    const w1Idx = weldIdBuffer[idx * 3 + 1];
+    const w2Idx = weldIdBuffer[idx * 3 + 2];
+
     // Scaled into fogCtx's own half-resolution pixel space, not ctx's.
     const fpx0 = vertexBuffer[v0Idx] * halfFogW + halfFogW;
     const fpy0 = vertexBuffer[v0Idx + 1] * halfFogH + halfFogH;
@@ -552,9 +491,9 @@ export function fogTriangles(
       fpy1,
       fpx2,
       fpy2,
-      v0Idx,
-      v1Idx,
-      v2Idx,
+      w0Idx,
+      w1Idx,
+      w2Idx,
       clipGeometryBuffer,
       idx,
       meshIndexBuffer[idx],
