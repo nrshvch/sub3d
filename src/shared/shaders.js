@@ -51,12 +51,17 @@ export function flatFill(
 }
 
 /**
- * Defensive opaque-white shade fallback for a face with nothing real to shade (see
- * shadeTriangles' EMISSIVE/UNLIT cases and its default-case shadeFn-less fallback). Takes the
- * full normalized shade signature every shader shares (see shaderRegistry.js's registerShader
- * doc comment) purely for uniformity - it only ever reads px0-py2/ctxStateBuffer/statsBuffer,
- * same as e.g. emissiveShader/unlitShader already declare-and-ignore v0Idx/v1Idx/v2Idx today.
- * Never batches anything, so it draws immediately regardless of `last` and never looks at it.
+ * Shade-pass no-op for a face with nothing real to shade (see shadeTriangles' EMISSIVE/UNLIT
+ * cases and its default-case shadeFn-less fallback).
+ *
+ * It used to rasterize an opaque white triangle. That is provably invisible: shadeCtx is cleared
+ * transparent each frame and composited onto the fill layer with `multiply`, where a transparent
+ * source gives `Co = ad*Cb` - identical to what an opaque white source produces. So the draw could
+ * only ever cost time, never change a pixel.
+ *
+ * Keeps the full normalized shade signature every shader shares (see shaderRegistry.js's
+ * registerShader doc comment) so it stays a drop-in for the dispatch table. It buffers nothing, so
+ * it needs no `last` handling.
  */
 export function identityFill(
   shadeCtx,
@@ -95,42 +100,71 @@ export function identityFill(
   frameId,
   last,
 ) {
-  flatFill(
-    shadeCtx,
-    px0,
-    py0,
-    px1,
-    py1,
-    px2,
-    py2,
-    0xffff,
-    CTX_STATE_SHADE_FILL,
-    ctxStateBuffer,
-    statsBuffer,
-  );
+  // Intentionally empty - see the doc comment above.
 }
 
-// Scans the pending batch's boundary (the walkOrder/identity regions of a shader's own
-// shaderData, both `length` long) for a directed edge running FROM vbIdx TO vaIdx - the reverse
-// of an incoming triangle edge vaIdx->vbIdx, which is what an adjacent, consistently-wound
-// triangle sharing that edge presents. Returns the walk-order position the edge starts at, or
-// -1. Pure boundary-walk math, no fill-specific behavior - shared across flatShader's
-// fill/shade/fog batching (flatFill/flatShader.js, flatShade/shade.js, flatFog/fog.js), each
-// passing its own shaderData instance and its own walkOrder/identity offsets into it. Indexes
-// directly into shaderData (rather than taking two separate typed-array views) so no caller ever
-// needs a `.subarray()` - that would allocate a new view object per call.
-export function findBoundaryEdge(
-  vaIdx,
-  vbIdx,
+/**
+ * Banks a shader's pending merged polygon into targetCtx's CURRENT path as one more subpath,
+ * without drawing anything.
+ *
+ * Canvas2D fills every subpath of a path in a single fill() call, so a merge failure is not a
+ * reason to draw - only a fillStyle change is, because fillStyle is per-call. Welding adjacent
+ * triangles into one boundary (fewer vertices, less stroked length) and flushing (a state-change
+ * requirement) are separate concerns that the batchers used to conflate; this is the half that
+ * isn't a draw. Each caller pairs it with its own flushPath, which banks whatever is still
+ * pending and then issues one stroke()+fill() over every subpath banked since the last flush.
+ *
+ * Opens a fresh path lazily on the first subpath after a flush, so the ctx is never left holding
+ * an empty in-progress path. No-op when nothing is pending.
+ *
+ * INVARIANT: every subpath in the open path was banked while the shader's color slot held the
+ * value it holds now, and targetCtx.fillStyle still corresponds to it - that is what makes one
+ * stroke()+fill() over the whole path equivalent to N separate stroke()+fill() pairs. Callers
+ * maintain it by routing every color change to a real flush instead of here. Winding is safe
+ * without further care: destructMesh backface-culls on the sign of the screen-space cross
+ * product, so every surviving face has the same orientation and the boundary walk's splice
+ * preserves it - nonzero fill over same-oriented subpaths is their union, never a hole.
+ *
+ * Takes slot numbers rather than a struct because each shader owns its own shaderData layout
+ * (see shaderRegistry.js's registerShader doc comment) and indexes into it directly - same
+ * reasoning as findBoundaryEdge below, no .subarray() view allocated per call.
+ *
+ * @param {CanvasRenderingContext2D} targetCtx
+ * @param {Float32Array} shaderData the caller's own private state array
+ * @param {number} colorSlot index of its pending-color slot (-1 means nothing pending)
+ * @param {number} subpathSlot index of its banked-subpath counter (0 means no path is open)
+ * @param {number} lengthSlot index of its pending boundary's vertex count
+ * @param {number} coordsOffset start of its coords region (x,y pairs)
+ * @param {number} walkOrderOffset start of its walk-order region
+ */
+export function emitSubpath(
+  targetCtx,
   shaderData,
+  colorSlot,
+  subpathSlot,
+  lengthSlot,
+  coordsOffset,
   walkOrderOffset,
-  identityOffset,
-  length,
 ) {
-  for (let i = 0; i < length; i++) {
-    if (shaderData[identityOffset + shaderData[walkOrderOffset + i]] !== vbIdx) continue;
-    const next = i + 1 === length ? 0 : i + 1;
-    if (shaderData[identityOffset + shaderData[walkOrderOffset + next]] === vaIdx) return i;
+  if (shaderData[colorSlot] === -1) return;
+  if (shaderData[subpathSlot] === 0) targetCtx.beginPath();
+
+  const length = shaderData[lengthSlot];
+  const first = shaderData[walkOrderOffset];
+
+  targetCtx.moveTo(
+    shaderData[coordsOffset + first * 2],
+    shaderData[coordsOffset + first * 2 + 1],
+  );
+  for (let i = 1; i < length; i++) {
+    const pt = shaderData[walkOrderOffset + i];
+    targetCtx.lineTo(
+      shaderData[coordsOffset + pt * 2],
+      shaderData[coordsOffset + pt * 2 + 1],
+    );
   }
-  return -1;
+  targetCtx.closePath();
+
+  shaderData[subpathSlot]++;
+  shaderData[colorSlot] = -1;
 }

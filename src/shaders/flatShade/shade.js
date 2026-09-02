@@ -1,169 +1,24 @@
-import { PALETTE_16BIT } from "../../palette.js";
 import {
   CTX_STATE_SHADE_FILL,
   CTX_STATE_SAW_REAL_SHADING,
   STATS_SHADE_DRAW_CALLS,
-  findBoundaryEdge,
 } from "../../shared/shaders.js";
+import {
+  createWeldState,
+  weldAddFace,
+  weldFlushAll,
+  weldReset,
+} from "../../shared/weld.js";
 
-// Same mechanism as fill.js's FILL_BATCH_CAPACITY, shade's own pass/shaderData - see
-// batchedShadeFill. Independently tunable, even though it starts at the same value.
-const SHADE_BATCH_CAPACITY = 16;
+// This pass's own welder state, private to this module for the life of the page. Separate from the
+// fill and fog passes': all three run over different colour spaces (lit intensity, albedo, fog
+// level) and interleave in time, so they cannot share open polygons.
+const weldState = createWeldState();
 
-// This shader's own private layout inside its own module-scoped shaderData below - same slot
-// numbers as fill.js's, safe to reuse since this is a wholly separate array instance.
-const SD_CALL_ID = 0;
-const SD_COLOR16 = 1; // -1 = no pending batch
-const SD_MESH = 2;
-const SD_LENGTH = 3;
-const SD_COORDS = 4; // SHADE_BATCH_CAPACITY*2 floats
-const SD_IDENTITY = SD_COORDS + SHADE_BATCH_CAPACITY * 2; // SHADE_BATCH_CAPACITY floats
-const SD_WALKORDER = SD_IDENTITY + SHADE_BATCH_CAPACITY; // SHADE_BATCH_CAPACITY floats
-
-// This shader's entire pending-batch state, private to this module for the life of the page -
-// the renderer never allocates, passes, or knows about this.
-const shaderData = new Float32Array(SD_WALKORDER + SHADE_BATCH_CAPACITY);
-
-/**
- * Shade-pass mirror of fill.js's batchedFlatFill: identical merge algorithm (same
- * findBoundaryEdge, same append-only coords/identity + spliced walk-order shape inside its own
- * shaderData), just targeting CTX_STATE_SHADE_FILL/STATS_SHADE_DRAW_CALLS instead of fill's slot
- * 0. Keeps flatFill's CTX_STATE_SAW_REAL_SHADING flag-set (only on an actual fillStyle change,
- * only for a real - non-white - shade color) so shadeCtx compositing still gates correctly.
- * `last` (see shaderRegistry.js's registerShader doc comment) means this triangle is the last of
- * a contiguous run of this shaderKey - handled normally, then flushed before returning.
- */
-function batchedShadeFill(
-  targetCtx,
-  px0,
-  py0,
-  px1,
-  py1,
-  px2,
-  py2,
-  v0Idx,
-  v1Idx,
-  v2Idx,
-  color16,
-  meshIdx,
-  ctxStateBuffer,
-  statsBuffer,
-  frameId,
-  last,
-) {
-  const stale = shaderData[SD_CALL_ID] !== frameId;
-
-  if (
-    !stale &&
-    shaderData[SD_COLOR16] === color16 &&
-    shaderData[SD_MESH] === meshIdx
-  ) {
-    const length = shaderData[SD_LENGTH];
-
-    let matchPos = -1;
-    let matchCount = 0;
-    let newPx = 0,
-      newPy = 0,
-      newVIdx = 0;
-
-    let pos = findBoundaryEdge(v0Idx, v1Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
-    if (pos !== -1) {
-      matchPos = pos;
-      matchCount++;
-      newPx = px2;
-      newPy = py2;
-      newVIdx = v2Idx;
-    }
-    pos = findBoundaryEdge(v1Idx, v2Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
-    if (pos !== -1) {
-      matchPos = pos;
-      matchCount++;
-      newPx = px0;
-      newPy = py0;
-      newVIdx = v0Idx;
-    }
-    pos = findBoundaryEdge(v2Idx, v0Idx, shaderData, SD_WALKORDER, SD_IDENTITY, length);
-    if (pos !== -1) {
-      matchPos = pos;
-      matchCount++;
-      newPx = px1;
-      newPy = py1;
-      newVIdx = v1Idx;
-    }
-
-    if (matchCount === 1 && length < SHADE_BATCH_CAPACITY) {
-      shaderData[SD_COORDS + length * 2] = newPx;
-      shaderData[SD_COORDS + length * 2 + 1] = newPy;
-      shaderData[SD_IDENTITY + length] = newVIdx;
-
-      for (let i = length; i > matchPos + 1; i--) {
-        shaderData[SD_WALKORDER + i] = shaderData[SD_WALKORDER + i - 1];
-      }
-      shaderData[SD_WALKORDER + matchPos + 1] = length;
-
-      shaderData[SD_LENGTH] = length + 1;
-      if (last) flushBatchedShadeFill(targetCtx, statsBuffer);
-      return;
-    }
-
-    flushBatchedShadeFill(targetCtx, statsBuffer);
-  } else if (!stale && shaderData[SD_COLOR16] !== -1) {
-    flushBatchedShadeFill(targetCtx, statsBuffer);
-  }
-
-  if (ctxStateBuffer[CTX_STATE_SHADE_FILL] !== color16) {
-    const style = PALETTE_16BIT[color16];
-    targetCtx.fillStyle = style;
-    targetCtx.strokeStyle = style;
-    targetCtx.lineWidth = 1;
-    targetCtx.lineJoin = "miter";
-    ctxStateBuffer[CTX_STATE_SHADE_FILL] = color16;
-
-    if (color16 !== 0xffff) {
-      ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING] = 1;
-    }
-  }
-
-  shaderData[SD_CALL_ID] = frameId;
-  shaderData[SD_COORDS] = px0;
-  shaderData[SD_COORDS + 1] = py0;
-  shaderData[SD_COORDS + 2] = px1;
-  shaderData[SD_COORDS + 3] = py1;
-  shaderData[SD_COORDS + 4] = px2;
-  shaderData[SD_COORDS + 5] = py2;
-  shaderData[SD_IDENTITY] = v0Idx;
-  shaderData[SD_IDENTITY + 1] = v1Idx;
-  shaderData[SD_IDENTITY + 2] = v2Idx;
-  shaderData[SD_WALKORDER] = 0;
-  shaderData[SD_WALKORDER + 1] = 1;
-  shaderData[SD_WALKORDER + 2] = 2;
-
-  shaderData[SD_COLOR16] = color16;
-  shaderData[SD_MESH] = meshIdx;
-  shaderData[SD_LENGTH] = 3;
-
-  if (last) flushBatchedShadeFill(targetCtx, statsBuffer);
-}
-
-function flushBatchedShadeFill(targetCtx, statsBuffer) {
-  if (shaderData[SD_COLOR16] === -1) return;
-
-  const length = shaderData[SD_LENGTH];
-  const first = shaderData[SD_WALKORDER];
-
-  targetCtx.beginPath();
-  targetCtx.moveTo(shaderData[SD_COORDS + first * 2], shaderData[SD_COORDS + first * 2 + 1]);
-  for (let i = 1; i < length; i++) {
-    const p = shaderData[SD_WALKORDER + i];
-    targetCtx.lineTo(shaderData[SD_COORDS + p * 2], shaderData[SD_COORDS + p * 2 + 1]);
-  }
-  targetCtx.closePath();
-  targetCtx.stroke();
-  targetCtx.fill();
-  statsBuffer[STATS_SHADE_DRAW_CALLS]++;
-
-  shaderData[SD_COLOR16] = -1;
-}
+// Perpendicular deviation, in shadeCtx pixels, below which a boundary vertex is dropped at flush.
+// Kept small: a vertex removed from a boundary shared with a differently-shaded region opens a
+// hairline T-junction crack, since the neighbour still has a vertex there.
+const COLLINEAR_EPS = 0.05;
 
 export function flatShaderShade(
   shadeCtx,
@@ -257,22 +112,44 @@ export function flatShaderShade(
   const color16L =
     ((clampR & 0xf8) << 8) | ((clampG & 0xfc) << 3) | ((clampB & 0xf8) >> 3);
 
-  batchedShadeFill(
+  if (weldState.frameId !== frameId) {
+    // State from a frame that is over: drop it rather than painting last frame's geometry.
+    weldReset(weldState);
+    weldState.frameId = frameId;
+  }
+
+  weldAddFace(
+    weldState,
     shadeCtx,
-    px0,
-    py0,
-    px1,
-    py1,
-    px2,
-    py2,
-    v0Idx,
-    v1Idx,
-    v2Idx,
+    ctxStateBuffer,
+    CTX_STATE_SHADE_FILL,
+    CTX_STATE_SAW_REAL_SHADING,
+    statsBuffer,
+    STATS_SHADE_DRAW_CALLS,
+    COLLINEAR_EPS,
     color16L,
     meshIdx,
-    ctxStateBuffer,
-    statsBuffer,
-    frameId,
-    last,
+    px0,
+    py0,
+    v0Idx,
+    px1,
+    py1,
+    v1Idx,
+    px2,
+    py2,
+    v2Idx,
   );
+
+  if (last) {
+    weldFlushAll(
+      weldState,
+      shadeCtx,
+      ctxStateBuffer,
+      CTX_STATE_SHADE_FILL,
+      CTX_STATE_SAW_REAL_SHADING,
+      statsBuffer,
+      STATS_SHADE_DRAW_CALLS,
+      COLLINEAR_EPS,
+    );
+  }
 }

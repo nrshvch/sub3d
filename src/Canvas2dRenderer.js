@@ -119,6 +119,12 @@ export default function Canvas2dRenderer() {
   this.vertexNormalsBuffer = new Float32Array(0);
   this.meshIndexBuffer = new Uint32Array(0);
   this.meshFaceIndexBuffer = new Uint32Array(0);
+  // Per-face-vertex WELDED vertex identity, 3 per face. Distinct from vertexIndexBuffer, which is
+  // an offset into vertexBuffer for reading coordinates: two "split" vertices sitting at the same
+  // physical position have different buffer offsets but the SAME identity here, which is what lets
+  // a shader's batcher see triangles on opposite sides of a tile boundary as sharing an edge.
+  // Derived from mesh.weldMap when the mesh has one (see MeshComponent#updateWeldMap).
+  this.weldIdBuffer = new Uint32Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
   /*
   Buffer to store light source indices. First element store length.
@@ -213,7 +219,6 @@ p.render = function (camera, viewport, stats) {
     vw = viewport.width,
     vh = viewport.height,
     i,
-    j,
     ctx,
     vec3Cache1 = this.vec3Cache1,
     vec3Cache2 = this.vec3Cache2,
@@ -230,6 +235,7 @@ p.render = function (camera, viewport, stats) {
     vertexNormalsBuffer = this.vertexNormalsBuffer,
     meshIndexBuffer = this.meshIndexBuffer,
     meshFaceIndexBuffer = this.meshFaceIndexBuffer,
+    weldIdBuffer = this.weldIdBuffer,
     visibleObjectsBuffer = this.visibleObjectsBuffer,
     lightsIndexBuffer = this.lightsIndexBuffer,
     layerBuffersOffsets = this.layerBuffersOffsets,
@@ -435,6 +441,11 @@ p.render = function (camera, viewport, stats) {
       let _vertexIndexBuffer = new Uint32Array(maxFacesCount * 3);
       _vertexIndexBuffer.set(vertexIndexBuffer);
       this.vertexIndexBuffer = vertexIndexBuffer = _vertexIndexBuffer;
+
+      //welded vertex identity, 1 element per face vertex
+      let _weldIdBuffer = new Uint32Array(maxFacesCount * 3);
+      _weldIdBuffer.set(weldIdBuffer);
+      this.weldIdBuffer = weldIdBuffer = _weldIdBuffer;
     }
 
     const processStart = performance.now();
@@ -460,6 +471,7 @@ p.render = function (camera, viewport, stats) {
       vertexNormalsBuffer,
       vertexBuffer,
       vertexIndexBuffer,
+      weldIdBuffer,
       meshIndexBuffer,
       meshFaceIndexBuffer,
       this.vMapping,
@@ -517,6 +529,7 @@ p.render = function (camera, viewport, stats) {
         ctx,
         vertexBuffer,
         vertexIndexBuffer,
+        weldIdBuffer,
         indexBuffer,
         colorBuffer,
         shaderTypeBuffer,
@@ -552,6 +565,7 @@ p.render = function (camera, viewport, stats) {
           shadeCtx,
           vertexBuffer,
           vertexIndexBuffer,
+          weldIdBuffer,
           indexBuffer,
           colorBuffer,
           shaderTypeBuffer,
@@ -609,6 +623,7 @@ p.render = function (camera, viewport, stats) {
           fogCtx,
           vertexBuffer,
           vertexIndexBuffer,
+          weldIdBuffer,
           tempIndexBuffer,
           meshIndexBuffer,
           fogFaceCount,
@@ -1017,6 +1032,7 @@ let frameCounter = 0;
  * @param {Float32Array} vertexNormalsBuffer - Buffer storing vertex normal vectors.
  * @param {Float32Array} vertexBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
  * @param {Uint32Array} vertexIndexBuffer - Indexes of vertices in the vertexBuffer.
+ * @param {Uint32Array} weldIdBuffer
  * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
  * @param {Int32Array} vMapping - Persistent buffer storing the vertexBuffer offset for the current mesh.
@@ -1045,12 +1061,16 @@ function destructMesh(
   vertexNormalsBuffer,
   vertexBuffer,
   vertexIndexBuffer,
+  weldIdBuffer,
   meshIndexBuffer,
   meshFaceIndexBuffer,
   vMapping, // New: Persistent Int32Array(max_verts)
   vTags, // New: Persistent Uint32Array(max_verts)
 ) {
   let i = 0; // face counter
+  // Running base so welded identities from different meshes can never collide - weldMap indices
+  // are mesh-local, and a shader's batcher must never think two meshes' vertices are the same one.
+  let weldBase = 0;
   let uniqueVertexCount = 0; // vertex pointer for vertexBuffer
 
   for (let j = 0; j < count; j++) {
@@ -1090,6 +1110,10 @@ function destructMesh(
       m13 = mat4Scratchpad2[13],
       m14 = mat4Scratchpad2[14],
       m15 = mat4Scratchpad2[15];
+
+    const weldMap = mesh.weldMap;
+    const meshWeldBase = weldBase;
+    weldBase += ((mesh.vertices.length / 3) | 0) + 1;
 
     const faces = mesh.faces,
       verts = mesh.vertices,
@@ -1313,6 +1337,7 @@ function destructMesh(
       }
 
       vertexIndexBuffer[i * 3] = vMapping[idx0];
+      weldIdBuffer[i * 3] = meshWeldBase + (weldMap ? weldMap[idx0] : idx0);
 
       // Process Vertex 1
       if (vMapping[idx1] === -1) {
@@ -1343,6 +1368,7 @@ function destructMesh(
       }
 
       vertexIndexBuffer[i * 3 + 1] = vMapping[idx1];
+      weldIdBuffer[i * 3 + 1] = meshWeldBase + (weldMap ? weldMap[idx1] : idx1);
 
       // Process Vertex 2
       if (vMapping[idx2] === -1) {
@@ -1373,6 +1399,7 @@ function destructMesh(
       }
 
       vertexIndexBuffer[i * 3 + 2] = vMapping[idx2];
+      weldIdBuffer[i * 3 + 2] = meshWeldBase + (weldMap ? weldMap[idx2] : idx2);
 
       const cgIdx = i * 9;
       clipGeometryBuffer[cgIdx] = vec3Cache2[v0c];
@@ -1491,6 +1518,7 @@ function drawWireframe(
  * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
  * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
  * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
+ * @param {Uint32Array} weldIdBuffer
  * @param {Uint32Array} indexBuffer - Depth-sorted array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
  * @param {Uint32Array} colorBuffer - Array of face 32-bit color index
  * @param {Uint8Array} shaderTypeBuffer - Parallel array storing the packed shader type and pass ID for each face.
@@ -1527,6 +1555,7 @@ function drawTriangles(
   ctx,
   vertexBuffer,
   vertexIndexBuffer,
+  weldIdBuffer,
   indexBuffer,
   colorBuffer,
   shaderTypeBuffer,
@@ -1597,6 +1626,12 @@ function drawTriangles(
     const v0Idx = vertexIndexBuffer[idx * 3];
     const v1Idx = vertexIndexBuffer[idx * 3 + 1];
     const v2Idx = vertexIndexBuffer[idx * 3 + 2];
+    // Coordinates come from the vertexBuffer offsets above; the identities a shader's batcher
+    // matches edges on are the WELDED ones, so two split vertices at the same physical position
+    // are seen as one and triangles across a tile boundary can merge.
+    const w0Idx = weldIdBuffer[idx * 3];
+    const w1Idx = weldIdBuffer[idx * 3 + 1];
+    const w2Idx = weldIdBuffer[idx * 3 + 2];
 
     const px0 = vertexBuffer[v0Idx] * halfW + halfW;
     const py0 = vertexBuffer[v0Idx + 1] * halfH + halfH;
@@ -1672,9 +1707,9 @@ function drawTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -1716,9 +1751,9 @@ function drawTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -1758,9 +1793,9 @@ function drawTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -1801,9 +1836,9 @@ function drawTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -1843,9 +1878,9 @@ function drawTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -1886,9 +1921,9 @@ function drawTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -1929,19 +1964,28 @@ function drawTriangles(
  * @param {CanvasRenderingContext2D} shadeCtx - this layer's shading buffer.
  * @param {Float32Array} vertexBuffer
  * @param {Uint32Array} vertexIndexBuffer
+ * @param {Uint32Array} weldIdBuffer
  * @param {Uint32Array} indexBuffer - depth-sorted face indices, same order drawTriangles used.
  * @param {Uint32Array} colorBuffer
  * @param {Uint8Array} shaderTypeBuffer
  * @param {number} count @param {number} offset
+ * @param {number} offset
  * @param {number} w - ctx's (not shadeCtx's) width, for the final composite drawImage.
  * @param {number} h - ctx's (not shadeCtx's) height, for the final composite drawImage.
  * @param {Float32Array} clipGeometryBuffer
  * @param {number} fogType @param {number} fogColor @param {number} fogNearPane @param {number} fogFarPane
+ * @param {number} fogColor
+ * @param {number} fogNearPane
+ * @param {number} fogFarPane
  * @param {number} ambientLightRgb
  * @param {Float32Array} faceNormalsBuffer @param {Float32Array} vertexNormalsBuffer
+ * @param vertexNormalsBuffer
  * @param {Uint32Array} meshIndexBuffer @param {Uint32Array} meshFaceIndexBuffer
+ * @param {Float32Array} meshFaceIndexBuffer
  * @param {Uint32Array} layerBuffers @param {number} layerOffset
+ * @param layerOffset
  * @param {Uint32Array} lightsIndexBuffer @param {Object} gameObjects
+ * @param gameObjects
  * @param {Int32Array} ctxStateBuffer
  * @param {Int32Array} statsBuffer
  * @param {number} frameId - This frame's id (see render()), passed through to every shader
@@ -1952,6 +1996,7 @@ function shadeTriangles(
   shadeCtx,
   vertexBuffer,
   vertexIndexBuffer,
+  weldIdBuffer,
   indexBuffer,
   colorBuffer,
   shaderTypeBuffer,
@@ -1991,6 +2036,10 @@ function shadeTriangles(
     const v0Idx = vertexIndexBuffer[idx * 3];
     const v1Idx = vertexIndexBuffer[idx * 3 + 1];
     const v2Idx = vertexIndexBuffer[idx * 3 + 2];
+    // See drawTriangles: coordinates from the vertexBuffer offsets, edge identities from weldIdBuffer.
+    const w0Idx = weldIdBuffer[idx * 3];
+    const w1Idx = weldIdBuffer[idx * 3 + 1];
+    const w2Idx = weldIdBuffer[idx * 3 + 2];
 
     // Scaled into shadeCtx's own half-resolution pixel space, not ctx's (see halfShadeW/H above).
     const px0 = vertexBuffer[v0Idx] * halfShadeW + halfShadeW;
@@ -2059,9 +2108,9 @@ function shadeTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -2101,9 +2150,9 @@ function shadeTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -2141,9 +2190,9 @@ function shadeTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -2181,9 +2230,9 @@ function shadeTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          v0Idx,
-          v1Idx,
-          v2Idx,
+          w0Idx,
+          w1Idx,
+          w2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -2228,9 +2277,9 @@ function shadeTriangles(
             colorBuffer,
             vertexNormalsBuffer,
             faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
+            w0Idx,
+            w1Idx,
+            w2Idx,
             idx,
             mesh,
             meshFaceIndexBuffer[idx],
@@ -2266,9 +2315,9 @@ function shadeTriangles(
             colorBuffer,
             vertexNormalsBuffer,
             faceNormalsBuffer,
-            v0Idx,
-            v1Idx,
-            v2Idx,
+            w0Idx,
+            w1Idx,
+            w2Idx,
             idx,
             mesh,
             meshFaceIndexBuffer[idx],
