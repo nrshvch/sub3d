@@ -1,0 +1,130 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { textureShaderFill } from "./index.js";
+import { STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
+
+/**
+ * The mapping maths is ordinary; what breaks silently is the fallback. A textured mesh whose image
+ * has not arrived yet, or whose UVs are degenerate, still has to cover what is behind it - the fill
+ * pass is painter's-algorithm, so a face that draws nothing lets the geometry the sort put
+ * underneath show through.
+ */
+function stubCtx() {
+  const calls = [];
+  const target = { calls, canvas: { width: 800, height: 600 } };
+  return new Proxy(target, {
+    get: (t, k) => (k in t ? t[k] : (...a) => calls.push(k)),
+    set: (t, k, v) => {
+      calls.push("set:" + String(k));
+      t[k] = v;
+      return true;
+    },
+  });
+}
+
+const GREEN = 0x3f7f2f;
+
+function makeHarness() {
+  const ctx = stubCtx();
+  const ctxStateBuffer = new Int32Array(10).fill(-1);
+  const statsBuffer = new Int32Array(8);
+  const colorBuffer = new Uint32Array(3 * 8).fill(GREEN);
+  // Distinct indices per corner, or the three UVs collapse onto one point and the transform is
+  // degenerate for reasons the test did not intend.
+  const faces = new Uint32Array([0, 1, 2]);
+  const mesh = {
+    faces,
+    textureImage: null,
+    uvs: new Float32Array([0, 0, 1, 0, 1, 1]),
+  };
+
+  function face() {
+    textureShaderFill(
+      ctx,
+      0,
+      0,
+      10,
+      0,
+      10,
+      10,
+      -1,
+      -1,
+      11,
+      -1,
+      11,
+      11,
+      null,
+      colorBuffer,
+      null,
+      null,
+      0,
+      1,
+      2,
+      0,
+      mesh,
+      0,
+      [0.2, 0.2, 0.2],
+      new Uint32Array(1),
+      [],
+      0,
+      0,
+      0,
+      1000,
+      0,
+      ctxStateBuffer,
+      statsBuffer,
+      1,
+      true,
+    );
+  }
+
+  return { ctx, mesh, statsBuffer, face };
+}
+
+const READY_IMAGE = { complete: true, naturalWidth: 64, width: 64, height: 64 };
+
+describe("texture fill", () => {
+  let h;
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  it("clips to the triangle and draws the image through an affine transform", () => {
+    h.mesh.textureImage = READY_IMAGE;
+    h.face();
+
+    expect(h.ctx.calls).toContain("clip");
+    expect(h.ctx.calls).toContain("setTransform");
+    expect(h.ctx.calls).toContain("drawImage");
+    // save/restore must bracket it, or the transform leaks into every later face.
+    expect(h.ctx.calls[0]).toBe("save");
+    expect(h.ctx.calls[h.ctx.calls.length - 1]).toBe("restore");
+    expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(1);
+  });
+
+  it("fills the base colour while the image is still loading", () => {
+    h.mesh.textureImage = { complete: false, naturalWidth: 0 };
+    h.face();
+
+    expect(h.ctx.calls).not.toContain("drawImage");
+    expect(h.ctx.calls).toContain("fill");
+    expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(1);
+  });
+
+  it("fills the base colour when the UVs do not form a triangle", () => {
+    h.mesh.textureImage = READY_IMAGE;
+    h.mesh.uvs = new Float32Array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
+    h.face();
+
+    expect(h.ctx.calls).not.toContain("drawImage");
+    expect(h.ctx.calls).toContain("fill");
+    expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(1);
+  });
+
+  it("defers nothing, so it needs no flush of its own", () => {
+    // Two faces, neither flagged as last - both must already be on the canvas.
+    h.mesh.textureImage = READY_IMAGE;
+    h.face();
+    h.face();
+    expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(2);
+  });
+});

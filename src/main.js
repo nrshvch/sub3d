@@ -23,7 +23,15 @@ import {
   avgFlatShaderFill,
   avgFlatShaderShade,
 } from "./shaders/avgFlatFill/index.js";
-import { registerShader } from "./shaders/shaderRegistry.js";
+import {
+  registerShader,
+  ALBEDO_FLAT,
+  TEXTURE,
+  EMISSIVE_FLAT,
+  AVG_ALBEDO_FLAT,
+  SMOOTH_ALBEDO_FLAT,
+} from "./shaders/shaderRegistry.js";
+import { textureShaderFill } from "./shaders/textureFill/index.js";
 import { identityFill } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
 import { smoothShaderShade } from "./shaders/smoothShade.js";
@@ -50,8 +58,17 @@ export default window.scaliaEngine = {
   showDebug: showDebug,
   registerShader: registerShader,
   whiteFillShade: identityFill,
+  // Built-in shaderType keys, to set on a MeshComponent as `meshRenderer.shaderType`.
+  ShaderType: {
+    ALBEDO_FLAT,
+    TEXTURE,
+    EMISSIVE_FLAT,
+    AVG_ALBEDO_FLAT,
+    SMOOTH_ALBEDO_FLAT,
+  },
   shaders: {
     flat: { fill: flatShaderFill, shade: flatShaderShade },
+    texture: { fill: textureShaderFill, shade: flatShaderShade },
     avgFlat: { fill: avgFlatShaderFill, shade: avgFlatShaderShade },
     smooth: { fill: smoothShaderFill, shade: smoothShaderShade },
   },

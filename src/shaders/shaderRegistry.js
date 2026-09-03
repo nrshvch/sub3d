@@ -1,4 +1,5 @@
 import { flatShaderFill } from "./flatFill/index.js";
+import { textureShaderFill } from "./textureFill/index.js";
 import { avgFlatShaderFill, avgFlatShaderShade } from "./avgFlatFill/index.js";
 import { smoothShaderFill } from "./smoothFill.js";
 import { identityFill } from "../shared/shaders.js";
@@ -11,18 +12,19 @@ export const shadeShaderRegistry = [];
 let nextKey = 5;
 
 export const ALBEDO_FLAT = 0;
+export const TEXTURE = 1;
 export const EMISSIVE_FLAT = 2;
 export const AVG_ALBEDO_FLAT = 3;
 export const SMOOTH_ALBEDO_FLAT = 4;
 
-
-
-
 // Built-ins (keys 0-4) are registered here too, purely for consistency with consumer shaders -
-// Canvas2dRenderer.js's drawTriangles/shadeTriangles switch statements still call them directly
+// Canvas2dRenderer.js's fillTriangles/shadeTriangles switch statements still call them directly
 // by fixed key (see their case comments), never through these arrays.
 shaderRegistry[ALBEDO_FLAT] = flatShaderFill;
 shadeShaderRegistry[ALBEDO_FLAT] = flatShaderShade;
+// Texture replaces the albedo, not the lighting, so it shades exactly as the flat colour does.
+shaderRegistry[TEXTURE] = textureShaderFill;
+shadeShaderRegistry[TEXTURE] = flatShaderShade;
 shaderRegistry[EMISSIVE_FLAT] = flatShaderFill;
 shadeShaderRegistry[EMISSIVE_FLAT] = identityFill;
 shaderRegistry[AVG_ALBEDO_FLAT] = avgFlatShaderFill;

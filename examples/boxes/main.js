@@ -92,8 +92,11 @@ function createBox(index) {
     (rand() * 360) | 0,
   );
 
+  // Texturing is its own shader now, so a textured box has to say so - the flat shader no longer
+  // looks for a texture on the mesh.
   if (rand() > 0.5) {
     child.meshRenderer.texture = boxTexture;
+    child.meshRenderer.shaderType = scaliaEngine.ShaderType.TEXTURE;
   }
 
   return {
