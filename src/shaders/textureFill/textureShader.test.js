@@ -10,7 +10,14 @@ import { STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
  */
 function stubCtx() {
   const calls = [];
-  const target = { calls, canvas: { width: 800, height: 600 } };
+  const target = {
+    calls,
+    canvas: { width: 800, height: 600 },
+    createPattern: (img, repeat) => {
+      calls.push("createPattern:" + repeat);
+      return { PATTERN: true };
+    },
+  };
   return new Proxy(target, {
     get: (t, k) => (k in t ? t[k] : (...a) => calls.push(k)),
     set: (t, k, v) => {
@@ -34,6 +41,7 @@ function makeHarness() {
   const mesh = {
     faces,
     textureImage: null,
+    texturePattern: null,
     uvs: new Float32Array([0, 0, 1, 0, 1, 1]),
   };
 
@@ -77,7 +85,7 @@ function makeHarness() {
     );
   }
 
-  return { ctx, mesh, statsBuffer, face };
+  return { ctx, mesh, statsBuffer, ctxStateBuffer, face };
 }
 
 const READY_IMAGE = { complete: true, naturalWidth: 64, width: 64, height: 64 };
@@ -88,17 +96,47 @@ describe("texture fill", () => {
     h = makeHarness();
   });
 
-  it("clips to the triangle and draws the image through an affine transform", () => {
+  it("fills a texture-space path through a pattern, with no clip or drawImage", () => {
+    // The whole point of the pattern recipe: a textured face becomes an ordinary fill().
     h.mesh.textureImage = READY_IMAGE;
     h.face();
 
-    expect(h.ctx.calls).toContain("clip");
     expect(h.ctx.calls).toContain("setTransform");
-    expect(h.ctx.calls).toContain("drawImage");
-    // save/restore must bracket it, or the transform leaks into every later face.
-    expect(h.ctx.calls[0]).toBe("save");
-    expect(h.ctx.calls[h.ctx.calls.length - 1]).toBe("restore");
+    expect(h.ctx.calls).toContain("fill");
+    expect(h.ctx.calls).not.toContain("clip");
+    expect(h.ctx.calls).not.toContain("drawImage");
+    expect(h.ctx.calls).not.toContain("save");
     expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(1);
+  });
+
+  it("repeats the pattern, so the seam-expanded ring still samples opaque texels", () => {
+    h.mesh.textureImage = READY_IMAGE;
+    h.face();
+    expect(h.ctx.calls).toContain("createPattern:repeat");
+  });
+
+  it("caches the pattern on the mesh instead of rebuilding it per face", () => {
+    h.mesh.textureImage = READY_IMAGE;
+    h.face();
+    h.face();
+    h.face();
+    const built = h.ctx.calls.filter(
+      (c) => c === "createPattern:repeat",
+    ).length;
+    expect(built).toBe(1);
+    expect(h.mesh.texturePattern).toBeTruthy();
+  });
+
+  it("resets the transform and invalidates the colour cache before returning", () => {
+    // Both leak into the next face otherwise: a left-over CTM would displace it, and the flat
+    // shader's cache would report a palette colour that the pattern has already replaced.
+    h.mesh.textureImage = READY_IMAGE;
+    h.face();
+
+    const setTransforms = h.ctx.calls.filter((c) => c === "setTransform");
+    expect(setTransforms.length).toBe(2); // the map, then the identity reset
+    expect(h.ctx.calls[h.ctx.calls.length - 1]).toBe("setTransform");
+    expect(h.ctxStateBuffer[0]).toBe(-1);
   });
 
   it("fills the base colour while the image is still loading", () => {

@@ -1,19 +1,27 @@
 import { flatFill, STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
 
 /**
- * Affine texture-mapped fill.
+ * Affine texture-mapped fill, drawn as a pattern fill rather than a clip + drawImage.
  *
  * Canvas2D can only draw an image under an affine transform, so a triangle is textured by solving
- * for the affine that carries its three UVs onto its three screen positions, clipping to the
- * triangle, and drawing the whole image through that transform. Affine is exact per triangle -
- * the perspective divide already happened, so there is no perspective correction left to lose.
+ * for the affine that carries its three UVs onto its three screen positions. Affine is exact per
+ * triangle - the perspective divide already happened, so there is no perspective correction left
+ * to lose.
  *
- * Immediate-mode: a textured face has nothing to merge with, since every one needs its own clip
- * and transform. It carries no state and so never references `last`.
+ * Where the map goes is what makes this cheap. Putting it on the CONTEXT and building the path in
+ * TEXTURE space turns a textured face into an ordinary `fill()`: a pattern lives in user space,
+ * user space is now texture space, so texel (u,v) lands exactly where the map sends it. No clip,
+ * no save/restore, no drawImage - and every rule that applies to a flat fill applies unchanged.
+ * The conventional recipe (clip to the screen triangle, then drawImage through the map) records
+ * and rasterises several times more for the same pixels. The map goes on the context and not on
+ * the pattern; mutating a pattern's own matrix per shape is markedly more expensive to record.
  *
- * The triangle is clipped to the seam-expanded outline (epx/epy) rather than the exact one, for
- * the same reason the untextured path strokes its boundary: abutting fills each cover about half
- * the pixels along a shared edge, and a clip region cannot be stroked back.
+ * Immediate-mode: it carries no state and so never references `last`.
+ *
+ * The path is the seam-expanded outline (epx/epy) mapped back into texture space, not the exact
+ * one, for the same reason the untextured path strokes its boundary: abutting fills each cover
+ * about half the pixels along a shared edge. The pattern repeats rather than clamping, so the
+ * expanded ring always samples opaque texels instead of leaving a transparent gap.
  */
 export function textureShaderFill(
   ctx,
@@ -95,21 +103,44 @@ export function textureShaderFill(
           py2 * (U0 * V1 - U1 * V0)) *
         invDelta;
 
-      ctx.save();
+      // Texture-space coordinates of the seam-expanded triangle: invert the map and push the
+      // already-expanded screen vertices back through it, so the covered region is exactly what
+      // the clip-based recipe covered.
+      const det = a * d - bT * c;
+      if (det !== 0) {
+        const invDet = 1 / det;
+        const ex0 = epx0 - e;
+        const ey0 = epy0 - f;
+        const ex1 = epx1 - e;
+        const ey1 = epy1 - f;
+        const ex2 = epx2 - e;
+        const ey2 = epy2 - f;
 
-      ctx.beginPath();
-      ctx.moveTo(epx0, epy0);
-      ctx.lineTo(epx1, epy1);
-      ctx.lineTo(epx2, epy2);
-      ctx.closePath();
+        let pattern = mesh.texturePattern;
+        if (!pattern) {
+          // 'repeat', not 'no-repeat': the expanded ring reaches outside the face's UV rect, and
+          // a non-repeating pattern is transparent there, which would open the very gap the
+          // expansion exists to close.
+          pattern = ctx.createPattern(img, "repeat");
+          mesh.texturePattern = pattern;
+        }
 
-      ctx.clip();
-      ctx.setTransform(a, bT, c, d, e, f);
-      ctx.drawImage(img, 0, 0);
-      ctx.restore();
-      statsBuffer[STATS_FILL_DRAW_CALLS]++;
+        ctx.fillStyle = pattern;
+        // The colour cache tracks a palette entry, and this is not one - force the next flat face
+        // to set its own style rather than trusting a stale hit.
+        ctxStateBuffer[0] = -1;
 
-      return;
+        ctx.setTransform(a, bT, c, d, e, f);
+        ctx.beginPath();
+        ctx.moveTo((d * ex0 - c * ey0) * invDet, (a * ey0 - bT * ex0) * invDet);
+        ctx.lineTo((d * ex1 - c * ey1) * invDet, (a * ey1 - bT * ex1) * invDet);
+        ctx.lineTo((d * ex2 - c * ey2) * invDet, (a * ey2 - bT * ex2) * invDet);
+        ctx.fill();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        statsBuffer[STATS_FILL_DRAW_CALLS]++;
+
+        return;
+      }
     }
   }
 
