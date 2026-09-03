@@ -1,12 +1,12 @@
 import Component from "../Component.js";
 
 export default function Path() {
-    Component.call(this);
+  Component.call(this);
 
-    this.points = [];
+  this.points = [];
 }
 
-var p = Path.prototype = Object.create(Component.prototype);
+var p = (Path.prototype = Object.create(Component.prototype));
 
 p.constructor = Path;
 
@@ -15,12 +15,12 @@ p.color = "white";
 p.width = 1;
 p.layer = 0;
 
-p.setGameObject = function(gameObject){
-    Component.prototype.setGameObject.call(this, gameObject);
-    gameObject.pathRenderer = this;
-}
+p.setGameObject = function (gameObject) {
+  Component.prototype.setGameObject.call(this, gameObject);
+  gameObject.pathRenderer = this;
+};
 
-p.unsetGameObject = function(){
-    this.gameObject.pathRenderer = undefined;
-    Component.prototype.unsetGameObject.call(this);
-}
+p.unsetGameObject = function () {
+  this.gameObject.pathRenderer = undefined;
+  Component.prototype.unsetGameObject.call(this);
+};

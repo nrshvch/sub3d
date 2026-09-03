@@ -301,16 +301,26 @@ describe("multi-slot welder", () => {
     //   D(T4) matches BOTH slots -> splice -> one ring, slot 2 released
     // The single-slot batcher produced three separate polygons for this.
     const V = {
-      1: [0, 0], 2: [0, 10], 3: [10, 0], 4: [10, 10],
-      5: [20, 0], 6: [20, 10], 7: [30, 0], 8: [30, 10],
+      1: [0, 0],
+      2: [0, 10],
+      3: [10, 0],
+      4: [10, 10],
+      5: [20, 0],
+      6: [20, 10],
+      7: [30, 0],
+      8: [30, 10],
     };
     const t = (a, b, c) => [
       [a, V[a][0], V[a][1]],
       [b, V[b][0], V[b][1]],
       [c, V[c][0], V[c][1]],
     ];
-    const A = t(1, 2, 3), B = t(3, 2, 4), C = t(3, 4, 5);
-    const D = t(5, 4, 6), E = t(5, 6, 7), F = t(7, 6, 8);
+    const A = t(1, 2, 3),
+      B = t(3, 2, 4),
+      C = t(3, 4, 5);
+    const D = t(5, 4, 6),
+      E = t(5, 6, 7),
+      F = t(7, 6, 8);
 
     for (const f of [A, B, E, F, C, D]) r.add(f[0], f[1], f[2]);
     expect(r.ctx.paths).toHaveLength(0); // nothing forced out along the way

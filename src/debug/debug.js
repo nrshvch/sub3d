@@ -43,7 +43,14 @@ export function renderAxis(gameObjects, ctx, worldToScreenMatrix, vec3Cache1) {
 
     // Project the Origin to Screen Space (the one point per object that needs the full affine
     // transform, translation included).
-    vec3TransformMat4to2D(vec3Cache1, 0, worldPosX, worldPosY, worldPosZ, worldToScreenMatrix);
+    vec3TransformMat4to2D(
+      vec3Cache1,
+      0,
+      worldPosX,
+      worldPosY,
+      worldPosZ,
+      worldToScreenMatrix,
+    );
     const ox = vec3Cache1[0],
       oy = vec3Cache1[1];
 
@@ -61,7 +68,10 @@ export function renderAxis(gameObjects, ctx, worldToScreenMatrix, vec3Cache1) {
     }
     const axInv = GIZMO_SIZE / axLen;
     xPath.moveTo(ox, oy);
-    xPath.lineTo(ox + (ax * m0 + ay * m4 + az * m8) * axInv, oy + (ax * m1 + ay * m5 + az * m9) * axInv);
+    xPath.lineTo(
+      ox + (ax * m0 + ay * m4 + az * m8) * axInv,
+      oy + (ax * m1 + ay * m5 + az * m9) * axInv,
+    );
 
     // Y axis
     let bx = W[4],
@@ -76,7 +86,10 @@ export function renderAxis(gameObjects, ctx, worldToScreenMatrix, vec3Cache1) {
     }
     const byInv = GIZMO_SIZE / byLen;
     yPath.moveTo(ox, oy);
-    yPath.lineTo(ox + (bx * m0 + by * m4 + bz * m8) * byInv, oy + (bx * m1 + by * m5 + bz * m9) * byInv);
+    yPath.lineTo(
+      ox + (bx * m0 + by * m4 + bz * m8) * byInv,
+      oy + (bx * m1 + by * m5 + bz * m9) * byInv,
+    );
 
     // Z axis
     let cx = W[8],
@@ -91,7 +104,10 @@ export function renderAxis(gameObjects, ctx, worldToScreenMatrix, vec3Cache1) {
     }
     const czInv = GIZMO_SIZE / czLen;
     zPath.moveTo(ox, oy);
-    zPath.lineTo(ox + (cx * m0 + cy * m4 + cz * m8) * czInv, oy + (cx * m1 + cy * m5 + cz * m9) * czInv);
+    zPath.lineTo(
+      ox + (cx * m0 + cy * m4 + cz * m8) * czInv,
+      oy + (cx * m1 + cy * m5 + cz * m9) * czInv,
+    );
   }
 
   ctx.lineWidth = 1;

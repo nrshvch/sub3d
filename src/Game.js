@@ -4,17 +4,17 @@ import World from "./World.js";
  * @constructor
  */
 export default function Game() {
-    this.world = new World(this);
+  this.world = new World(this);
 
-    var world = this.world;
+  var world = this.world;
 
-    this.tick = function tick(){
-        const t0 = performance.now();
-        world.tick();
-        world.lastTickTime = performance.now() - t0;
+  this.tick = function tick() {
+    const t0 = performance.now();
+    world.tick();
+    world.lastTickTime = performance.now() - t0;
 
-        requestAnimationFrame(tick);
-    }
+    requestAnimationFrame(tick);
+  };
 }
 
 var p = Game.prototype;
@@ -33,8 +33,7 @@ p.render = null;
  * @type {void}
  */
 p.run = function () {
-    this.tick();
-}
+  this.tick();
+};
 
 p.rafHandler = null;
-

@@ -5,11 +5,11 @@ import Transform from "./components/TransformComponent.js";
  * @constructor
  */
 export default function GameObject(name) {
-    this.instanceId = GameObject.prototype.instanceId++;
-    this.components = [];
-    this.transform = this.addComponent(new Transform());
+  this.instanceId = GameObject.prototype.instanceId++;
+  this.components = [];
+  this.transform = this.addComponent(new Transform());
 
-    this.name = name || "gameObject";
+  this.name = name || "gameObject";
 }
 
 var p = GameObject.prototype;
@@ -37,7 +37,7 @@ p.layer = 0;
  */
 p.scene = null;
 
-p.world  = null;
+p.world = null;
 
 /**
  * Transform component attached to this game object.
@@ -59,7 +59,7 @@ p.componentsCount = 0;
  * @param {Scene} scene
  */
 p.setScene = function (scene) {
-    this.scene = scene;
+  this.scene = scene;
 };
 
 /**
@@ -68,16 +68,16 @@ p.setScene = function (scene) {
  * @return {*}
  */
 p.addComponent = function (component) {
-    this.components[this.componentsCount++] = component;
+  this.components[this.componentsCount++] = component;
 
-    component.setGameObject(this);
+  component.setGameObject(this);
 
-    return component;
-}
+  return component;
+};
 
 p.removeComponent = function (component) {
-    component.unsetGameObject();
-}
+  component.unsetGameObject();
+};
 
 /**
  * Method will return component of type of given constructor function
@@ -85,10 +85,9 @@ p.removeComponent = function (component) {
  * @returns {*}
  */
 p.getComponent = function (Type) {
-    for (var i = 0; i < this.components.length; i++) {
-        var component = this.components[i];
-        if (component instanceof Type)
-            return component;
-    }
-    return null;
-}
+  for (var i = 0; i < this.components.length; i++) {
+    var component = this.components[i];
+    if (component instanceof Type) return component;
+  }
+  return null;
+};

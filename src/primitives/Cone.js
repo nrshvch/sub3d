@@ -34,7 +34,7 @@ function generateConeMesh(segments, radius, height) {
   return {
     vertices: new Float32Array(verts),
     faces: new Uint16Array(faces),
-    colors: new Uint32Array(verts.length / 3).fill(0x0000FF),
+    colors: new Uint32Array(verts.length / 3).fill(0x0000ff),
   };
 }
 
@@ -61,4 +61,3 @@ export default function Cone() {
 }
 
 Cone.prototype = Object.create(GameObject.prototype);
-

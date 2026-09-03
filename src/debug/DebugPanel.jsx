@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 
 const formatSortTime = (val) => {
-  if (typeof val !== 'number') return 'N/A';
+  if (typeof val !== "number") return "N/A";
   return `${Math.round(val)} ms`;
 };
 
@@ -31,28 +31,28 @@ export default function DebugPanel({ viewport }) {
     fogRasterTime: 0,
   });
   const [isOpen, setIsOpen] = useState(() => {
-    return localStorage.getItem('s3d-debug-open') === 'true';
+    return localStorage.getItem("s3d-debug-open") === "true";
   });
   const [wireframe, setWireframe] = useState(() => {
-    return localStorage.getItem('s3d-wireframe') === 'true';
+    return localStorage.getItem("s3d-wireframe") === "true";
   });
   const [debugNormals, setDebugNormals] = useState(() => {
-    return localStorage.getItem('s3d-debug-normals') === 'true';
+    return localStorage.getItem("s3d-debug-normals") === "true";
   });
   const [debugAxis, setDebugAxis] = useState(() => {
-    return localStorage.getItem('s3d-debug-axis') === 'true';
+    return localStorage.getItem("s3d-debug-axis") === "true";
   });
   // Pipeline stage toggles default ON (unlike the debug overlays above, which default OFF) - a
   // missing/unset localStorage key must resolve to true, so this checks for the explicit 'false'
   // rather than mirroring the `=== 'true'` pattern used above.
   const [fillEnabled, setFillEnabled] = useState(() => {
-    return localStorage.getItem('s3d-fill-enabled') !== 'false';
+    return localStorage.getItem("s3d-fill-enabled") !== "false";
   });
   const [shadeEnabled, setShadeEnabled] = useState(() => {
-    return localStorage.getItem('s3d-shade-enabled') !== 'false';
+    return localStorage.getItem("s3d-shade-enabled") !== "false";
   });
   const [fogEnabled, setFogEnabled] = useState(() => {
-    return localStorage.getItem('s3d-fog-enabled') !== 'false';
+    return localStorage.getItem("s3d-fog-enabled") !== "false";
   });
 
   // Push the persisted (or default) toggle state onto the viewport once it's available - the
@@ -93,27 +93,27 @@ export default function DebugPanel({ viewport }) {
 
   // Update open/closed state persistence
   useEffect(() => {
-    localStorage.setItem('s3d-debug-open', isOpen);
+    localStorage.setItem("s3d-debug-open", isOpen);
   }, [isOpen]);
 
   // Persist toggle state so each survives a reload, same as the panel's open/closed state above
   useEffect(() => {
-    localStorage.setItem('s3d-wireframe', wireframe);
+    localStorage.setItem("s3d-wireframe", wireframe);
   }, [wireframe]);
   useEffect(() => {
-    localStorage.setItem('s3d-debug-normals', debugNormals);
+    localStorage.setItem("s3d-debug-normals", debugNormals);
   }, [debugNormals]);
   useEffect(() => {
-    localStorage.setItem('s3d-debug-axis', debugAxis);
+    localStorage.setItem("s3d-debug-axis", debugAxis);
   }, [debugAxis]);
   useEffect(() => {
-    localStorage.setItem('s3d-fill-enabled', fillEnabled);
+    localStorage.setItem("s3d-fill-enabled", fillEnabled);
   }, [fillEnabled]);
   useEffect(() => {
-    localStorage.setItem('s3d-shade-enabled', shadeEnabled);
+    localStorage.setItem("s3d-shade-enabled", shadeEnabled);
   }, [shadeEnabled]);
   useEffect(() => {
-    localStorage.setItem('s3d-fog-enabled', fogEnabled);
+    localStorage.setItem("s3d-fog-enabled", fogEnabled);
   }, [fogEnabled]);
 
   // Pull stats periodically
@@ -162,9 +162,11 @@ export default function DebugPanel({ viewport }) {
     }
 
     // 2. Dispatch custom event for custom integrations (like terrain chunks in isometric-world)
-    window.dispatchEvent(new CustomEvent('s3d-wireframe-change', {
-      detail: { enabled: nextWireframe }
-    }));
+    window.dispatchEvent(
+      new CustomEvent("s3d-wireframe-change", {
+        detail: { enabled: nextWireframe },
+      }),
+    );
   };
 
   const handleDebugNormalsToggle = () => {
@@ -217,13 +219,23 @@ export default function DebugPanel({ viewport }) {
           title="Toggle Wireframe"
           className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
             wireframe
-              ? 's3d-bg-blue-600/80 s3d-border-blue-400 s3d-text-white'
-              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+              ? "s3d-bg-blue-600/80 s3d-border-blue-400 s3d-text-white"
+              : "s3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80"
           } s3d-backdrop-blur-md s3d-shadow-lg`}
         >
           {/* Isometric wireframe cube SVG icon */}
-          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25m-9-5.25v9l9 5.25M12 12.75v9" />
+          <svg
+            className="s3d-w-5 s3d-h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25m-9-5.25v9l9 5.25M12 12.75v9"
+            />
           </svg>
         </button>
 
@@ -233,13 +245,23 @@ export default function DebugPanel({ viewport }) {
           title="Toggle Debug Normals"
           className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
             debugNormals
-              ? 's3d-bg-amber-600/80 s3d-border-amber-400 s3d-text-white'
-              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+              ? "s3d-bg-amber-600/80 s3d-border-amber-400 s3d-text-white"
+              : "s3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80"
           } s3d-backdrop-blur-md s3d-shadow-lg`}
         >
           {/* Face with a perpendicular normal line SVG icon */}
-          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 17l8-10 8 10H4z" />
+          <svg
+            className="s3d-w-5 s3d-h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 17l8-10 8 10H4z"
+            />
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 13V3" />
           </svg>
         </button>
@@ -250,13 +272,23 @@ export default function DebugPanel({ viewport }) {
           title="Toggle Debug Axis"
           className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
             debugAxis
-              ? 's3d-bg-purple-600/80 s3d-border-purple-400 s3d-text-white'
-              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+              ? "s3d-bg-purple-600/80 s3d-border-purple-400 s3d-text-white"
+              : "s3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80"
           } s3d-backdrop-blur-md s3d-shadow-lg`}
         >
           {/* 3-axis gizmo SVG icon */}
-          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 12L20 12M12 12L12 4M12 12L6 18" />
+          <svg
+            className="s3d-w-5 s3d-h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 12L20 12M12 12L12 4M12 12L6 18"
+            />
           </svg>
         </button>
 
@@ -266,13 +298,20 @@ export default function DebugPanel({ viewport }) {
           title="Toggle Fill Pass"
           className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
             fillEnabled
-              ? 's3d-bg-cyan-600/80 s3d-border-cyan-400 s3d-text-white'
-              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+              ? "s3d-bg-cyan-600/80 s3d-border-cyan-400 s3d-text-white"
+              : "s3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80"
           } s3d-backdrop-blur-md s3d-shadow-lg`}
         >
           {/* Solid filled square SVG icon */}
           <svg className="s3d-w-5 s3d-h-5" viewBox="0 0 24 24">
-            <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" />
+            <rect
+              x="4"
+              y="4"
+              width="16"
+              height="16"
+              rx="2"
+              fill="currentColor"
+            />
           </svg>
         </button>
 
@@ -282,12 +321,18 @@ export default function DebugPanel({ viewport }) {
           title="Toggle Shade Pass"
           className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
             shadeEnabled
-              ? 's3d-bg-orange-600/80 s3d-border-orange-400 s3d-text-white'
-              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+              ? "s3d-bg-orange-600/80 s3d-border-orange-400 s3d-text-white"
+              : "s3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80"
           } s3d-backdrop-blur-md s3d-shadow-lg`}
         >
           {/* Half-shaded circle (contrast) SVG icon */}
-          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <svg
+            className="s3d-w-5 s3d-h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
             <circle cx="12" cy="12" r="9" />
             <path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none" />
           </svg>
@@ -299,12 +344,18 @@ export default function DebugPanel({ viewport }) {
           title="Toggle Fog Pass"
           className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
             fogEnabled
-              ? 's3d-bg-sky-600/80 s3d-border-sky-400 s3d-text-white'
-              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+              ? "s3d-bg-sky-600/80 s3d-border-sky-400 s3d-text-white"
+              : "s3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80"
           } s3d-backdrop-blur-md s3d-shadow-lg`}
         >
           {/* Horizontal haze/fog lines SVG icon */}
-          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <svg
+            className="s3d-w-5 s3d-h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
             <path strokeLinecap="round" d="M3 8h13M3 12h17M3 16h10" />
           </svg>
         </button>
@@ -315,13 +366,23 @@ export default function DebugPanel({ viewport }) {
           title="Toggle Diagnostics"
           className={`s3d-p-2 s3d-rounded-lg s3d-border s3d-transition-colors s3d-duration-200 ${
             isOpen
-              ? 's3d-bg-emerald-600/80 s3d-border-emerald-400 s3d-text-white'
-              : 's3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80'
+              ? "s3d-bg-emerald-600/80 s3d-border-emerald-400 s3d-text-white"
+              : "s3d-bg-slate-900/80 s3d-border-slate-700/50 s3d-text-slate-400 hover:s3d-text-slate-200 hover:s3d-bg-slate-800/80"
           } s3d-backdrop-blur-md s3d-shadow-lg`}
         >
           {/* Speedometer/Gauge icon */}
-          <svg className="s3d-w-5 s3d-h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a9 9 0 00-9 9 9 9 0 009 9 9 9 0 009-9 9 9 0 00-9-9zm0 0v3m-6.36 1.36l2.12 2.12M12 12l3.54-3.54" />
+          <svg
+            className="s3d-w-5 s3d-h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 3a9 9 0 00-9 9 9 9 0 009 9 9 9 0 009-9 9 9 0 00-9-9zm0 0v3m-6.36 1.36l2.12 2.12M12 12l3.54-3.54"
+            />
           </svg>
         </button>
       </div>
@@ -330,7 +391,9 @@ export default function DebugPanel({ viewport }) {
       {isOpen && (
         <div className="s3d-w-56 s3d-bg-slate-900/85 s3d-backdrop-blur-md s3d-border s3d-border-slate-700/50 s3d-rounded-lg s3d-p-3 s3d-shadow-2xl s3d-text-slate-300 s3d-flex s3d-flex-col">
           <div className="s3d-flex s3d-justify-between s3d-items-center s3d-border-b s3d-border-slate-800 s3d-pb-1.5 s3d-mb-2.5">
-            <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide s3d-font-semibold">FPS / FPS (max)</span>
+            <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide s3d-font-semibold">
+              FPS / FPS (max)
+            </span>
             <span className="s3d-font-mono s3d-text-sm s3d-font-semibold">
               <span className="s3d-text-emerald-400">{stats.fps}</span>
               <span className="s3d-text-slate-500"> / </span>
@@ -340,96 +403,172 @@ export default function DebugPanel({ viewport }) {
 
           <div className="s3d-grid s3d-grid-cols-2 s3d-gap-y-2.5 s3d-gap-x-3 s3d-text-[11px]">
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Device DPR</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{(window.devicePixelRatio || 1).toFixed(2)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Device DPR
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {(window.devicePixelRatio || 1).toFixed(2)}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Objects (Scene)</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{stats.totalObjects}</span>
-            </div>
-
-            <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Objects (Screen)</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{stats.visibleObjects}</span>
-            </div>
-            <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Faces (screen)</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{stats.faces}</span>
-            </div>
-
-            <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Scene Update</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.updateTime)}</span>
-            </div>
-            <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Scene Retrieval</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.retrieveTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Objects (Scene)
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.totalObjects}
+              </span>
             </div>
 
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Object Culling</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.cullTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Objects (Screen)
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.visibleObjects}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Layer Grouping</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.groupTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Faces (screen)
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.faces}
+              </span>
             </div>
 
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Process Meshes</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.processTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Scene Update
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.updateTime)}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Sort Faces</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.sortTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Scene Retrieval
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.retrieveTime)}
+              </span>
+            </div>
+
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Object Culling
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.cullTime)}
+              </span>
+            </div>
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Layer Grouping
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.groupTime)}
+              </span>
+            </div>
+
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Process Meshes
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.processTime)}
+              </span>
+            </div>
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Sort Faces
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.sortTime)}
+              </span>
             </div>
 
             <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
 
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Fill Draw Calls</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{stats.fillDrawCalls}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Fill Draw Calls
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.fillDrawCalls}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Fill Render</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.fillRasterTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Fill Render
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.fillRasterTime)}
+              </span>
             </div>
 
             <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
 
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Shade Draw Calls</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{stats.shadeDrawCalls}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Shade Draw Calls
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.shadeDrawCalls}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Shade Render</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.shadeRasterTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Shade Render
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.shadeRasterTime)}
+              </span>
             </div>
 
             <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
 
             <div className="s3d-flex s3d-flex-col s3d-col-span-2">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Fog Sort</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.fogSortTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Fog Sort
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.fogSortTime)}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Fog Draw Calls</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{stats.fogDrawCalls}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Fog Draw Calls
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.fogDrawCalls}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Fog Render</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.fogRasterTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Fog Render
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.fogRasterTime)}
+              </span>
             </div>
 
             <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
 
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Draw Calls</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">{stats.drawCallsTotal}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Draw Calls
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.drawCallsTotal}
+              </span>
             </div>
             <div className="s3d-flex s3d-flex-col">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">Frame Time</span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">{formatSortTime(stats.frameTime)}</span>
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Frame Time
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.frameTime)}
+              </span>
             </div>
           </div>
         </div>

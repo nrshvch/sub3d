@@ -7,9 +7,7 @@ import {
   weldReset,
 } from "../../shared/weld.js";
 
-// This pass's own welder state, private to this module for the life of the page. Separate from the
-// fill and shade passes': all three run over different colour spaces (fog level, albedo, lit
-// intensity) and interleave in time, so they cannot share open polygons.
+// This pass's pending geometry, keyed on quantised fog amount rather than albedo.
 const weldState = createWeldState();
 
 // Perpendicular deviation, in fogCtx pixels, below which a boundary vertex is dropped at flush.
@@ -132,7 +130,13 @@ export function fogSort(
   for (let i = 0; i < count; i++) {
     const idx = indexBuffer[i];
     if (shaderTypeBuffer[idx] !== 0) continue;
-    const fogAmount = computeFogAmount(idx, clipGeometryBuffer, fogType, fogNearPane, fogFarPane);
+    const fogAmount = computeFogAmount(
+      idx,
+      clipGeometryBuffer,
+      fogType,
+      fogNearPane,
+      fogFarPane,
+    );
     const bucket = ((255 * (1 - fogAmount)) & 0xf8) >> 3;
     counters[bucket]++;
     fogFaceCount++;
@@ -148,7 +152,13 @@ export function fogSort(
   for (let i = 0; i < count; i++) {
     const idx = indexBuffer[i];
     if (shaderTypeBuffer[idx] !== 0) continue;
-    const fogAmount = computeFogAmount(idx, clipGeometryBuffer, fogType, fogNearPane, fogFarPane);
+    const fogAmount = computeFogAmount(
+      idx,
+      clipGeometryBuffer,
+      fogType,
+      fogNearPane,
+      fogFarPane,
+    );
     const bucket = ((255 * (1 - fogAmount)) & 0xf8) >> 3;
     scratchBuffer[counters[bucket]++] = idx;
   }
@@ -229,9 +239,7 @@ export function fogSort(
 }
 
 /**
- * Quantises this face's fog amount to a colour and hands it to the shared multi-slot welder (see
- * src/shared/weld.js), which merges edge-adjacent same-fog-colour faces into one polygon and
- * flushes on a fog-colour change.
+ * Quantises this face's fog amount to a colour and hands it to the welder.
  *
  * Draws every face unconditionally - no fogAmount-based skip. A "fully fogged" face still has to
  * be drawn to correctly occlude whatever is underneath it in fogCtx, since depth-dominant draw
@@ -242,11 +250,11 @@ export function fogSort(
  *
  * `last` is true only for the final face fogTriangles passes in, so it is this pass's single
  * drain: the face is merged normally first, then every open polygon is flushed.
- * @param {CanvasRenderingContext2D} fogCtx - this layer's half-resolution fog buffer.
+ * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer.
  * @param {number} px0 @param {number} py0
  * @param {number} px1 @param {number} py1
  * @param {number} px2 @param {number} py2 - unexpanded triangle coords, already scaled to
- *   fogCtx's half-resolution pixel space by the caller.
+ *   fogCtx's pixel space by the caller.
  * @param {number} v0Idx @param {number} v1Idx @param {number} v2Idx
  * @param {Float32Array} clipGeometryBuffer
  * @param {number} faceIdx @param {number} meshIdx
@@ -366,7 +374,7 @@ supportsFilterInvert();
  * tints it by fogColor via multiply, then adds it back onto `ctx` via lighter - see fog.js's
  * fogFace for the per-face formula this composites.
  * @param {CanvasRenderingContext2D} ctx
- * @param {CanvasRenderingContext2D} fogCtx - this layer's half-resolution fog buffer (see
+ * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer (see
  *   fog.js's fogFace for what it holds).
  * @param {number} fogColor
  * @param {number} w
@@ -411,7 +419,7 @@ let pass = 0;
  * triangles via batchedFogFace along the way), then composites it onto `ctx` (see
  * compositeFogPass).
  * @param {CanvasRenderingContext2D} ctx
- * @param {CanvasRenderingContext2D} fogCtx - this layer's half-resolution fog buffer.
+ * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer.
  * @param {Float32Array} vertexBuffer
  * @param {Uint32Array} vertexIndexBuffer
  * @param {Uint32Array} weldIdBuffer
@@ -471,7 +479,7 @@ export function fogTriangles(
     const w1Idx = weldIdBuffer[idx * 3 + 1];
     const w2Idx = weldIdBuffer[idx * 3 + 2];
 
-    // Scaled into fogCtx's own half-resolution pixel space, not ctx's.
+    // Scaled into fogCtx's own pixel space, not ctx's.
     const fpx0 = vertexBuffer[v0Idx] * halfFogW + halfFogW;
     const fpy0 = vertexBuffer[v0Idx + 1] * halfFogH + halfFogH;
     const fpx1 = vertexBuffer[v1Idx] * halfFogW + halfFogW;

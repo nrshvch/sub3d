@@ -84,7 +84,17 @@ describe("radixSort", () => {
       // ascending encounter order [f7,f5,f6,f4] (mesh 1,3,3,4) into [f4,f6,f5,f7] - note f6
       // before f5, the tied pair reversed along with everything else, not preserved.
       expect(runSort(faces)).toEqual([
-        "f3", "f0", "f1", "f2", "f4", "f6", "f5", "f7", "f8", "f8b", "f9",
+        "f3",
+        "f0",
+        "f1",
+        "f2",
+        "f4",
+        "f6",
+        "f5",
+        "f7",
+        "f8",
+        "f8b",
+        "f9",
       ]);
     });
 
@@ -136,7 +146,14 @@ describe("radixSort", () => {
     ];
 
     expect(runSort(faces)).toEqual([
-      "r1", "b1", "b4", "b3", "b2", "r4", "r3", "r2",
+      "r1",
+      "b1",
+      "b4",
+      "b3",
+      "b2",
+      "r4",
+      "r3",
+      "r2",
     ]);
   });
 });

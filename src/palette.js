@@ -17,10 +17,14 @@ export function createPalette16Bit() {
     // canvas fillStyle is faster with hex color.
     // also, hex color strings are of consistent length
     // this enables low level js array optimization
-    palette[i] = "#" + 
-      (r8 < 16 ? "0" : "") + r8.toString(16) +
-      (g8 < 16 ? "0" : "") + g8.toString(16) +
-      (b8 < 16 ? "0" : "") + b8.toString(16);
+    palette[i] =
+      "#" +
+      (r8 < 16 ? "0" : "") +
+      r8.toString(16) +
+      (g8 < 16 ? "0" : "") +
+      g8.toString(16) +
+      (b8 < 16 ? "0" : "") +
+      b8.toString(16);
   }
   return palette;
 }

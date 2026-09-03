@@ -64,11 +64,9 @@ function generateBallMesh(rings, sectors, radius) {
     vertices: new Float32Array(verts),
     uvs: new Float32Array(uvs),
     faces: new Uint16Array(faces),
-    colors: new Uint32Array(verts.length / 3).fill(0x0000FF),
+    colors: new Uint32Array(verts.length / 3).fill(0x0000ff),
   };
 }
-
-
 
 // Sphere-specific pass on top of MeshComponent#updateNormals: the UV seam (s=0 vs s=sectors)
 // and the poles reuse the same position but can't share a vertex index (the seam needs two UVs;
@@ -94,7 +92,9 @@ function weldSeamNormals(mesh) {
     const indices = posGroups[key];
     if (indices.length < 2) continue;
 
-    let sumX = 0, sumY = 0, sumZ = 0;
+    let sumX = 0,
+      sumY = 0,
+      sumZ = 0;
     for (let k = 0; k < indices.length; k++) {
       const idx = indices[k];
       sumX += vn[idx];
@@ -134,7 +134,7 @@ function generateBall(rings = 8, sectors = 8, radius = 8) {
     ballMesh.uvs,
     bounds,
     ballMesh.colors,
-  ]
+  ];
 }
 
 function Ball(vertices, faces, uvs, bounds, colors) {
@@ -144,7 +144,7 @@ function Ball(vertices, faces, uvs, bounds, colors) {
   mesh.vertices = vertices;
   mesh.faces = faces;
   mesh.uvs = uvs;
-  mesh.colors = colors || new Uint32Array(vertices.length / 3).fill(0x0000FF);
+  mesh.colors = colors || new Uint32Array(vertices.length / 3).fill(0x0000ff);
   mesh.bounds = bounds;
   mesh.updateNormals();
   weldSeamNormals(mesh);

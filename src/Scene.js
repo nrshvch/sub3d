@@ -15,13 +15,13 @@ p.gameObjects = null;
  * @param {GameObject} gameObject
  */
 p.addGameObject = function (gameObject) {
-    this.gameObjects[this.gameObjects.length++] = gameObject;
-    gameObject.setScene(this);
-}
-
+  this.gameObjects[this.gameObjects.length++] = gameObject;
+  gameObject.setScene(this);
+};
 
 p.removeGameObject = function (gameObject) {
-  this.gameObjects[this.gameObjects.indexOf(gameObject)] = this.gameObjects[this.gameObjects.length-1];
+  this.gameObjects[this.gameObjects.indexOf(gameObject)] =
+    this.gameObjects[this.gameObjects.length - 1];
   this.gameObjects.length -= 1;
 };
 

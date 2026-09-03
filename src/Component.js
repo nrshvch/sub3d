@@ -1,9 +1,7 @@
 /**
  * @constructor
  */
-export default function Component() {
-
-}
+export default function Component() {}
 
 var p = Component.prototype;
 
@@ -15,10 +13,10 @@ p.gameObject = null;
 
 p.enabled = true;
 
-p.setGameObject = function(gameObject){
-    this.gameObject = gameObject;
+p.setGameObject = function (gameObject) {
+  this.gameObject = gameObject;
 };
 
-p.unsetGameObject = function(){
-    this.gameObject = null;
+p.unsetGameObject = function () {
+  this.gameObject = null;
 };
