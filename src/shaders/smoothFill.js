@@ -25,12 +25,6 @@ export function smoothShaderFill(
   py1,
   px2,
   py2,
-  epx0,
-  epy0,
-  epx1,
-  epy1,
-  epx2,
-  epy2,
   clipGeometryBuffer,
   colorBuffer,
   vertexNormalsBuffer,
@@ -156,9 +150,9 @@ export function smoothShaderFill(
       ctx.save();
 
       ctx.beginPath();
-      ctx.moveTo(epx0, epy0);
-      ctx.lineTo(epx1, epy1);
-      ctx.lineTo(epx2, epy2);
+      ctx.moveTo(px0, py0);
+      ctx.lineTo(px1, py1);
+      ctx.lineTo(px2, py2);
       ctx.closePath();
 
       ctx.clip(); // clip to the expanded triangle
@@ -431,9 +425,9 @@ export function smoothShaderFill(
   ctx.fillStyle = grad;
 
   ctx.beginPath();
-  ctx.moveTo(epx0, epy0);
-  ctx.lineTo(epx1, epy1);
-  ctx.lineTo(epx2, epy2);
+  ctx.moveTo(px0, py0);
+  ctx.lineTo(px1, py1);
+  ctx.lineTo(px2, py2);
   ctx.closePath();
 
   ctx.fill();

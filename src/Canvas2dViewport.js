@@ -4,10 +4,12 @@ import * as math from "./math.js";
 
 const mat4Mul = math.mat4Mul;
 
+const ALPHA = true;
+
 export default function Canvas2dViewport(camera, canvas) {
   this.canvas = canvas || document.createElement("canvas");
   this.canvas.style.filter = "url(#stripBlue)";
-  this.context = this.canvas.getContext("2d", { alpha: true });
+  this.context = this.canvas.getContext("2d", { alpha: ALPHA });
   this.context.imageSmoothingEnabled = false;
   this.context.webkitImageSmoothingEnabled = false;
   this.width = 0;
@@ -28,17 +30,17 @@ export default function Canvas2dViewport(camera, canvas) {
   this.fogLayers = [];
   for (var i = 0; i < config.layersCount; i++) {
     var cnv = document.createElement("canvas");
-    this.layers[i] = cnv.getContext("2d");
+    this.layers[i] = cnv.getContext("2d", { alpha: ALPHA });
     this.layers[i].imageSmoothingEnabled = false;
     this.layers[i].webkitImageSmoothingEnabled = false;
 
     var shadeCnv = document.createElement("canvas");
-    this.shadeLayers[i] = shadeCnv.getContext("2d");
+    this.shadeLayers[i] = shadeCnv.getContext("2d", { alpha: ALPHA });
     this.shadeLayers[i].imageSmoothingEnabled = false;
     this.shadeLayers[i].webkitImageSmoothingEnabled = false;
 
     var fogCnv = document.createElement("canvas");
-    this.fogLayers[i] = fogCnv.getContext("2d");
+    this.fogLayers[i] = fogCnv.getContext("2d", { alpha: ALPHA });
     this.fogLayers[i].imageSmoothingEnabled = false;
     this.fogLayers[i].webkitImageSmoothingEnabled = false;
   }

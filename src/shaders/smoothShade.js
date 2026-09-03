@@ -14,12 +14,6 @@ export function smoothShaderShade(
   py1,
   px2,
   py2,
-  epx0,
-  epy0,
-  epx1,
-  epy1,
-  epx2,
-  epy2,
   clipGeometryBuffer,
   colorBuffer,
   vertexNormalsBuffer,
@@ -213,12 +207,12 @@ export function smoothShaderShade(
       const l16_2 =
         ((lr2 & 0xf8) << 8) | ((lg2 & 0xfc) << 3) | ((lb2 & 0xf8) >> 3);
 
-      let _epx0 = epx0,
-        _epy0 = epy0,
-        _epx1 = epx1,
-        _epy1 = epy1,
-        _epx2 = epx2,
-        _epy2 = epy2;
+      let _epx0 = px0,
+        _epy0 = py0,
+        _epx1 = px1,
+        _epy1 = py1,
+        _epx2 = px2,
+        _epy2 = py2;
       let pi0 = i0,
         pi1 = i1,
         pi2 = i2;
@@ -327,9 +321,9 @@ export function smoothShaderShade(
         shadeCtx.fillStyle = lightGrad;
 
         shadeCtx.beginPath();
-        shadeCtx.moveTo(epx0, epy0);
-        shadeCtx.lineTo(epx1, epy1);
-        shadeCtx.lineTo(epx2, epy2);
+        shadeCtx.moveTo(px0, py0);
+        shadeCtx.lineTo(px1, py1);
+        shadeCtx.lineTo(px2, py2);
         shadeCtx.closePath();
 
         shadeCtx.fill();
@@ -431,12 +425,12 @@ export function smoothShaderShade(
     return;
   }
 
-  let _sepx0 = epx0,
-    _sepy0 = epy0,
-    _sepx1 = epx1,
-    _sepy1 = epy1,
-    _sepx2 = epx2,
-    _sepy2 = epy2;
+  let _sepx0 = px0,
+    _sepy0 = py0,
+    _sepx1 = px1,
+    _sepy1 = py1,
+    _sepx2 = px2,
+    _sepy2 = py2;
   let si0 = i0,
     si1 = i1,
     si2 = i2;
@@ -529,9 +523,9 @@ export function smoothShaderShade(
   shadeCtx.fillStyle = shadeGrad;
 
   shadeCtx.beginPath();
-  shadeCtx.moveTo(epx0, epy0);
-  shadeCtx.lineTo(epx1, epy1);
-  shadeCtx.lineTo(epx2, epy2);
+  shadeCtx.moveTo(px0, py0);
+  shadeCtx.lineTo(px1, py1);
+  shadeCtx.lineTo(px2, py2);
   shadeCtx.closePath();
 
   shadeCtx.fill();
