@@ -47,10 +47,6 @@ const mat4Mul = math.mat4Mul;
 const renderAxis = debug.renderAxis;
 const renderDebugNormals = debug.renderDebugNormals;
 
-// Coefficient for expanding polygons to cover subpixel seams/gaps
-// For cases when stroke cannot be done, e.g. textured polys
-const EXPANSION_COEFFICIENT = 0.6;
-
 function groupLayers(
   visibleObjectsBuffer,
   gameObjects,
@@ -500,6 +496,24 @@ p.render = function (camera, viewport, stats) {
 
     const toClear = (config.layerClearMask & (i + 1)) === i + 1;
 
+    // ctxStateBuffer's fillStyle dedup keys - reset once per layer (fillTriangles is called once
+    // per layer, see render() below): -1 = unset, forces an explicit style set on the first face
+    // drawn in each pass. Slots 1/2 are drawWireframe's own independent stroke-only state,
+    // untouched here. The shadeCtx/fogCtx keys are reset here too even though those passes run
+    // from separate functions gated in render() - each pass's first face must see -1, not
+    // whatever color the same slot held at the end of a previous layer.
+    ctxStateBuffer[0] = -1;
+    ctxStateBuffer[CTX_STATE_SHADE_FILL] = -1;
+    ctxStateBuffer[CTX_STATE_FOG] = -1;
+    ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING] = 0;
+
+    // Draw-call counters (see shared/shaders.js and flatShader/fog/fog.js) - same per-layer
+    // reset reasoning as above: a layer that skips shade/fog entirely (gated in render()) must
+    // still report 0, not a stale count left over from whichever earlier layer last ran them.
+    statsBuffer[STATS_FILL_DRAW_CALLS] = 0;
+    statsBuffer[STATS_FOG_DRAW_CALLS] = 0;
+    statsBuffer[STATS_SHADE_DRAW_CALLS] = 0;
+
     if (this.wireframe) {
       drawWireframe(
         ctx,
@@ -548,9 +562,9 @@ p.render = function (camera, viewport, stats) {
           frameId,
         );
         totalFillRasterTime += performance.now() - fillStart;
-      }else{
+      } else {
         const fillStyle = ctx.fillStyle;
-        ctx.fillStyle = 'white';
+        ctx.fillStyle = "white";
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.fillStyle = fillStyle;
       }
@@ -1591,24 +1605,6 @@ function fillTriangles(
 
   if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  // ctxStateBuffer's fillStyle dedup keys - reset once per layer (fillTriangles is called once
-  // per layer, see render() below): -1 = unset, forces an explicit style set on the first face
-  // drawn in each pass. Slots 1/2 are drawWireframe's own independent stroke-only state,
-  // untouched here. The shadeCtx/fogCtx keys are reset here too even though those passes run
-  // from separate functions gated in render() - each pass's first face must see -1, not
-  // whatever color the same slot held at the end of a previous layer.
-  ctxStateBuffer[0] = -1;
-  ctxStateBuffer[CTX_STATE_SHADE_FILL] = -1;
-  ctxStateBuffer[CTX_STATE_FOG] = -1;
-  ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING] = 0;
-
-  // Draw-call counters (see shared/shaders.js and flatShader/fog/fog.js) - same per-layer
-  // reset reasoning as above: a layer that skips shade/fog entirely (gated in render()) must
-  // still report 0, not a stale count left over from whichever earlier layer last ran them.
-  statsBuffer[STATS_FILL_DRAW_CALLS] = 0;
-  statsBuffer[STATS_FOG_DRAW_CALLS] = 0;
-  statsBuffer[STATS_SHADE_DRAW_CALLS] = 0;
-
   // FILL PASS: every face, every shader - base color/texture onto `ctx`.
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i]; //take face index
@@ -1630,38 +1626,6 @@ function fillTriangles(
     const py1 = vertexBuffer[v1Idx + 1] * halfH + halfH;
     const px2 = vertexBuffer[v2Idx] * halfW + halfW;
     const py2 = vertexBuffer[v2Idx + 1] * halfH + halfH;
-
-    // Calculate centroid
-    const cx = (px0 + px1 + px2) * 0.33333;
-    const cy = (py0 + py1 + py2) * 0.33333;
-
-    // Expand vertices outward from centroid to compensate for subpixel gaps
-    const dx0 = px0 - cx;
-    const dy0 = py0 - cy;
-    const a0 = Math.abs(dx0);
-    const b0 = Math.abs(dy0);
-    const len0 = a0 > b0 ? a0 + 0.4 * b0 : b0 + 0.4 * a0;
-    const invLen0 = len0 > 0 ? EXPANSION_COEFFICIENT / len0 : 0;
-    const epx0 = px0 + dx0 * invLen0;
-    const epy0 = py0 + dy0 * invLen0;
-
-    const dx1 = px1 - cx;
-    const dy1 = py1 - cy;
-    const a1 = Math.abs(dx1);
-    const b1 = Math.abs(dy1);
-    const len1 = a1 > b1 ? a1 + 0.4 * b1 : b1 + 0.4 * a1;
-    const invLen1 = len1 > 0 ? EXPANSION_COEFFICIENT / len1 : 0;
-    const epx1 = px1 + dx1 * invLen1;
-    const epy1 = py1 + dy1 * invLen1;
-
-    const dx2 = px2 - cx;
-    const dy2 = py2 - cy;
-    const a2 = Math.abs(dx2);
-    const b2 = Math.abs(dy2);
-    const len2 = a2 > b2 ? a2 + 0.4 * b2 : b2 + 0.4 * a2;
-    const invLen2 = len2 > 0 ? EXPANSION_COEFFICIENT / len2 : 0;
-    const epx2 = px2 + dx2 * invLen2;
-    const epy2 = py2 + dy2 * invLen2;
 
     const mIdx = meshIndexBuffer[idx];
     const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
@@ -1687,12 +1651,6 @@ function fillTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -1727,12 +1685,6 @@ function fillTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -1767,12 +1719,6 @@ function fillTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -1807,12 +1753,6 @@ function fillTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -1847,12 +1787,6 @@ function fillTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -1889,12 +1823,6 @@ function fillTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -2021,36 +1949,6 @@ function shadeTriangles(
     const px2 = vertexBuffer[v2Idx] * halfShadeW + halfShadeW;
     const py2 = vertexBuffer[v2Idx + 1] * halfShadeH + halfShadeH;
 
-    const cx = (px0 + px1 + px2) * 0.33333;
-    const cy = (py0 + py1 + py2) * 0.33333;
-
-    const dx0 = px0 - cx;
-    const dy0 = py0 - cy;
-    const a0 = Math.abs(dx0);
-    const b0 = Math.abs(dy0);
-    const len0 = a0 > b0 ? a0 + 0.4 * b0 : b0 + 0.4 * a0;
-    const invLen0 = len0 > 0 ? EXPANSION_COEFFICIENT / len0 : 0;
-    const epx0 = px0 + dx0 * invLen0;
-    const epy0 = py0 + dy0 * invLen0;
-
-    const dx1 = px1 - cx;
-    const dy1 = py1 - cy;
-    const a1 = Math.abs(dx1);
-    const b1 = Math.abs(dy1);
-    const len1 = a1 > b1 ? a1 + 0.4 * b1 : b1 + 0.4 * a1;
-    const invLen1 = len1 > 0 ? EXPANSION_COEFFICIENT / len1 : 0;
-    const epx1 = px1 + dx1 * invLen1;
-    const epy1 = py1 + dy1 * invLen1;
-
-    const dx2 = px2 - cx;
-    const dy2 = py2 - cy;
-    const a2 = Math.abs(dx2);
-    const b2 = Math.abs(dy2);
-    const len2 = a2 > b2 ? a2 + 0.4 * b2 : b2 + 0.4 * a2;
-    const invLen2 = len2 > 0 ? EXPANSION_COEFFICIENT / len2 : 0;
-    const epx2 = px2 + dx2 * invLen2;
-    const epy2 = py2 + dy2 * invLen2;
-
     const mIdx = meshIndexBuffer[idx];
     const mesh = gameObjects[layerBuffers[layerOffset + mIdx]].meshRenderer;
 
@@ -2071,12 +1969,6 @@ function shadeTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -2112,12 +2004,6 @@ function shadeTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -2153,12 +2039,6 @@ function shadeTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -2193,12 +2073,6 @@ function shadeTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -2233,12 +2107,6 @@ function shadeTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
@@ -2279,12 +2147,6 @@ function shadeTriangles(
           py1,
           px2,
           py2,
-          epx0,
-          epy0,
-          epx1,
-          epy1,
-          epx2,
-          epy2,
           clipGeometryBuffer,
           colorBuffer,
           vertexNormalsBuffer,
