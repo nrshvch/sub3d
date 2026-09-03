@@ -54,16 +54,10 @@ function makeHarness() {
       0,
       10,
       10,
-      -1,
-      -1,
-      11,
-      -1,
-      11,
-      11,
       null,
       colorBuffer,
       null,
-      null,
+      new Float32Array([0, 0, 1]),
       0,
       1,
       2,
@@ -158,8 +152,9 @@ describe("texture fill", () => {
     expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(1);
   });
 
-  it("defers nothing, so it needs no flush of its own", () => {
-    // Two faces, neither flagged as last - both must already be on the canvas.
+  it("draws every face by the end of a run, merged or not", () => {
+    // Faces are held back to see whether the next one completes a quad, so what matters is that
+    // nothing is still pending once the run ends.
     h.mesh.textureImage = READY_IMAGE;
     h.face();
     h.face();
