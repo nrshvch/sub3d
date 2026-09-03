@@ -39,8 +39,13 @@ p._texture = null;
 
 p.textureImage = null;
 
+// Lazily-built CanvasPattern wrapping textureImage, so textured faces can be drawn as ordinary
+// pattern fills rather than a clip + drawImage each. Filled in by the texture shader on first use
+// and dropped here whenever the texture changes; nothing outside the renderer should read it.
+p.texturePattern = null;
+
 /**
- * Selects which shader draws this mesh's faces: 0 flat, 1 emissive, 2 unlit, 3 avgFlat,
+ * Selects which shader draws this mesh's faces: 0 flat, 1 texture, 2 emissive, 3 avgFlat,
  * 4 smooth. Each is dispatched through a fixed switch case straight to its src/shaders/*.js
  * implementation, kept monomorphic for the JIT regardless of how many other keys are in use
  * elsewhere. Wireframe rendering is unrelated to this property entirely - it's a
@@ -63,6 +68,7 @@ Object.defineProperty(p, "texture", {
   set: function (value) {
     if (this._texture !== value) {
       this._texture = value;
+      this.texturePattern = null;
       if (value) {
         if (!this.textureImage) {
           this.textureImage = new Image();
