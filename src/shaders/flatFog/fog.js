@@ -411,7 +411,7 @@ function compositeFogPass(ctx, fogCtx, fogColor, w, h) {
   ctx.drawImage(fogCtx.canvas, 0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
 }
-let pass = 0;
+
 /**
  * Fog pass: only runs at all if drawTriangles' return value included NEEDS_FOG_PASS for this
  * layer (see render()) - draws this layer's flat-shaded faces, in the depth-dominant order

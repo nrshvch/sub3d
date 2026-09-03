@@ -1,5 +1,5 @@
 import scaliaEngine from "sub3d";
-import "sub3d/sub3d.css";
+import "sub3d/dist/sub3d.css";
 import { vec3 } from "gl-matrix";
 import earthTexture from "./earth-texture-equirectangular.jpg";
 import moonTexture from "./2k_moon.jpg";
@@ -14,7 +14,7 @@ const earth = new scaliaEngine.Ball(
   ...scaliaEngine.Ball.generate(16, 16, EARTH_RADIUS),
 );
 earth.meshRenderer.layer = 1;
-earth.meshRenderer.shaderType = 4
+earth.meshRenderer.shaderType = 0;
 earth.meshRenderer.texture = earthTexture;
 
 myGame.world.scene.addGameObject(earth);
@@ -27,7 +27,7 @@ function createMoon() {
     ...scaliaEngine.Ball.generate(8, 8, EARTH_RADIUS / EARTH_TO_MOON_RATIO),
   );
   moon.meshRenderer.layer = 1;
-  moon.meshRenderer.shaderType = 4;
+  moon.meshRenderer.shaderType = 0;
   const randPos = vec3.random([], 800);
 
   moon.transform.setPosition(randPos[0], randPos[1], randPos[2]);

@@ -18,8 +18,6 @@ import Canvas2dViewport from "./Canvas2dViewport.js";
 import Light from "./Light.js";
 import { showDebug } from "./debug/showDebug.jsx";
 import { flatShaderFill } from "./shaders/flatFill/index.js";
-import { emissiveShader } from "./shaders/emissiveShader.js";
-import { unlitShader } from "./shaders/unlitShader.js";
 import { smoothShaderFill } from "./shaders/smoothFill.js";
 import {
   avgFlatShaderFill,
@@ -54,8 +52,6 @@ export default window.scaliaEngine = {
   whiteFillShade: identityFill,
   shaders: {
     flat: { fill: flatShaderFill, shade: flatShaderShade },
-    emissive: emissiveShader,
-    unlit: unlitShader,
     avgFlat: { fill: avgFlatShaderFill, shade: avgFlatShaderShade },
     smooth: { fill: smoothShaderFill, shade: smoothShaderShade },
   },

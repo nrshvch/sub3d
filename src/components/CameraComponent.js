@@ -5,7 +5,7 @@ import * as math from "../math.js";
 // Numeric values (not strings) - shaders compare fogType with raw number literals in their hot
 // per-face path instead of dereferencing CameraComponent.FogType.X, so the meaning of each
 // number is documented here once: 0 NONE, 1 RADIAL, 2 RADIAL_FAST, 3 LINEAR.
-const FogType = {
+export const FogType = {
   NONE: 0,
   RADIAL: 1,
   RADIAL_FAST: 2,

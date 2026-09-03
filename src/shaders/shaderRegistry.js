@@ -1,6 +1,4 @@
 import { flatShaderFill } from "./flatFill/index.js";
-import { emissiveShader } from "./emissiveShader.js";
-import { unlitShader } from "./unlitShader.js";
 import { avgFlatShaderFill, avgFlatShaderShade } from "./avgFlatFill/index.js";
 import { smoothShaderFill } from "./smoothFill.js";
 import { identityFill } from "../shared/shaders.js";
@@ -12,19 +10,25 @@ export const shaderRegistry = [];
 export const shadeShaderRegistry = [];
 let nextKey = 5;
 
+export const ALBEDO_FLAT = 0;
+export const EMISSIVE_FLAT = 2;
+export const AVG_ALBEDO_FLAT = 3;
+export const SMOOTH_ALBEDO_FLAT = 4;
+
+
+
+
 // Built-ins (keys 0-4) are registered here too, purely for consistency with consumer shaders -
 // Canvas2dRenderer.js's drawTriangles/shadeTriangles switch statements still call them directly
 // by fixed key (see their case comments), never through these arrays.
-shaderRegistry[0] = flatShaderFill;
-shadeShaderRegistry[0] = flatShaderShade;
-shaderRegistry[1] = emissiveShader;
-shadeShaderRegistry[1] = identityFill;
-shaderRegistry[2] = unlitShader;
-shadeShaderRegistry[2] = identityFill;
-shaderRegistry[3] = avgFlatShaderFill;
-shadeShaderRegistry[3] = avgFlatShaderShade;
-shaderRegistry[4] = smoothShaderFill;
-shadeShaderRegistry[4] = smoothShaderShade;
+shaderRegistry[ALBEDO_FLAT] = flatShaderFill;
+shadeShaderRegistry[ALBEDO_FLAT] = flatShaderShade;
+shaderRegistry[EMISSIVE_FLAT] = flatShaderFill;
+shadeShaderRegistry[EMISSIVE_FLAT] = identityFill;
+shaderRegistry[AVG_ALBEDO_FLAT] = avgFlatShaderFill;
+shadeShaderRegistry[AVG_ALBEDO_FLAT] = avgFlatShaderShade;
+shaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderFill;
+shadeShaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderShade;
 
 /**
  * Registers a consumer shader (see Canvas2dRenderer.js's drawTriangles/shadeTriangles default
