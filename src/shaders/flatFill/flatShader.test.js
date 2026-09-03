@@ -240,21 +240,11 @@ describe("flat fill batching", () => {
     expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(4); // the overlapped green, then the rest
   });
 
-  it("drains every open slot before a textured face opens its clip path", () => {
-    // The textured face must paint after everything already deferred that it may overlap, so the
-    // drain is unconditional rather than gated on `last`.
-    h.face(0, [
-      [0, 0, 1],
-      [10, 0, 2],
-      [10, 10, 3],
-    ]);
-    h.face(1, [
-      [0, 0, 1],
-      [10, 10, 3],
-      [0, 10, 4],
-    ]);
-    const before = h.ctx.calls.length;
-
+  it("ignores a mesh texture entirely, leaving it to the texture shader", () => {
+    // Texturing is its own shaderKey now, so this shader must weld a textured mesh's face exactly
+    // like any other rather than branching on mesh.textureImage. Ordering against a textured face
+    // is the `last` protocol's job: the run ends when the key changes, which flushes these slots
+    // before the texture shader draws.
     h.mesh.textureImage = {
       complete: true,
       naturalWidth: 64,
@@ -262,20 +252,27 @@ describe("flat fill batching", () => {
       height: 64,
     };
     h.mesh.uvs = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
-    h.face(2, [
-      [20, 20, 5],
-      [30, 20, 6],
-      [30, 30, 7],
-    ]);
 
-    const after = h.ctx.calls.slice(before);
-    const clipAt = after.indexOf("clip");
-    expect(clipAt).toBeGreaterThan(-1);
-    // The texture's own beginPath is the last one before clip(); the drain's fill must precede it.
-    const texBeginAt = after.lastIndexOf("beginPath", clipAt);
-    const drainFillAt = after.indexOf("fill");
-    expect(drainFillAt).toBeGreaterThan(-1);
-    expect(drainFillAt).toBeLessThan(texBeginAt);
+    h.face(0, [
+      [0, 0, 1],
+      [10, 0, 2],
+      [10, 10, 3],
+    ]);
+    h.face(
+      1,
+      [
+        [0, 0, 1],
+        [10, 10, 3],
+        [0, 10, 4],
+      ],
+      { last: true },
+    );
+
+    expect(h.ctx.calls).not.toContain("clip");
+    expect(h.ctx.calls).not.toContain("drawImage");
+    // Still one welded quad, exactly as for an untextured mesh.
+    expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(1);
+    expect(h.ctx.paths[0]).toHaveLength(4);
   });
 
   it("discards slots left over from an earlier frame rather than drawing them", () => {

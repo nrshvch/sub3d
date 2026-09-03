@@ -10,6 +10,7 @@ import { PALETTE_16BIT } from "./palette.js";
 import * as debug from "./debug/debug.js";
 import radixSort from "./radixSort.js";
 import { flatShaderFill } from "./shaders/flatFill/index.js";
+import { textureShaderFill } from "./shaders/textureFill/index.js";
 import { smoothShaderFill } from "./shaders/smoothFill.js";
 import {
   avgFlatShaderFill,
@@ -19,6 +20,7 @@ import {
   ALBEDO_FLAT,
   AVG_ALBEDO_FLAT,
   EMISSIVE_FLAT,
+  TEXTURE,
   shaderRegistry,
   shadeShaderRegistry,
   SMOOTH_ALBEDO_FLAT,
@@ -1716,6 +1718,46 @@ function fillTriangles(
         );
         break;
       }
+      case TEXTURE: {
+        textureShaderFill(
+          ctx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          w0Idx,
+          w1Idx,
+          w2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          mIdx,
+          ctxStateBuffer,
+          statsBuffer,
+          frameId,
+          last,
+        );
+        break;
+      }
       case EMISSIVE_FLAT: {
         flatShaderFill(
           ctx,
@@ -2021,6 +2063,47 @@ function shadeTriangles(
 
     switch (shaderKey) {
       case ALBEDO_FLAT: {
+        flatShaderShade(
+          shadeCtx,
+          px0,
+          py0,
+          px1,
+          py1,
+          px2,
+          py2,
+          epx0,
+          epy0,
+          epx1,
+          epy1,
+          epx2,
+          epy2,
+          clipGeometryBuffer,
+          colorBuffer,
+          vertexNormalsBuffer,
+          faceNormalsBuffer,
+          w0Idx,
+          w1Idx,
+          w2Idx,
+          idx,
+          mesh,
+          meshFaceIndexBuffer[idx],
+          ambientLightRgb,
+          lightsIndexBuffer,
+          gameObjects,
+          fogType,
+          fogColor,
+          fogNearPane,
+          fogFarPane,
+          mIdx,
+          ctxStateBuffer,
+          statsBuffer,
+          frameId,
+          last,
+        );
+        break;
+      }
+      case TEXTURE: {
+        // Texture changes the albedo, not the lighting - shaded like flat colour.
         flatShaderShade(
           shadeCtx,
           px0,

@@ -14,7 +14,7 @@ const earth = new scaliaEngine.Ball(
   ...scaliaEngine.Ball.generate(16, 16, EARTH_RADIUS),
 );
 earth.meshRenderer.layer = 1;
-earth.meshRenderer.shaderType = 0;
+earth.meshRenderer.shaderType = scaliaEngine.ShaderType.TEXTURE;
 earth.meshRenderer.texture = earthTexture;
 
 myGame.world.scene.addGameObject(earth);
@@ -27,7 +27,7 @@ function createMoon() {
     ...scaliaEngine.Ball.generate(8, 8, EARTH_RADIUS / EARTH_TO_MOON_RATIO),
   );
   moon.meshRenderer.layer = 1;
-  moon.meshRenderer.shaderType = 0;
+  moon.meshRenderer.shaderType = scaliaEngine.ShaderType.TEXTURE;
   const randPos = vec3.random([], 800);
 
   moon.transform.setPosition(randPos[0], randPos[1], randPos[2]);

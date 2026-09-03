@@ -1,4 +1,5 @@
 import { PALETTE_16BIT } from "../../palette.js";
+import { ALBEDO_FLAT, TEXTURE } from "../shaderRegistry.js";
 
 import {
   createWeldState,
@@ -73,11 +74,14 @@ export function computeFogAmount(
 }
 
 /**
- * Four-pass stable counting sort of this layer's flat-shaded (shaderKey 0) faces into
- * tempIndexBuffer - the exact same significance hierarchy and pass structure as radixSort.js
- * ([Depth (Most Significant)] -> [Mesh Index] -> [Fog Bucket (Least Significant)]), with fog
- * bucket substituted for shaderPass as the extra key. Non-flat-shaded faces are skipped outright,
- * never written to any buffer.
+ * Four-pass stable counting sort of this layer's flat-shaded faces into tempIndexBuffer - the
+ * exact same significance hierarchy and pass structure as radixSort.js ([Depth (Most
+ * Significant)] -> [Mesh Index] -> [Fog Bucket (Least Significant)]), with fog bucket substituted
+ * for shaderPass as the extra key. Anything else is skipped outright, never written to any buffer.
+ *
+ * Both flat fill shaders participate: fog is a function of depth alone, so an albedo face and a
+ * textured one at the same distance are fogged identically, and admitting only one of them would
+ * leave the other sitting on the buffer's black background - which reads as fully fogged.
  *
  * Depth stays the dominant key on purpose: fog amount (especially RADIAL, full 3D distance) does
  * not reliably correlate with the camera-space Z radixSort/fill/shade occlude by - two faces at
@@ -93,7 +97,7 @@ export function computeFogAmount(
  * @param {Uint32Array} tempIndexBuffer - final output buffer, reused as scratch - already idle
  *   here (this layer's own radixSort call has finished with it, the next layer's hasn't started).
  * @param {Uint32Array} scratchBuffer - ping-pong scratch between tempIndexBuffer across passes.
- * @param {Uint8Array} shaderTypeBuffer - per-face shader key; only 0 (flat) participates.
+ * @param {Uint8Array} shaderTypeBuffer - per-face shader key; only the flat fills participate.
  * @param {Uint32Array} meshIndexBuffer - per-face mesh index within this layer (see destructMesh).
  * @param {Float32Array} depthBuffer - per-face depth, same values/units radixSort sorts by.
  * @param {Float32Array} clipGeometryBuffer - per-vertex camera-space geometry (see computeFogAmount).
@@ -129,7 +133,8 @@ export function fogSort(
   let fogFaceCount = 0;
   for (let i = 0; i < count; i++) {
     const idx = indexBuffer[i];
-    if (shaderTypeBuffer[idx] !== 0) continue;
+    const key = shaderTypeBuffer[idx];
+    if (key !== ALBEDO_FLAT && key !== TEXTURE) continue;
     const fogAmount = computeFogAmount(
       idx,
       clipGeometryBuffer,
@@ -151,7 +156,8 @@ export function fogSort(
 
   for (let i = 0; i < count; i++) {
     const idx = indexBuffer[i];
-    if (shaderTypeBuffer[idx] !== 0) continue;
+    const key = shaderTypeBuffer[idx];
+    if (key !== ALBEDO_FLAT && key !== TEXTURE) continue;
     const fogAmount = computeFogAmount(
       idx,
       clipGeometryBuffer,
@@ -487,8 +493,8 @@ export function fogTriangles(
     const fpx2 = vertexBuffer[v2Idx] * halfFogW + halfFogW;
     const fpy2 = vertexBuffer[v2Idx + 1] * halfFogH + halfFogH;
 
-    // Fog is always the flat shader's own single routine (fogSort only ever emits shaderKey-0
-    // faces), so the only run boundary that matters is the very last face in this pass.
+    // Every face fogSort emits goes through this one routine whatever its fill shader was, so the
+    // only run boundary that matters is the very last face in this pass.
     const last = i === count - 1;
 
     batchedFogFace(
