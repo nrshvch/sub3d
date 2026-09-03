@@ -1,15 +1,31 @@
 import scaliaEngine from "sub3d";
 import "sub3d/sub3d.css";
-import { vec3 } from "gl-matrix";
 import boxTexture from "./box.png";
 
 const myGame = new scaliaEngine.Game();
 
 let targetCount = 500;
 
+// mulberry32, seeded per box rather than one stream for the whole scene: a box's properties then
+// depend only on its index, so raising and lowering the count slider reproduces the boxes it had
+// before instead of generating new ones. Integer arithmetic throughout, which also makes it
+// bit-identical across engines - Math.sin, the other seeded generator in these examples, is
+// specified with implementation-defined precision and so cannot promise that.
+const SCENE_SEED = 0x5eed;
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const ball = new scaliaEngine.Ball(...scaliaEngine.Ball.generate());
 ball.meshRenderer.layer = 1;
-ball.meshRenderer.shaderType = 4;
+ball.meshRenderer.shaderType = 0;
 
 ball.transform.scale(20, 20, 20);
 
@@ -40,30 +56,43 @@ myGame.world.tickRegister({
   },
 });
 
-function createBox() {
+function createBox(index) {
+  // Scramble the index by the golden-ratio constant before seeding, so neighbouring boxes get
+  // unrelated streams rather than adjacent ones.
+  const rand = mulberry32((SCENE_SEED + Math.imul(index, 0x9e3779b1)) | 0);
+
   const child = new scaliaEngine.Box();
   child.meshRenderer.layer = 1;
   child.meshRenderer.shaderType = 0;
-  const randPos = vec3.random([], Math.random() * 20 + 20);
 
-  child.transform.setPosition(randPos[0], randPos[1], randPos[2]);
+  // Uniformly distributed over a spherical shell 20 to 40 units out, which is what vec3.random
+  // gave: a direction picked by azimuth plus a uniform z, scaled to the radius.
+  const radius = rand() * 20 + 20;
+  const azimuth = rand() * 2 * Math.PI;
+  const z = rand() * 2 - 1;
+  const ringRadius = Math.sqrt(1 - z * z) * radius;
+  child.transform.setPosition(
+    Math.cos(azimuth) * ringRadius,
+    Math.sin(azimuth) * ringRadius,
+    z * radius,
+  );
 
-  const r = (Math.random() * 255) | 0;
-  const g = (Math.random() * 255) | 0;
-  const b = (Math.random() * 255) | 0;
+  const r = (rand() * 255) | 0;
+  const g = (rand() * 255) | 0;
+  const b = (rand() * 255) | 0;
   const vertCount = child.meshRenderer.vertices.length / 3;
   child.meshRenderer.colors = new Uint32Array(vertCount).fill((r << 16) | (g << 8) | b);
 
-  const size = ((Math.random() * 2) | 0) + 1;
+  const size = ((rand() * 2) | 0) + 1;
 
   child.transform.scale(size, size, size);
   child.transform.rotate(
-    (Math.random() * 360) | 0,
-    (Math.random() * 360) | 0,
-    (Math.random() * 360) | 0,
+    (rand() * 360) | 0,
+    (rand() * 360) | 0,
+    (rand() * 360) | 0,
   );
 
-  if (Math.random() > 0.5) {
+  if (rand() > 0.5) {
     child.meshRenderer.texture = boxTexture;
   }
 
