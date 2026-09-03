@@ -1,8 +1,5 @@
 import { PALETTE_16BIT } from "../palette.js";
-import {
-  flatFill,
-  STATS_FILL_DRAW_CALLS,
-} from "../shared/shaders.js";
+import { flatFill, STATS_FILL_DRAW_CALLS } from "../shared/shaders.js";
 
 /**
  * Predefined shader (see registerShader in shaderRegistry.js for the full argument contract),
@@ -212,5 +209,17 @@ export function emissiveShader(
   // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
   const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-  flatFill(ctx, px0, py0, px1, py1, px2, py2, color16, 0, ctxStateBuffer, statsBuffer);
+  flatFill(
+    ctx,
+    px0,
+    py0,
+    px1,
+    py1,
+    px2,
+    py2,
+    color16,
+    0,
+    ctxStateBuffer,
+    statsBuffer,
+  );
 }

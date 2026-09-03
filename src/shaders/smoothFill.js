@@ -1,5 +1,5 @@
 import { PALETTE_16BIT } from "../palette.js";
-import { flatFill, STATS_FILL_DRAW_CALLS, } from "../shared/shaders.js";
+import { flatFill, STATS_FILL_DRAW_CALLS } from "../shared/shaders.js";
 
 /**
  * This *is* the built-in SMOOTH (Gouraud) shader (Canvas2dRenderer.js dispatches shaderType 4
@@ -300,7 +300,19 @@ export function smoothShaderFill(
 
   // EARLY OUT: if all quantized base colors are identical, fallback to cheapest flat fill
   if (c16_0 === c16_1 && c16_1 === c16_2) {
-    flatFill(ctx, px0, py0, px1, py1, px2, py2, c16_0, 0, ctxStateBuffer, statsBuffer);
+    flatFill(
+      ctx,
+      px0,
+      py0,
+      px1,
+      py1,
+      px2,
+      py2,
+      c16_0,
+      0,
+      ctxStateBuffer,
+      statsBuffer,
+    );
     return;
   }
 
@@ -370,7 +382,19 @@ export function smoothShaderFill(
   // colors that happen to sum to the same total), fall back to flat - pi2-pi0 is the gradient
   // math's divisor below, so this also guards against dividing by (near) zero.
   if (pi2 - pi0 < 0.01) {
-    flatFill(ctx, px0, py0, px1, py1, px2, py2, _c16_0, 0, ctxStateBuffer, statsBuffer);
+    flatFill(
+      ctx,
+      px0,
+      py0,
+      px1,
+      py1,
+      px2,
+      py2,
+      _c16_0,
+      0,
+      ctxStateBuffer,
+      statsBuffer,
+    );
     return;
   }
 
@@ -415,4 +439,3 @@ export function smoothShaderFill(
   ctx.fill();
   statsBuffer[STATS_FILL_DRAW_CALLS]++; // gradient fills are never batchable
 }
-

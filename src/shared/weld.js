@@ -1,50 +1,36 @@
-import { PALETTE_16BIT } from "../palette.js";
-
 /**
- * Multi-slot edge-cancelling welder.
+ * @file Multi-slot edge-cancelling welder.
  *
- * Replaces the single pending polygon the flat batchers used to keep. The problem it solves is
- * measured, not theoretical: with one slot, a triangle can only merge with the face that came
- * immediately before it, and in a depth-sorted stream that face usually has a different colour or
- * mesh - on a typical land view only ~14% of faces even reach the edge test, and at a shallow
- * camera tilt the single-slot batcher merges 2 faces out of ~3900. Holding N polygons open at once
- * lets a face merge with any of them, which is what makes the sort's interleaving survivable.
+ * Merges edge-adjacent same-colour triangles into a single polygon boundary, so one `fill()`
+ * covers what would otherwise be many. A shared edge appears twice with opposite direction; both
+ * copies are dropped and the two rings become one.
  *
- * Every flush emits ONE closed polygon: `beginPath / moveTo / lineTo* / stroke / fill`.
- * There are no subpaths. That is the whole point - a path holding many overlapping subpaths is one
- * draw call but a far harder rasterization problem, because nonzero-winding fill has to resolve the
- * union across all of them. Profiling put 36% of a frame inside a single such `fill()`.
+ * Holding many polygons open at once, rather than one, is what makes a depth-sorted stream
+ * weldable: with a single slot a triangle can only merge with the face immediately before it, and
+ * after sorting that face usually belongs to a different colour or mesh.
  *
- * WHY MERGED POLYGONS ARE SAFE TO FILL. A merged boundary is not guaranteed simple - a ridge
- * occluding terrain behind it puts two edge-connected front faces in overlapping screen regions.
- * That is fine, because the property that matters is stronger and does hold: winding number is
- * additive over edge sets, and a cancelled edge pair is exactly anti-parallel and so contributes
- * zero winding everywhere. Every face survives the same backface test (destructMesh culls on the
- * sign of the screen-space cross product), so each term is non-negative, so the merged winding is
- * non-negative everywhere. Nonzero fill of the merged boundary is therefore exactly the union of
- * the faces that went into it - never a hole, self-intersecting or not.
+ * Every flush emits ONE simple closed polygon, never subpaths. A path holding many overlapping
+ * subpaths is a single draw call but a far harder rasterization, since nonzero-winding fill has to
+ * resolve the union across all of them.
  *
- * WHY DEFERRAL NEEDS A GUARD. A slot holds geometry back until it flushes, so faces merged early
- * are painted later than the sort placed them. Same-colour faces are order-free (filling C over C
- * is idempotent), but a differently-coloured face arriving in between would be wrongly overpainted.
- * Unguarded this is severe - measured at 61% of overlapping cross-colour pairs inverted, an order
- * of magnitude worse than the depth-band coarsening already rejected as visibly broken. So
- * so `weldAddFace` flushes every open slot whenever the incoming colour differs from the last -
- * one integer compare per face. See the guard comment in `weldAddFace` for why the exact per-slot
- * screen-AABB test it replaced measured worse on both cost and merge rate.
+ * A merged boundary is not guaranteed to be simple, and does not need to be. Winding number is
+ * additive over edge sets and a cancelled edge pair is exactly anti-parallel, contributing zero
+ * winding everywhere; every face arrives with the same screen orientation, because backface
+ * culling admits only one sign. So the merged winding is non-negative everywhere and a nonzero
+ * fill of the boundary is exactly the union of the faces that went into it - never a hole.
  *
- * State is passed explicitly on every call rather than captured in closure scope, and the per-face
- * edge lookups are exported separately so callers can inline them.
+ * All state is passed in explicitly rather than captured in closure scope, so one module can serve
+ * several independent passes at once.
  */
 
-// 64, in two int32 free-mask words. Sized from measurement: the fill pass on a horizon view has
-// ~555 connected same-colour components live at once, but the overlap guard retires a slot as soon
-// as a differently-coloured face lands on it, so concurrency stays far below that. 64 and 128
-// merge identically (2860 fill calls); 32 does not.
+import { PALETTE_16BIT } from "../palette.js";
+
+// Polygons kept open at once, tracked by two int32 free-mask words. Enough that a face usually
+// finds its neighbour still open; past that, the added scan costs more than the merges it wins.
 export const N_SLOTS = 64;
 export const MAX_POLY_VERTS = 128;
 
-const POOL_CAP = 2048; // measured peak concurrent nodes at these settings: ~570
+const POOL_CAP = 2048; // ring nodes, with headroom over the peak held across all slots
 const EDGE_CAP = 4096; // power of two; live edges <= POOL_CAP so load stays under 0.25
 const EDGE_MASK = EDGE_CAP - 1;
 
@@ -64,6 +50,15 @@ const SC_GEN = 2;
 const SC_SEQ = 3;
 const SC_LIVE = 4;
 
+/**
+ * Allocates one welder's worth of state. Every buffer it will ever need is allocated here and
+ * reused for the life of the page; nothing is allocated per frame or per face.
+ *
+ * One state per pass, never shared. Passes run over different colour spaces and interleave in
+ * time, so a polygon left open by one is meaningless to another.
+ *
+ * @returns {object} opaque state, passed back into every other function here
+ */
 export function createWeldState() {
   const st = {
     slots: new Int32Array(N_SLOTS * SL_STRIDE),
@@ -90,8 +85,12 @@ export function createWeldState() {
 }
 
 /**
- * Drops every open polygon without drawing. Only correct for state left over from a previous
- * frame - never as a "cancel" for the frame in progress.
+ * Drops every open polygon without drawing, and empties the edge table.
+ *
+ * Only correct for state left over from a previous frame - never as a "cancel" for the frame in
+ * progress, which would silently lose geometry.
+ *
+ * @param {object} st welder state
  */
 export function weldReset(st) {
   const slots = st.slots;
@@ -245,12 +244,24 @@ function relink(st, a, b) {
 /**
  * Emits one slot as a single closed polygon and releases it.
  *
- * Collinear vertices are dropped here and only here. Doing it incrementally on merge would destroy
- * the vertex identity a later triangle needs in order to find that edge, cutting the merge rate;
- * at flush the slot's edges are being removed from the table anyway, so it folds into the emit walk
- * for free. The test compares against the last EMITTED point so a chain of near-collinear vertices
- * decimates in one forward pass, and it also drops sub-pixel needle tips - desirable, since the 1px
- * stroke covers them and they are exactly what produces miter spikes.
+ * Collinear vertices are dropped here and only here. Removing one on merge would destroy the vertex
+ * identity a later triangle needs to find that edge, cutting the merge rate; at flush the slot's
+ * edges are being dropped from the table anyway, so it folds into the emit walk for free. The test
+ * compares against the last EMITTED point, so a chain of near-collinear vertices decimates in a
+ * single forward pass.
+ *
+ * @param {object} st welder state
+ * @param {number} slot slot to emit; a free slot is a no-op
+ * @param {CanvasRenderingContext2D} ctx destination context
+ * @param {Int32Array} ctxStateBuffer shared cache of what is currently set on `ctx`
+ * @param {number} styleSlot index in `ctxStateBuffer` holding the colour `ctx` is set to
+ * @param {number} sawRealSlot index to raise when a colour other than white is drawn, or -1
+ * @param {Int32Array} statsBuffer shared per-frame counters
+ * @param {number} callsSlot index in `statsBuffer` counting draw calls
+ * @param {number} eps perpendicular deviation, in destination pixels, below which a boundary
+ *   vertex is dropped. Small on purpose: dropping a vertex from a boundary shared with a
+ *   differently-coloured region opens a hairline T-junction crack, because the neighbour still
+ *   has a vertex there.
  */
 export function weldFlushSlot(
   st,
@@ -335,19 +346,31 @@ export function weldFlushSlot(
   // neighbours. Dropping the head is done by advancing `start` rather than shifting the buffer.
   let start = 0;
   while (out - start >= 4) {
-    const px = emitX[out - 2], py = emitY[out - 2];
-    const qx = emitX[out - 1], qy = emitY[out - 1];
-    const rx = emitX[start], ry = emitY[start];
-    const ax = qx - px, ay = qy - py, bx = rx - px, by = ry - py;
+    const px = emitX[out - 2],
+      py = emitY[out - 2];
+    const qx = emitX[out - 1],
+      qy = emitY[out - 1];
+    const rx = emitX[start],
+      ry = emitY[start];
+    const ax = qx - px,
+      ay = qy - py,
+      bx = rx - px,
+      by = ry - py;
     const cr = ax * by - ay * bx;
     if (cr * cr > eps2 * (bx * bx + by * by)) break;
     out--;
   }
   while (out - start >= 4) {
-    const px = emitX[out - 1], py = emitY[out - 1];
-    const qx = emitX[start], qy = emitY[start];
-    const rx = emitX[start + 1], ry = emitY[start + 1];
-    const ax = qx - px, ay = qy - py, bx = rx - px, by = ry - py;
+    const px = emitX[out - 1],
+      py = emitY[out - 1];
+    const qx = emitX[start],
+      qy = emitY[start];
+    const rx = emitX[start + 1],
+      ry = emitY[start + 1];
+    const ax = qx - px,
+      ay = qy - py,
+      bx = rx - px,
+      by = ry - py;
     const cr = ax * by - ay * bx;
     if (cr * cr > eps2 * (bx * bx + by * by)) break;
     start++;
@@ -359,18 +382,10 @@ export function weldFlushSlot(
     const style = PALETTE_16BIT[color16];
     ctx.fillStyle = style;
     ctx.strokeStyle = style;
-    // 1, matching what the per-triangle batcher used before welding.
-    //
-    // The theory says otherwise and the theory loses here. Once triangles are welded each seam is
-    // stroked from one side only, so the two half-pixel displacements no longer cancel, and an
-    // RMSE sweep against a 2x supersampled reference agrees: 6.23 / 4.18 / 2.75 / 3.56 at 0.35 /
-    // 0.5 / 0.75 / 1.0. But every width below 1 leaves seam gaps that are visible in motion on
-    // this content, judged directly on screen. Two reasons to distrust the metric rather than the
-    // eye: the reference is itself a 1-supersampled-pixel stroke, so it under-covers exactly where
-    // seams are worst and biases the sweep thin; and RMSE averages over the whole frame, where a
-    // hairline of background is a small number of pixels but the most conspicuous artifact in it.
+    // A welded seam is stroked from one side only, so in theory half a pixel covers it. In
+    // practice anything below 1 leaves gaps that show up in motion.
     ctx.lineWidth = 1;
-    // Miter: the browser default, and the join engines optimise hardest.
+    // Miter is the browser default, and therefore the join engines optimise hardest.
     ctx.lineJoin = "miter";
     ctxStateBuffer[styleSlot] = color16;
     if (sawRealSlot !== -1 && color16 !== 0xffff)
@@ -378,17 +393,16 @@ export function weldFlushSlot(
   }
 
   // Canvas2D composites each fill's antialiased coverage separately, so two polygons sharing a
-  // boundary each cover ~50% of the pixels along it, and source-over of two 50% coverages is 75% -
-  // a hairline of background shows through. Painting that coverage back with a stroke in the fill
-  // colour is the only repair canvas2d offers. Stroke first, then fill: the fill repaints the
-  // inner half, so the stroke only ever extends coverage outward.
+  // boundary each cover about half the pixels along it, and source-over of two half coverages is
+  // three quarters - a hairline of background shows through. Painting that coverage back with a
+  // stroke in the fill colour is the only repair canvas2d offers. Stroke first, then fill, so the
+  // fill repaints the inner half and the stroke only ever extends coverage outward.
   ctx.beginPath();
   ctx.moveTo(emitX[start], emitY[start]);
   for (let k = start + 1; k < out; k++) ctx.lineTo(emitX[k], emitY[k]);
-  // Close the loop with an explicit lineTo, NOT closePath(). Two separate reasons, both load-bearing:
-  // stroke() does not draw the closing edge of an unclosed subpath (fill() closes it implicitly, so
-  // without this one edge per polygon is filled but never stroked - an unrepaired seam on every
-  // shape); and in Blink closePath() recomputes the whole path's bounds per call, O(N^2) in subpaths.
+  // Close the loop with an explicit lineTo, never closePath(). stroke() skips the closing edge of
+  // an unclosed subpath while fill() closes it implicitly, so without this one edge per polygon
+  // would be filled but never stroked; and closePath() recomputes the whole path's bounds per call.
   ctx.lineTo(emitX[start], emitY[start]);
   ctx.stroke();
   ctx.fill();
@@ -398,7 +412,9 @@ export function weldFlushSlot(
 
 /**
  * Flushes every open slot, oldest-seeded first so deferred geometry lands roughly in the order the
- * sort placed it.
+ * sort placed it. Ends a pass, and empties the state for the next one.
+ *
+ * Arguments are the same as {@link weldFlushSlot}, minus the slot.
  */
 export function weldFlushAll(
   st,
@@ -452,9 +468,20 @@ export function weldFlushAll(
  *   2, two slots     splice the rings together across the two cancelled edges       |A|+|B|-1
  *   0 / refused      take a free slot, evicting the least-recently-extended if full
  *
- * The notch is not an edge case - it fires far more often than the two-slot splice (1581 vs 101 on
- * one measured frame) and the old single-slot batcher refused it outright, which cost about 2.4x on
- * path vertices. Refusals are correctness-neutral: they cost one extra polygon.
+ * The notch is not an edge case - it is the commonest merge of the three, since a triangle fan or
+ * strip presents one constantly. Refusals are correctness-neutral: they cost one extra polygon.
+ *
+ * Vertex ids, not coordinates, decide adjacency: two faces share an edge only if they name the
+ * same two vertices, so the caller must pass welded identities for a hard-edge mesh, where every
+ * triangle otherwise owns private copies of its corners.
+ *
+ * Arguments up to `eps` are as {@link weldFlushSlot}; the rest describe the face.
+ *
+ * @param {number} color16 quantised fill colour; also the key that decides what may merge
+ * @param {number} meshIdx owning mesh, kept alongside the polygon for callers that need it
+ * @param {number} x0 screen x of the first corner
+ * @param {number} y0 screen y of the first corner
+ * @param {number} id0 vertex identity of the first corner
  */
 export function weldAddFace(
   st,
@@ -481,11 +508,11 @@ export function weldAddFace(
 
   // Deferral guard.
   //
-  // Within one colour deferral is FREE: filling colour C over colour C is idempotent, so two
-  // same-colour faces are order-interchangeable whether or not they overlap. The only thing
-  // deferral can break is a differently-coloured face that should have painted over one still held
-  // open. So flush exactly those: every open slot whose colour differs AND whose screen bounds meet
-  // this face's.
+  // Holding a polygon open paints it later than the sort placed it. Within one colour that is free,
+  // because filling colour C over colour C is idempotent and same-colour faces are therefore
+  // order-interchangeable whether or not they overlap. The only thing deferral can break is a
+  // differently-coloured face that should have painted over one still held open, so flush exactly
+  // those: every open slot whose colour differs AND whose screen bounds meet this face's.
   //
   // Sound by construction. For any violating pair (near N, far F, different colours, overlapping),
   // F was submitted first, so either F's slot has already flushed, or it is still open holding F's
@@ -494,18 +521,16 @@ export function weldAddFace(
   // co-resident slots of different colours overlap is maintained by this same test: a slot's bounds
   // only ever grow by a face that was itself checked against every other slot first.
   //
-  // The version this replaces flushed EVERY open slot on any colour change. That is also sound and
-  // costs one integer compare instead of a scan - but it is why extra slots bought nothing, because
-  // a depth-sorted stream changes colour constantly and slots never survived long enough to be
-  // merged into. Measured on a horizon view, this takes the fill pass from 6867 draw calls to 2860,
-  // against a floor of 555 connected same-colour components.
+  // Flushing every slot on any colour change would also be sound and cost one compare instead of a
+  // scan, but it is self-defeating: a depth-sorted stream changes colour constantly, so no slot
+  // survives long enough to be merged into and the extra slots buy nothing.
   const fx0 = x0 < x1 ? (x0 < x2 ? x0 : x2) : x1 < x2 ? x1 : x2;
   const fx1 = x0 > x1 ? (x0 > x2 ? x0 : x2) : x1 > x2 ? x1 : x2;
   const fy0 = y0 < y1 ? (y0 < y2 ? y0 : y2) : y1 < y2 ? y1 : y2;
   const fy1 = y0 > y1 ? (y0 > y2 ? y0 : y2) : y1 > y2 ? y1 : y2;
-  // A straight indexed walk of all N_SLOTS, not an iteration over the free-mask bits: occupancy is
-  // high enough in practice that the branchy two-word bit walk measured slower (25.3 vs 23.2 ms),
-  // and the colour test rejects a free slot just as cheaply.
+  // A straight indexed walk of every slot, not an iteration over the free-mask bits: occupancy runs
+  // high enough that the branchy two-word bit walk loses, and the colour test rejects a free slot
+  // just as cheaply.
   const aabb = st.aabb;
   for (let gs = 0; gs < N_SLOTS; gs++) {
     const gc = slots[gs * SL_STRIDE + SL_COLOR];

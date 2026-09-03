@@ -10,9 +10,7 @@ import {
   weldReset,
 } from "../../shared/weld.js";
 
-// This pass's own welder state, private to this module for the life of the page. Separate from the
-// fill and fog passes': all three run over different colour spaces (lit intensity, albedo, fog
-// level) and interleave in time, so they cannot share open polygons.
+// This pass's pending geometry, keyed on lit intensity rather than albedo.
 const weldState = createWeldState();
 
 // Perpendicular deviation, in shadeCtx pixels, below which a boundary vertex is dropped at flush.

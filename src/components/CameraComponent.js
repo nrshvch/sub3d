@@ -6,27 +6,26 @@ import * as math from "../math.js";
 // per-face path instead of dereferencing CameraComponent.FogType.X, so the meaning of each
 // number is documented here once: 0 NONE, 1 RADIAL, 2 RADIAL_FAST, 3 LINEAR.
 const FogType = {
-    'NONE': 0,
-    'RADIAL': 1,
-    'RADIAL_FAST': 2,
-    'LINEAR': 3
-}
-
+  NONE: 0,
+  RADIAL: 1,
+  RADIAL_FAST: 2,
+  LINEAR: 3,
+};
 
 /**
  * @constructor
  */
 export default function CameraComponent(transform) {
-    Component.call(this);
+  Component.call(this);
 
-    this.transform = transform;
-    this.projectionMatrix = new Float32Array(16);
-    this.clipSpaceMatrix = new Float32Array(16);
-    this.frustumSize = [
-        [0, 0, 0],
-        [0, 0, 0]
-    ];
-    this.zoom = 1.0;
+  this.transform = transform;
+  this.projectionMatrix = new Float32Array(16);
+  this.clipSpaceMatrix = new Float32Array(16);
+  this.frustumSize = [
+    [0, 0, 0],
+    [0, 0, 0],
+  ];
+  this.zoom = 1.0;
 }
 
 CameraComponent.prototype = Object.create(Component.prototype);
@@ -48,35 +47,41 @@ CameraComponent.prototype.bgColor = -1;
 CameraComponent.prototype.ambientLight = 0x808080;
 
 CameraComponent.prototype.setup = function (width, height) {
-    const w = width / this.zoom;
-    const h = height / this.zoom;
+  const w = width / this.zoom;
+  const h = height / this.zoom;
 
-    //update frustum size
-    this.frustumSize = [
-        [-w / 2, -h / 2, 0],
-        [w / 2, h / 2, this.farClippingPane]
-    ];
+  //update frustum size
+  this.frustumSize = [
+    [-w / 2, -h / 2, 0],
+    [w / 2, h / 2, this.farClippingPane],
+  ];
 
-    //update projection matrix
-    glMatrix.mat4.ortho(this.projectionMatrix, -w / 2, w / 2, -h / 2, h / 2, this.nearClippingPane, this.farClippingPane);
-}
+  //update projection matrix
+  glMatrix.mat4.ortho(
+    this.projectionMatrix,
+    -w / 2,
+    w / 2,
+    -h / 2,
+    h / 2,
+    this.nearClippingPane,
+    this.farClippingPane,
+  );
+};
 
 CameraComponent.prototype.setGameObject = function (gameObject) {
-    Component.prototype.setGameObject.call(this, gameObject);
-    gameObject.camera = this;
-}
+  Component.prototype.setGameObject.call(this, gameObject);
+  gameObject.camera = this;
+};
 
 CameraComponent.prototype.unsetGameObject = function () {
-    this.gameObject.camera = undefined;
-    Component.prototype.unsetGameObject.call(this);
-}
+  this.gameObject.camera = undefined;
+  Component.prototype.unsetGameObject.call(this);
+};
 
-CameraComponent.prototype.getClipSpaceMatrix = function() {
+CameraComponent.prototype.getClipSpaceMatrix = function () {
   const viewMatrix = this.transform.getWorldToLocal();
   math.mat4Mul(this.clipSpaceMatrix, this.projectionMatrix, viewMatrix);
   return this.clipSpaceMatrix;
-}
+};
 
 CameraComponent.FogType = FogType;
-
-

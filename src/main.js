@@ -20,9 +20,7 @@ import { showDebug } from "./debug/showDebug.jsx";
 import { flatShaderFill } from "./shaders/flatFill/index.js";
 import { emissiveShader } from "./shaders/emissiveShader.js";
 import { unlitShader } from "./shaders/unlitShader.js";
-import {
-  smoothShaderFill,
-} from "./shaders/smoothFill.js";
+import { smoothShaderFill } from "./shaders/smoothFill.js";
 import {
   avgFlatShaderFill,
   avgFlatShaderShade,

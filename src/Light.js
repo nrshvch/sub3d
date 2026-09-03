@@ -13,7 +13,7 @@ function LightComponent() {
 
 LightComponent.prototype = Object.create(Component.prototype);
 LightComponent.prototype.constructor = LightComponent;
-LightComponent.prototype.color = 0xFFFFFF;
+LightComponent.prototype.color = 0xffffff;
 LightComponent.prototype.range = 10;
 LightComponent.prototype.type = Light.Type.DIRECTIONAL;
 
@@ -24,7 +24,7 @@ LightComponent.prototype.setGameObject = function (gameObject) {
 
 export default function Light(name) {
   GameObject.call(this, name || "light");
-  this.addComponent(this.light = new LightComponent());
+  this.addComponent((this.light = new LightComponent()));
 }
 
 export { LightComponent };

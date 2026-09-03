@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { flatShaderFill } from "./index.js";
-import {
-  STATS_FILL_DRAW_CALLS,
-} from "../../shared/shaders.js";
+import { STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
 
 /**
  * Covers this shader's side of the welder contract - the parts that break silently.

@@ -2,7 +2,7 @@
  * @constructor
  */
 export default function Time() {
-    this.now = Date.now();
+  this.now = Date.now();
 }
 
 var p = Time.prototype;

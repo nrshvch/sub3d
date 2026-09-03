@@ -1,6 +1,4 @@
-import {
-  STATS_FILL_DRAW_CALLS,
-} from "../../shared/shaders.js";
+import { STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
 import {
   createWeldState,
   weldAddFace,
@@ -8,9 +6,7 @@ import {
   weldReset,
 } from "../../shared/weld.js";
 
-// This shader's entire pending-geometry state, private to this module for the life of the page -
-// the renderer never allocates, passes, or knows about it. See weld.js for the merge rules and for
-// why deferring geometry into open slots is sound.
+// This pass's pending geometry. The renderer never allocates, passes, or knows about it.
 const weldState = createWeldState();
 
 // Perpendicular deviation, in destination-canvas pixels, below which a boundary vertex is dropped

@@ -134,7 +134,19 @@ export function avgFlatShaderFill(
     const qbF = fogB & 0xf8;
     const color16F = (qrF << 8) | (qgF << 3) | (qbF >> 3);
 
-    flatFill(ctx, px0, py0, px1, py1, px2, py2, color16F, 0, ctxStateBuffer, statsBuffer);
+    flatFill(
+      ctx,
+      px0,
+      py0,
+      px1,
+      py1,
+      px2,
+      py2,
+      color16F,
+      0,
+      ctxStateBuffer,
+      statsBuffer,
+    );
 
     return;
   }
@@ -264,7 +276,19 @@ export function avgFlatShaderFill(
   const qb = b & 0xf8;
   const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-  flatFill(ctx, px0, py0, px1, py1, px2, py2, color16, 0, ctxStateBuffer, statsBuffer);
+  flatFill(
+    ctx,
+    px0,
+    py0,
+    px1,
+    py1,
+    px2,
+    py2,
+    color16,
+    0,
+    ctxStateBuffer,
+    statsBuffer,
+  );
 }
 
 export function avgFlatShaderShade(
@@ -452,7 +476,8 @@ export function avgFlatShaderShade(
   const sr = ((ir * invFog + avgFog) * 255) | 0;
   const sg = ((ig * invFog + avgFog) * 255) | 0;
   const sb = ((ib * invFog + avgFog) * 255) | 0;
-  const shadeColor16 = ((sr & 0xf8) << 8) | ((sg & 0xfc) << 3) | ((sb & 0xf8) >> 3);
+  const shadeColor16 =
+    ((sr & 0xf8) << 8) | ((sg & 0xfc) << 3) | ((sb & 0xf8) >> 3);
 
   flatFill(
     shadeCtx,

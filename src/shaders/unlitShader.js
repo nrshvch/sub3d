@@ -1,7 +1,4 @@
-import {
-  flatFill,
-  STATS_FILL_DRAW_CALLS,
-} from "../shared/shaders.js";
+import { flatFill, STATS_FILL_DRAW_CALLS } from "../shared/shaders.js";
 
 /**
  * Predefined shader (see registerShader in shaderRegistry.js for the full argument contract),
@@ -14,14 +11,35 @@ import {
  */
 export function unlitShader(
   ctx,
-  px0, py0, px1, py1, px2, py2,
-  epx0, epy0, epx1, epy1, epx2, epy2,
+  px0,
+  py0,
+  px1,
+  py1,
+  px2,
+  py2,
+  epx0,
+  epy0,
+  epx1,
+  epy1,
+  epx2,
+  epy2,
   clipGeometryBuffer,
   colorBuffer,
-  vertexNormalsBuffer, faceNormalsBuffer, v0Idx, v1Idx, v2Idx,
-  faceIdx, mesh, meshFaceIdx,
-  ambientLightRgb, lightsIndexBuffer, gameObjects,
-  fogType, fogColor, fogNearPane, fogFarPane,
+  vertexNormalsBuffer,
+  faceNormalsBuffer,
+  v0Idx,
+  v1Idx,
+  v2Idx,
+  faceIdx,
+  mesh,
+  meshFaceIdx,
+  ambientLightRgb,
+  lightsIndexBuffer,
+  gameObjects,
+  fogType,
+  fogColor,
+  fogNearPane,
+  fogFarPane,
   meshIdx,
   ctxStateBuffer,
   statsBuffer,
@@ -51,16 +69,20 @@ export function unlitShader(
 
     if (Math.abs(delta) > 0.00001) {
       const invDelta = 1 / delta;
-      const a = (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
-      const c = (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
+      const a =
+        (px0 * (V1 - V2) + px1 * (V2 - V0) + px2 * (V0 - V1)) * invDelta;
+      const c =
+        (px0 * (U2 - U1) + px1 * (U0 - U2) + px2 * (U1 - U0)) * invDelta;
       const e =
         (px0 * (U1 * V2 - U2 * V1) +
           px1 * (U2 * V0 - U0 * V2) +
           px2 * (U0 * V1 - U1 * V0)) *
         invDelta;
 
-      const bT = (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
-      const d = (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
+      const bT =
+        (py0 * (V1 - V2) + py1 * (V2 - V0) + py2 * (V0 - V1)) * invDelta;
+      const d =
+        (py0 * (U2 - U1) + py1 * (U0 - U2) + py2 * (U1 - U0)) * invDelta;
       const f =
         (py0 * (U1 * V2 - U2 * V1) +
           py1 * (U2 * V0 - U0 * V2) +
@@ -93,5 +115,17 @@ export function unlitShader(
   // Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
   const color16 = (qr << 8) | (qg << 3) | (qb >> 3);
 
-  flatFill(ctx, px0, py0, px1, py1, px2, py2, color16, 0, ctxStateBuffer, statsBuffer);
+  flatFill(
+    ctx,
+    px0,
+    py0,
+    px1,
+    py1,
+    px2,
+    py2,
+    color16,
+    0,
+    ctxStateBuffer,
+    statsBuffer,
+  );
 }

@@ -7,7 +7,7 @@ const mat4Mul = math.mat4Mul;
 export default function Canvas2dViewport(camera, canvas) {
   this.canvas = canvas || document.createElement("canvas");
   this.canvas.style.filter = "url(#stripBlue)";
-  this.context = this.canvas.getContext("2d", {alpha: true});
+  this.context = this.canvas.getContext("2d", { alpha: true });
   this.context.imageSmoothingEnabled = false;
   this.context.webkitImageSmoothingEnabled = false;
   this.width = 0;
@@ -57,10 +57,8 @@ export default function Canvas2dViewport(camera, canvas) {
     groupTime: 0,
     processTime: 0,
     updateTime: 0,
-    retrieveTime: 0
+    retrieveTime: 0,
   };
-
-
 
   let lastFrameTime = performance.now();
   let frameCount = 0;
@@ -75,7 +73,9 @@ export default function Canvas2dViewport(camera, canvas) {
 
       frameCount++;
       if (now - lastFpsTime >= 500) {
-        self.lastRenderStats.fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+        self.lastRenderStats.fps = Math.round(
+          (frameCount * 1000) / (now - lastFpsTime),
+        );
         frameCount = 0;
         lastFpsTime = now;
       }

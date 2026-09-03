@@ -18,7 +18,10 @@ import {
   avgFlatShaderFill,
   avgFlatShaderShade,
 } from "./shaders/avgFlatFill/index.js";
-import { shaderRegistry, shadeShaderRegistry } from "./shaders/shaderRegistry.js";
+import {
+  shaderRegistry,
+  shadeShaderRegistry,
+} from "./shaders/shaderRegistry.js";
 import {
   identityFill,
   CTX_STATE_SHADE_FILL,
@@ -1032,7 +1035,12 @@ let frameCounter = 0;
  * @param {Float32Array} vertexNormalsBuffer - Buffer storing vertex normal vectors.
  * @param {Float32Array} vertexBuffer - Stores 2D screen coordinates [x0, y0, x1, y1, x2, y2].
  * @param {Uint32Array} vertexIndexBuffer - Indexes of vertices in the vertexBuffer.
- * @param {Uint32Array} weldIdBuffer
+ * @param {Uint32Array} weldIdBuffer - Per-face-vertex adjacency identity, 3 per face. Two faces
+ * share an edge only if they name the same two identities, so this is what the batchers match on.
+ * Deliberately separate from vertexIndexBuffer: that one carries a coordinate offset, deduplicated
+ * per mesh per frame, whereas this one is a mesh-global vertex name routed through the mesh's
+ * weldMap so that a hard-edge mesh, whose triangles each own private copies of their corners,
+ * still reports its shared edges as shared. Offset per mesh so identities never collide.
  * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
  * @param {Int32Array} vMapping - Persistent buffer storing the vertexBuffer offset for the current mesh.
@@ -1518,7 +1526,7 @@ function drawWireframe(
  * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
  * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
  * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
- * @param {Uint32Array} weldIdBuffer
+ * @param {Uint32Array} weldIdBuffer - Per-face-vertex adjacency identities (see destructMesh).
  * @param {Uint32Array} indexBuffer - Depth-sorted array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
  * @param {Uint32Array} colorBuffer - Array of face 32-bit color index
  * @param {Uint8Array} shaderTypeBuffer - Parallel array storing the packed shader type and pass ID for each face.
@@ -1683,7 +1691,8 @@ function drawTriangles(
     // uses a different shaderKey, or this is the final face in the pass) - see the frameId/last
     // contract in shaderRegistry.js's registerShader doc comment. `i === len - 1` is checked
     // first so `indexBuffer[i + 1]` is never read past the pass's valid range.
-    const last = i === len - 1 || shaderTypeBuffer[indexBuffer[i + 1]] !== shaderKey;
+    const last =
+      i === len - 1 || shaderTypeBuffer[indexBuffer[i + 1]] !== shaderKey;
 
     switch (shaderKey) {
       case 0: {
@@ -1954,17 +1963,17 @@ function drawTriangles(
 
 /**
  * Shade pass: only runs at all if drawTriangles' return value included NEEDS_SHADE_PASS for this
- * layer (see render()). Real shading for shaders that have it, a defensive opaque-white fill
- * (whiteFillShade) for every other face, since a real neighbor's shading footprint is
- * deliberately drawn slightly oversized (epx/epy, not px/py) for anti-seam overlap and could
- * otherwise bleed a few pixels onto this face's own silhouette. Geometry (px/py/epx/epy) is
+ * layer (see render()). Real shading for shaders that have it, an opaque-white fill
+ * (whiteFillShade) for every other face - white is the identity for the `multiply` composite, and
+ * drawing it is what stops shading already on the layer from showing through a nearer unshaded
+ * face (see identityFill). Geometry (px/py/epx/epy) is
  * recomputed rather than cached from the fill pass - cheap ALU work, not worth a cache buffer
  * for. Ends by compositing `shadeCtx` onto `ctx` via `multiply`, if anything real was drawn.
  * @param {CanvasRenderingContext2D} ctx - this layer's fill buffer, composited onto at the end.
  * @param {CanvasRenderingContext2D} shadeCtx - this layer's shading buffer.
  * @param {Float32Array} vertexBuffer
  * @param {Uint32Array} vertexIndexBuffer
- * @param {Uint32Array} weldIdBuffer
+ * @param {Uint32Array} weldIdBuffer - Per-face-vertex adjacency identities (see destructMesh).
  * @param {Uint32Array} indexBuffer - depth-sorted face indices, same order drawTriangles used.
  * @param {Uint32Array} colorBuffer
  * @param {Uint8Array} shaderTypeBuffer
@@ -2022,9 +2031,8 @@ function shadeTriangles(
   statsBuffer,
   frameId,
 ) {
-  // shadeCtx is half-resolution (see Canvas2dViewport.js) - its own scale factors, derived from
-  // the buffer's actual size rather than w/h/2, so they stay correct even if the half-res
-  // rounding (Math.ceil) doesn't land exactly on w/2.
+  // Scale factors derived from shadeCtx's own backing size rather than from w/h, so they stay
+  // correct whatever resolution the shade buffer is allocated at (see Canvas2dViewport.js).
   const halfShadeW = shadeCtx.canvas.width * 0.5,
     halfShadeH = shadeCtx.canvas.height * 0.5;
 
@@ -2041,7 +2049,7 @@ function shadeTriangles(
     const w1Idx = weldIdBuffer[idx * 3 + 1];
     const w2Idx = weldIdBuffer[idx * 3 + 2];
 
-    // Scaled into shadeCtx's own half-resolution pixel space, not ctx's (see halfShadeW/H above).
+    // Scaled into shadeCtx's own pixel space, not ctx's (see halfShadeW/H above).
     const px0 = vertexBuffer[v0Idx] * halfShadeW + halfShadeW;
     const py0 = vertexBuffer[v0Idx + 1] * halfShadeH + halfShadeH;
     const px1 = vertexBuffer[v1Idx] * halfShadeW + halfShadeW;
@@ -2086,7 +2094,8 @@ function shadeTriangles(
 
     // Same reasoning as the fill pass' equivalent - see its doc comment for the frameId/last
     // contract this computes.
-    const last = i === len - 1 || shaderTypeBuffer[indexBuffer[i + 1]] !== shaderKey;
+    const last =
+      i === len - 1 || shaderTypeBuffer[indexBuffer[i + 1]] !== shaderKey;
 
     switch (shaderKey) {
       case 0: {

@@ -52,7 +52,7 @@ export default function radixSort(
   counters,
   count,
   near,
-  far
+  far,
 ) {
   if (count <= 1) return;
 
@@ -62,7 +62,7 @@ export default function radixSort(
   // budgeting (allocating bits dynamically based on active mesh count and max face count per mesh).
 
   // Map depth from [near, far] to [0, 65535]
-  const invDepthRange = (far - near) > 0.0001 ? 65535.0 / (far - near) : 0;
+  const invDepthRange = far - near > 0.0001 ? 65535.0 / (far - near) : 0;
 
   // =========================================================================
   // PASS 1: Sort by Shader Pass (least significant key)
@@ -143,12 +143,12 @@ export default function radixSort(
   for (let i = 0; i < count; i++) {
     const idx = indexBuffer[i];
     const depth = depthBuffer[idx];
-    
+
     let t = (depth - near) * invDepthRange;
     if (t < 0) t = 0;
     else if (t > 65535) t = 65535;
     const depthKey = (65535 - (t | 0)) & 0xff;
-    
+
     counters[depthKey]++;
   }
 
@@ -156,14 +156,14 @@ export default function radixSort(
   for (let i = 0; i < 256; i++) {
     const tempCount = counters[i];
     // Odd buckets fill from the top down (see serpentine note above); even buckets unchanged.
-    counters[i] = (i & 1) ? offset + tempCount - 1 : offset;
+    counters[i] = i & 1 ? offset + tempCount - 1 : offset;
     offset += tempCount;
   }
 
   for (let i = 0; i < count; i++) {
     const idx = indexBuffer[i];
     const depth = depthBuffer[idx];
-    
+
     let t = (depth - near) * invDepthRange;
     if (t < 0) t = 0;
     else if (t > 65535) t = 65535;
@@ -181,12 +181,12 @@ export default function radixSort(
   for (let i = 0; i < count; i++) {
     const idx = tempIndexBuffer[i];
     const depth = depthBuffer[idx];
-    
+
     let t = (depth - near) * invDepthRange;
     if (t < 0) t = 0;
     else if (t > 65535) t = 65535;
     const depthKey = ((65535 - (t | 0)) >> 8) & 0xff;
-    
+
     counters[depthKey]++;
   }
 
@@ -200,12 +200,12 @@ export default function radixSort(
   for (let i = 0; i < count; i++) {
     const idx = tempIndexBuffer[i];
     const depth = depthBuffer[idx];
-    
+
     let t = (depth - near) * invDepthRange;
     if (t < 0) t = 0;
     else if (t > 65535) t = 65535;
     const depthKey = ((65535 - (t | 0)) >> 8) & 0xff;
-    
+
     indexBuffer[counters[depthKey]++] = idx;
   }
 }
