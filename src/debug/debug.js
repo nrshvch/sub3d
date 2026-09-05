@@ -110,7 +110,6 @@ export function renderAxis(gameObjects, ctx, worldToScreenMatrix, vec3Cache1) {
     );
   }
 
-  ctx.lineWidth = 1;
   ctx.strokeStyle = "#ff0000";
   ctx.stroke(xPath);
   ctx.strokeStyle = "#00ff00";
@@ -176,7 +175,6 @@ export function renderDebugNormals(
 
   // Face normals - cyan
   ctx.beginPath();
-  ctx.lineWidth = 1;
   ctx.strokeStyle = "cyan";
 
   for (let f = offset; f < len; f++) {

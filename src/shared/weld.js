@@ -382,18 +382,13 @@ export function weldFlushSlot(
     const style = PALETTE_16BIT[color16];
     ctx.fillStyle = style;
     ctx.strokeStyle = style;
-    // A welded seam is stroked from one side only, so in theory half a pixel covers it. In
-    // practice anything below 1 leaves gaps that show up in motion.
-    ctx.lineWidth = 1;
-    // Miter is the browser default, and therefore the join engines optimise hardest.
-    ctx.lineJoin = "miter";
     ctxStateBuffer[styleSlot] = color16;
     if (sawRealSlot !== -1 && color16 !== 0xffff)
       ctxStateBuffer[sawRealSlot] = 1;
   }
 
   // Canvas2D composites each fill's antialiased coverage separately, so two polygons sharing a
-  // boundary each cover about half the pixels along it, and source-over of two half coverages is
+  // boundary each cover about half the pixels along it, anÏd source-over of two half coverages is
   // three quarters - a hairline of background shows through. Painting that coverage back with a
   // stroke in the fill colour is the only repair canvas2d offers. Stroke first, then fill, so the
   // fill repaints the inner half and the stroke only ever extends coverage outward.

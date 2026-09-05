@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { textureShaderFill } from "./index.js";
-import { STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
+import {
+  CTX_STATE_FILL_SLOT,
+  STATS_FILL_DRAW_CALLS,
+} from "../../shared/shaders.js";
 
 /**
  * The mapping maths is ordinary; what breaks silently is the fallback. A textured mesh whose image
@@ -130,7 +133,7 @@ describe("texture fill", () => {
     const setTransforms = h.ctx.calls.filter((c) => c === "setTransform");
     expect(setTransforms.length).toBe(2); // the map, then the identity reset
     expect(h.ctx.calls[h.ctx.calls.length - 1]).toBe("setTransform");
-    expect(h.ctxStateBuffer[0]).toBe(-1);
+    expect(h.ctxStateBuffer[CTX_STATE_FILL_SLOT]).toBe(-1);
   });
 
   it("fills the base colour while the image is still loading", () => {

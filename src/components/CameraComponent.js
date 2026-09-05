@@ -43,8 +43,10 @@ CameraComponent.prototype.fogType = FogType.LINEAR;
 CameraComponent.prototype.fogNearPane = 250;
 CameraComponent.prototype.fogFarPane = 750;
 CameraComponent.prototype.fogColor = 0x969696;
-CameraComponent.prototype.bgColor = -1;
+CameraComponent.prototype.bgColor = 0x969696;
 CameraComponent.prototype.ambientLight = 0x808080;
+CameraComponent.prototype.flush = false;
+CameraComponent.prototype.depthSorting = true;
 
 CameraComponent.prototype.setup = function (width, height) {
   const w = width / this.zoom;
