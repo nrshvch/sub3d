@@ -1,7 +1,9 @@
 import { PALETTE_16BIT } from "../palette.js";
 
+
 // Slots into the shared ctxStateBuffer/statsBuffer Canvas2dRenderer.js owns (see
 // shaderRegistry.js's registerShader doc comment for the full layout).
+export const CTX_STATE_FILL_SLOT = 0;
 export const CTX_STATE_SHADE_FILL = 3;
 
 export const CTX_STATE_SAW_REAL_SHADING = 8;
@@ -28,8 +30,6 @@ export function flatFill(
     const style = PALETTE_16BIT[color16];
     targetCtx.fillStyle = style;
     targetCtx.strokeStyle = style;
-    targetCtx.lineWidth = 1;
-    targetCtx.lineJoin = "miter";
     ctxStateBuffer[slot] = color16;
 
     if (slot === CTX_STATE_SHADE_FILL && color16 !== 0xffff) {

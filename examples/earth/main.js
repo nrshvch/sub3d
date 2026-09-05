@@ -51,6 +51,8 @@ cameraObject.camera.fogType = scaliaEngine.CameraComponent.FogType.NONE;
 cameraObject.camera.ambientLight = 0x111111
 cameraObject.camera.farClippingPane = 1000;
 cameraObject.camera.nearClippingPane = -1000;
+cameraObject.camera.bgColor = -1;
+cameraObject.camera.flush = true;
 
 cameraObject.transform.setPosition(0, 0, 0);
 

@@ -1,4 +1,7 @@
-import { STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
+import {
+  CTX_STATE_FILL_SLOT,
+  STATS_FILL_DRAW_CALLS,
+} from "../../shared/shaders.js";
 import {
   createWeldState,
   weldAddFace,
@@ -87,7 +90,7 @@ export function flatShaderFill(
       weldState,
       ctx,
       ctxStateBuffer,
-      0,
+      CTX_STATE_FILL_SLOT,
       -1,
       statsBuffer,
       STATS_FILL_DRAW_CALLS,

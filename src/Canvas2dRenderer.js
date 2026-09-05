@@ -31,6 +31,7 @@ import {
   CTX_STATE_SAW_REAL_SHADING,
   STATS_FILL_DRAW_CALLS,
   STATS_SHADE_DRAW_CALLS,
+  CTX_STATE_FILL_SLOT,
 } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
 import { smoothShaderShade } from "./shaders/smoothShade.js";
@@ -264,29 +265,7 @@ p.render = function (camera, viewport, stats) {
   let totalFogRasterTime = 0;
 
   const cam = camera.camera;
-  const bgColorInt =
-    camera.camera.fogType !== CameraComponent.FogType.NONE
-      ? cam.fogColor
-      : cam.bgColor;
-
-  if (cam.bgColor !== -1) {
-    const bgR = bgColorInt >>> 16;
-    const bgG = (bgColorInt >>> 8) & 255;
-    const bgB = bgColorInt & 255;
-
-    // 1. Quantize 8-bit to 5-6-5 bits
-    const qr = bgR & 0xf8; // Keep 5 bits
-    const qg = bgG & 0xfc; // Keep 6 bits
-    const qb = bgB & 0xf8; // Keep 5 bits
-
-    // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
-    const key = (qr << 8) | (qg << 3) | (qb >> 3);
-
-    viewport.context.fillStyle = PALETTE_16BIT[key];
-    viewport.context.fillRect(0, 0, viewport.width, viewport.height);
-  } else {
-    viewport.context.clearRect(0, 0, viewport.width, viewport.height);
-  }
+  const flush = cam.flush || this.wireframe || !this.fillEnabled || !this.shadeEnabled || !this.fogEnabled;
 
   //worst case scenario - every object is visible
   if (visibleObjectsBuffer.length < gameObjects.length) {
@@ -474,7 +453,7 @@ p.render = function (camera, viewport, stats) {
     );
     totalProcessTime += performance.now() - processStart;
 
-    if ((config.depthSortingMask & (i + 1)) === i + 1) {
+    if (cam.depthSorting) {
       const sortStart = performance.now();
       // TODO: Consider merging passes by packing multiple keys/attributes into a single 32-bit integer
       // to reduce radix sorting passes. E.g., we could pack local face indices together with mesh
@@ -494,15 +473,13 @@ p.render = function (camera, viewport, stats) {
       totalSortTime += performance.now() - sortStart;
     }
 
-    const toClear = (config.layerClearMask & (i + 1)) === i + 1;
-
     // ctxStateBuffer's fillStyle dedup keys - reset once per layer (fillTriangles is called once
     // per layer, see render() below): -1 = unset, forces an explicit style set on the first face
     // drawn in each pass. Slots 1/2 are drawWireframe's own independent stroke-only state,
     // untouched here. The shadeCtx/fogCtx keys are reset here too even though those passes run
     // from separate functions gated in render() - each pass's first face must see -1, not
     // whatever color the same slot held at the end of a previous layer.
-    ctxStateBuffer[0] = -1;
+    ctxStateBuffer[CTX_STATE_FILL_SLOT] = -1;
     ctxStateBuffer[CTX_STATE_SHADE_FILL] = -1;
     ctxStateBuffer[CTX_STATE_FOG] = -1;
     ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING] = 0;
@@ -522,7 +499,6 @@ p.render = function (camera, viewport, stats) {
         indexBuffer,
         l,
         0,
-        toClear,
         vw,
         vh,
         ctxStateBuffer,
@@ -540,15 +516,16 @@ p.render = function (camera, viewport, stats) {
           shaderTypeBuffer,
           l,
           0,
-          toClear,
+          flush,
           vw,
           vh,
           clipGeometryBuffer,
-          camera.camera.fogType,
-          camera.camera.fogColor,
-          camera.camera.fogNearPane,
-          camera.camera.fogFarPane,
-          camera.camera.ambientLight,
+          cam.bgColor,
+          cam.fogType,
+          cam.fogColor,
+          cam.fogNearPane,
+          cam.fogFarPane,
+          cam.ambientLight,
           faceNormalsBuffer,
           vertexNormalsBuffer,
           meshIndexBuffer,
@@ -564,7 +541,7 @@ p.render = function (camera, viewport, stats) {
         totalFillRasterTime += performance.now() - fillStart;
       } else {
         const fillStyle = ctx.fillStyle;
-        ctx.fillStyle = "white";
+        ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.fillStyle = fillStyle;
       }
@@ -574,6 +551,7 @@ p.render = function (camera, viewport, stats) {
         shadeTriangles(
           ctx,
           shadeCtx,
+          flush,
           vertexBuffer,
           vertexIndexBuffer,
           weldIdBuffer,
@@ -678,6 +656,9 @@ p.render = function (camera, viewport, stats) {
       );
     }
 
+    if (flush) {
+      viewport.context.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
     viewport.context.drawImage(ctx.canvas, 0, 0);
 
     drawCalls += l;
@@ -1466,7 +1447,6 @@ function drawWireframe(
   indexBuffer,
   count,
   offset,
-  toClear,
   w,
   h,
   ctxStateBuffer,
@@ -1476,25 +1456,18 @@ function drawWireframe(
 
   const len = offset + count;
 
-  if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   // Reset once per layer, same as fillTriangles - canvas state (and this cache) can carry over
   // from whatever drew last, so force an explicit ctx style set on the first face drawn.
-  ctxStateBuffer[0] = -1;
+  ctxStateBuffer[CTX_STATE_FILL_SLOT] = -1;
   ctxStateBuffer[1] = -1;
-  ctxStateBuffer[2] = -1;
 
   ctx.beginPath();
 
   if (ctxStateBuffer[1] !== 31) {
     ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
     ctxStateBuffer[1] = 31;
-  }
-
-  if (ctxStateBuffer[2] !== 5) {
-    ctx.lineWidth = 0.5;
-    ctx.lineJoin = "miter";
-    ctxStateBuffer[2] = 5;
   }
 
   for (let i = offset; i < len; i++) {
@@ -1516,7 +1489,7 @@ function drawWireframe(
     ctx.moveTo(px0, py0);
     ctx.lineTo(px1, py1);
     ctx.lineTo(px2, py2);
-    ctx.closePath();
+    ctx.lineTo(px0, py0);
   }
 
   ctx.stroke();
@@ -1540,12 +1513,13 @@ function drawWireframe(
  * @param {Uint8Array} shaderTypeBuffer - Parallel array storing the packed shader type and pass ID for each face.
  * @param {number} count - Number of elements in indexBuffer
  * @param {number} offset - Starting index of the triangles to draw
- * @param {boolean} toClear - Should ctx be cleared before drawing?
+ * @param {boolean} flush - Should ctx be cleared before drawing?
  * @param {number} w - Canvas width
  * @param {number} h - Canvas height
  * @param {Float32Array} clipGeometryBuffer - Array of clip geometry vertices in the format [x0, y0, z0, x1, y1, z1, ...]
+ * @param {number} bgColor
  * @param {number} fogType - Fog type
- * @param {number[]} fogColor - Fog color
+ * @param {number} fogColor - Fog color
  * @param {number} fogNearPane - Near plane distance
  * @param {number} fogFarPane - Far plane distance
  * @param {number} ambientLightRgb - Ambient light RGB color
@@ -1577,10 +1551,11 @@ function fillTriangles(
   shaderTypeBuffer,
   count,
   offset,
-  toClear,
+  flush,
   w,
   h,
   clipGeometryBuffer,
+  bgColor,
   fogType,
   fogColor,
   fogNearPane,
@@ -1603,7 +1578,26 @@ function fillTriangles(
 
   const len = offset + count;
 
-  if (toClear) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  if (flush) {
+    if (bgColor !== -1) {
+      const bgR = bgColor >>> 16;
+      const bgG = (bgColor >>> 8) & 255;
+      const bgB = bgColor & 255;
+
+      // 1. Quantize 8-bit to 5-6-5 bits
+      const qr = bgR & 0xf8; // Keep 5 bits
+      const qg = bgG & 0xfc; // Keep 6 bits
+      const qb = bgB & 0xf8; // Keep 5 bits
+
+      // 2. Generate 16-bit key: [RRRRR][GGGGGG][BBBBB]
+      const key = (qr << 8) | (qg << 3) | (qb >> 3);
+
+      ctx.fillStyle = PALETTE_16BIT[key];
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    } else {
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
+  }
 
   // FILL PASS: every face, every shader - base color/texture onto `ctx`.
   for (let i = offset; i < len; i++) {
@@ -1863,6 +1857,7 @@ function fillTriangles(
  * for. Ends by compositing `shadeCtx` onto `ctx` via `multiply`, if anything real was drawn.
  * @param {CanvasRenderingContext2D} ctx - this layer's fill buffer, composited onto at the end.
  * @param {CanvasRenderingContext2D} shadeCtx - this layer's shading buffer.
+ * @param {boolean} flush
  * @param {Float32Array} vertexBuffer
  * @param {Uint32Array} vertexIndexBuffer
  * @param {Uint32Array} weldIdBuffer - Per-face-vertex adjacency identities (see destructMesh).
@@ -1895,6 +1890,7 @@ function fillTriangles(
 function shadeTriangles(
   ctx,
   shadeCtx,
+  flush,
   vertexBuffer,
   vertexIndexBuffer,
   weldIdBuffer,
@@ -1923,6 +1919,10 @@ function shadeTriangles(
   statsBuffer,
   frameId,
 ) {
+  if (flush) {
+    shadeCtx.clearRect(0, 0, shadeCtx.canvas.width, shadeCtx.canvas.height);
+  }
+
   // Scale factors derived from shadeCtx's own backing size rather than from w/h, so they stay
   // correct whatever resolution the shade buffer is allocated at (see Canvas2dViewport.js).
   const halfShadeW = shadeCtx.canvas.width * 0.5,
@@ -2182,6 +2182,4 @@ function shadeTriangles(
     ctx.drawImage(shadeCtx.canvas, 0, 0, w, h);
     ctx.globalCompositeOperation = "source-over";
   }
-
-  shadeCtx.clearRect(0, 0, shadeCtx.canvas.width, shadeCtx.canvas.height);
 }

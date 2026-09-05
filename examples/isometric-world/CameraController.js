@@ -28,6 +28,7 @@ export default class CameraController {
     this.cameraObject.camera.fogColor = 0x8CB4C8;
     this.cameraObject.camera.bgColor = 0x8CB4C8;
     this.cameraObject.camera.ambientLight = 0x202020;
+    this.cameraObject.camera.flush = false;
     
     // Default camera rotation state (pitch/yaw)
     this.cameraYaw = 45;

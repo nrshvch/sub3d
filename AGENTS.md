@@ -91,7 +91,7 @@ A textured face is drawn as an ordinary `fill()`, not a `clip()` + `drawImage()`
 
 - Measured on the boxes example at load (4000 boxes, ~18.7k faces): fill pass 65.0 → 40.0 ms, whole frame 114.5 → 92.1 ms.
 - The pattern is `repeat`, not `no-repeat`, and cached on the mesh (`texturePattern`, dropped by the `texture` setter). The seam-expanded ring reaches outside the face's UV rect, and a non-repeating pattern is transparent there — which would open the very gap the expansion exists to close. A texture with a transparent border will still leak; pad it.
-- The context transform must be reset to the identity afterwards, and the flat shader's colour cache invalidated (`ctxStateBuffer[0] = -1`), since a pattern is not a palette entry.
+- The context transform must be reset to the identity afterwards, and the flat shader's colour cache invalidated (`ctxStateBuffer[CTX_STATE_FILL_SLOT] = -1`), since a pattern is not a palette entry.
 
 Coplanar neighbours are merged before drawing, by `textureFill/textureWeld.js` — its own multi-slot welder rather than a generalisation of `shared/weld.js`, which merges by colour and emits in screen space. A box side's two triangles become one path, one transform, one fill, and the shared diagonal is never rasterised: the two independent affine maps that disagreed along it are replaced by one, so the crease and its seam both disappear.
 

@@ -123,6 +123,7 @@ cameraObject.camera.fogNearPane = 0;
 cameraObject.camera.fogColor = 0x8CB4C8;
 cameraObject.camera.bgColor = 0x8CB4C8;
 cameraObject.camera.ambientLight = 0x444444;
+cameraObject.camera.flush = false;
 
 cameraObject.transform.setPosition(0, 0, 0);
 
@@ -144,11 +145,6 @@ const viewport = new scaliaEngine.Canvas2dViewport(
 viewport.scale = window.devicePixelRatio || 1;
 viewport.start();
 
-const renderer = viewport.renderer;
-
-let fps,
-  avgDt,
-  maxFps = 0;
 const scaleValEl = document.getElementById("scale_val");
 const zoomValEl = document.getElementById("zoom_val");
 

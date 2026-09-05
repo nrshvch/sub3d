@@ -499,7 +499,7 @@ export default function DebugPanel({ viewport }) {
             </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Fill Render
+                Fill Time (Cpu)
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
                 {formatSortTime(stats.fillRasterTime)}
@@ -518,7 +518,7 @@ export default function DebugPanel({ viewport }) {
             </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Shade Render
+                Shade Time (Cpu)
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
                 {formatSortTime(stats.shadeRasterTime)}
@@ -545,7 +545,7 @@ export default function DebugPanel({ viewport }) {
             </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Fog Render
+                Fog Time (Cpu)
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
                 {formatSortTime(stats.fogRasterTime)}
@@ -564,7 +564,7 @@ export default function DebugPanel({ viewport }) {
             </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Frame Time
+                Frame Time (gpu)
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
                 {formatSortTime(stats.frameTime)}

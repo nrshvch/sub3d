@@ -33,6 +33,7 @@
  * incoming face first flushes every open chart whose screen bounds meet its own. The chart it is
  * joining is exempt - a coplanar edge-sharing neighbour cannot occlude it.
  */
+import { CTX_STATE_FILL_SLOT } from "../../shared/shaders.js";
 
 const N_SLOTS = 32;
 
@@ -237,7 +238,7 @@ export function textureWeldFlushSlot(
   ctx.fillStyle = pattern;
   // The colour cache tracks a palette entry and this is not one; force the next flat face to set
   // its own style rather than trusting a stale hit.
-  ctxStateBuffer[0] = -1;
+  ctxStateBuffer[CTX_STATE_FILL_SLOT] = -1;
 
   ctx.setTransform(
     st.affine[ab],
