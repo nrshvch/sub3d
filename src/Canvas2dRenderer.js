@@ -4,9 +4,9 @@
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
-import CameraComponent, { FogType } from "./components/CameraComponent.js";
+import { FogType } from "./components/CameraComponent.js";
 import * as math from "./math.js";
-import { PALETTE_16BIT } from "./palette.js";
+import { BLUE16, PALETTE_16BIT, WHITE16 } from "./palette.js";
 import * as debug from "./debug/debug.js";
 import radixSort from "./radixSort.js";
 import { flatShaderFill } from "./shaders/flatFill/index.js";
@@ -31,7 +31,8 @@ import {
   CTX_STATE_SAW_REAL_SHADING,
   STATS_FILL_DRAW_CALLS,
   STATS_SHADE_DRAW_CALLS,
-  CTX_STATE_FILL_SLOT,
+  CTX_STATE_FILL_PASS_FILL_STYLE_SLOT,
+  CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT,
 } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
 import { smoothShaderShade } from "./shaders/smoothShade.js";
@@ -217,7 +218,6 @@ p.render = function (camera, viewport, stats) {
     vw = viewport.width,
     vh = viewport.height,
     i,
-    ctx,
     vec3Cache1 = this.vec3Cache1,
     vec3Cache2 = this.vec3Cache2,
     vec4Cache = this.vec4Cache,
@@ -324,7 +324,7 @@ p.render = function (camera, viewport, stats) {
       continue;
     }
 
-    ctx = viewport.layers[i];
+    const fillCtx = viewport.layers[i];
     const shadeCtx = viewport.shadeLayers[i];
     const fogCtx = viewport.fogLayers[i];
 
@@ -479,7 +479,7 @@ p.render = function (camera, viewport, stats) {
     // untouched here. The shadeCtx/fogCtx keys are reset here too even though those passes run
     // from separate functions gated in render() - each pass's first face must see -1, not
     // whatever color the same slot held at the end of a previous layer.
-    ctxStateBuffer[CTX_STATE_FILL_SLOT] = -1;
+    ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = -1;
     ctxStateBuffer[CTX_STATE_SHADE_FILL] = -1;
     ctxStateBuffer[CTX_STATE_FOG] = -1;
     ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING] = 0;
@@ -493,7 +493,7 @@ p.render = function (camera, viewport, stats) {
 
     if (this.wireframe) {
       drawWireframe(
-        ctx,
+        fillCtx,
         vertexBuffer,
         vertexIndexBuffer,
         indexBuffer,
@@ -507,7 +507,7 @@ p.render = function (camera, viewport, stats) {
       if (this.fillEnabled) {
         const fillStart = performance.now();
         fillTriangles(
-          ctx,
+          fillCtx,
           vertexBuffer,
           vertexIndexBuffer,
           weldIdBuffer,
@@ -540,16 +540,17 @@ p.render = function (camera, viewport, stats) {
         );
         totalFillRasterTime += performance.now() - fillStart;
       } else {
-        const fillStyle = ctx.fillStyle;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        ctx.fillStyle = fillStyle;
+        if(ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] !== WHITE16){
+          fillCtx.fillStyle = PALETTE_16BIT[WHITE16];
+          ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = WHITE16;
+        }
+        fillCtx.fillRect(0, 0, fillCtx.canvas.width, fillCtx.canvas.height);
       }
 
       if (this.shadeEnabled) {
         const shadeStart = performance.now();
         shadeTriangles(
-          ctx,
+          fillCtx,
           shadeCtx,
           flush,
           vertexBuffer,
@@ -608,7 +609,7 @@ p.render = function (camera, viewport, stats) {
 
         const fogStart = performance.now();
         fogTriangles(
-          ctx,
+          fillCtx,
           fogCtx,
           vertexBuffer,
           vertexIndexBuffer,
@@ -642,7 +643,7 @@ p.render = function (camera, viewport, stats) {
       // Same post-cull buffers fillTriangles/drawWireframe just used above - drawn onto this
       // layer's own ctx, on top of that layer's geometry, before it gets composited below.
       renderDebugNormals(
-        ctx,
+        fillCtx,
         vertexBuffer,
         vertexIndexBuffer,
         indexBuffer,
@@ -657,9 +658,9 @@ p.render = function (camera, viewport, stats) {
     }
 
     if (flush) {
-      viewport.context.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      viewport.context.clearRect(0, 0, vw, vh);
     }
-    viewport.context.drawImage(ctx.canvas, 0, 0);
+    viewport.context.drawImage(fillCtx.canvas, 0, 0);
 
     drawCalls += l;
     faces += l;
@@ -1460,14 +1461,14 @@ function drawWireframe(
 
   // Reset once per layer, same as fillTriangles - canvas state (and this cache) can carry over
   // from whatever drew last, so force an explicit ctx style set on the first face drawn.
-  ctxStateBuffer[CTX_STATE_FILL_SLOT] = -1;
-  ctxStateBuffer[1] = -1;
+  ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = -1;
+  ctxStateBuffer[CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT] = -1;
 
   ctx.beginPath();
 
-  if (ctxStateBuffer[1] !== 31) {
-    ctx.strokeStyle = PALETTE_16BIT[31]; // 0xf8 >> 3 = 31
-    ctxStateBuffer[1] = 31;
+  if (ctxStateBuffer[CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT] !== BLUE16) {
+    ctx.strokeStyle = PALETTE_16BIT[BLUE16]; // 0xf8 >> 3 = 31
+    ctxStateBuffer[CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT] = BLUE16;
   }
 
   for (let i = offset; i < len; i++) {

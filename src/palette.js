@@ -30,3 +30,7 @@ export function createPalette16Bit() {
 }
 
 export const PALETTE_16BIT = createPalette16Bit();
+
+export const BLUE16 = 31;
+export const WHITE16 = 65535;
+export const BLACK16 = 0;
