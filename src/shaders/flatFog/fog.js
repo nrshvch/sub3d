@@ -379,39 +379,6 @@ function batchedFogFace(
   }
 }
 
-let filterInvertSupported = null;
-
-/**
- * Whether `ctx.filter = "invert(1)"` actually inverts on this browser, probed once by inverting a
- * known black pixel and reading it back. compositeFogPass picks its invert on the result: the
- * filtered self-blit where it works, a `difference` fill with white where it does not. The two
- * produce byte-identical output.
- * @returns {boolean} True if the filter path is usable; the result is cached after the first call.
- */
-function supportsFilterInvert() {
-  if (filterInvertSupported !== null) return filterInvertSupported;
-
-  try {
-    const testCanvas = document.createElement("canvas");
-    testCanvas.width = 1;
-    testCanvas.height = 1;
-    const testCtx = testCanvas.getContext("2d");
-    testCtx.fillStyle = "#000000";
-    testCtx.fillRect(0, 0, 1, 1);
-    testCtx.filter = "invert(1)";
-    testCtx.drawImage(testCanvas, 0, 0);
-    testCtx.filter = "none";
-    const pixel = testCtx.getImageData(0, 0, 1, 1).data;
-    filterInvertSupported = pixel[0] > 200 && pixel[1] > 200 && pixel[2] > 200;
-  } catch (e) {
-    filterInvertSupported = false;
-  }
-
-  return filterInvertSupported;
-}
-
-supportsFilterInvert();
-
 /**
  * Composites this layer's fog buffer onto `ctx`: inverts `fogCtx` in place (keep -> fogAmount),
  * tints it by fogColor via multiply, then adds it back onto `ctx` via lighter - see fog.js's
@@ -439,16 +406,9 @@ export function compositeFogPass(ctx, fogCtx, fogColor) {
     ((fqr & 0xf8) << 8) | ((fqg & 0xfc) << 3) | ((fqb & 0xf8) >> 3);
   const fogStyle = PALETTE_16BIT[fogColor16];
 
-  if (filterInvertSupported) {
-    fogCtx.filter = "invert(1)";
-    fogCtx.drawImage(fogCnv, 0, 0);
-    fogCtx.filter = "none";
-  } else {
-    fogCtx.globalCompositeOperation = "difference";
-    fogCtx.fillStyle = "#ffffff";
-    fogCtx.fillRect(0, 0, fogW, fogH);
-    fogCtx.globalCompositeOperation = "source-over";
-  }
+  fogCtx.globalCompositeOperation = "difference";
+  fogCtx.fillStyle = "#ffffff";
+  fogCtx.fillRect(0, 0, fogW, fogH);
 
   fogCtx.globalCompositeOperation = "multiply";
   fogCtx.fillStyle = fogStyle;
