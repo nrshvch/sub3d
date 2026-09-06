@@ -50,6 +50,26 @@ const mat4Mul = math.mat4Mul;
 const renderAxis = debug.renderAxis;
 const renderDebugNormals = debug.renderDebugNormals;
 
+/**
+ * Partitions this frame's visible objects by their mesh's `layer` into one flat buffer, so the
+ * render loop can walk each layer's objects contiguously. The layout is a run of partitions, each
+ * a count header followed by that many GameObject indices: [n, i0..in-1][m, j0..jm-1]...
+ *
+ * Objects without a meshRenderer are dropped here - lights survive culling in their own buffer and
+ * have no layer to belong to.
+ *
+ * With a single layer there is nothing to partition and `visibleObjectsBuffer` is returned as-is,
+ * which is already in that shape (its own element 0 is the count). Callers must therefore treat
+ * the result as read-only and not assume it is `layerBuffers`.
+ * @param {Uint32Array} visibleObjectsBuffer - Surviving object indices from culling; element 0 is
+ *   the count, so the indices start at 1.
+ * @param {Array<GameObject>} gameObjects - The scene's flat object array, indexed into by the above.
+ * @param {Uint32Array} layerBuffersOffsets - Scratch, one slot per layer: used first as a per-layer
+ *   count, then rewritten in place as that layer's partition start offset.
+ * @param {number} layersCount - config.layersCount.
+ * @param {Uint32Array} layerBuffers - Destination, sized for count + layersCount by the caller.
+ * @returns {Uint32Array} `layerBuffers`, or `visibleObjectsBuffer` when layersCount is 1.
+ */
 function groupLayers(
   visibleObjectsBuffer,
   gameObjects,
@@ -100,6 +120,16 @@ function groupLayers(
   return layerBuffers;
 }
 
+/**
+ * Owns every scratch buffer the render loop needs and the renderer-wide pass toggles below.
+ * One instance per Canvas2dViewport, which drives it (see Canvas2dViewport#render).
+ *
+ * All buffers here are allocated once and grown-and-copied only when a frame's face or vertex
+ * count exceeds the current capacity - never shrunk, never reallocated per frame. That is the
+ * concrete mechanism behind the engine's zero-GC-in-hot-paths rule: nothing in `render` below
+ * allocates.
+ * @constructor
+ */
 export default function Canvas2dRenderer() {
   // Single 1D flat typed array storing GameObject indices for all layers
   this.layerBuffers = new Uint32Array(0);
@@ -208,6 +238,20 @@ p.shadeEnabled = true;
  */
 p.fogEnabled = true;
 
+/**
+ * Renders one frame: retrieves the scene, culls it, then for each layer flattens the visible
+ * meshes into per-face scratch buffers, depth-sorts them, and runs the fill, shade and fog passes
+ * onto that layer's three offscreen canvases before compositing the result onto the viewport.
+ *
+ * Canvas2D has no depth buffer, so correctness rests on the painter's-algorithm ordering
+ * `radixSort` produces - see its doc, and `fogSort` for the fog pass's own ordering.
+ * @param {GameObject} camera - The camera object; its `camera` component supplies the projection,
+ *   clipping planes, fog and background settings, and its transform the view matrix.
+ * @param {Canvas2dViewport} viewport - Supplies the destination context and the per-layer
+ *   fill/shade/fog canvases, and receives the composited frame.
+ * @param {Object} stats - Written in place with this frame's counters and timings (draw calls per
+ *   pass, cull/sort/raster times); Canvas2dViewport exposes it as `lastRenderStats`.
+ */
 p.render = function (camera, viewport, stats) {
   let t0 = performance.now();
 
@@ -612,7 +656,6 @@ p.render = function (camera, viewport, stats) {
 
         const fogStart = performance.now();
         fogTriangles(
-          fillCtx,
           fogCtx,
           vertexBuffer,
           vertexIndexBuffer,
@@ -705,8 +748,8 @@ p.render = function (camera, viewport, stats) {
  * @param {Array} gameobjects - Your array of objects
  * @param {Float32Array} m - Clip-space (View-Projection) Matrix
  * @param {Uint32Array} out_visibleBuffer - Buffer to store indices. First element stores length.
- * @param {Uint32Array} out_lightsIndexBuffer - Buffer to store light source indices. First element store length.
- * @returns {number} visibleCount
+ * @param {Uint32Array} out_lightsIndexBuffer - Buffer to store light source indices. First element
+ *   stores length.
  */
 function roughCull(gameobjects, m, out_visibleBuffer, out_lightsIndexBuffer) {
   let visibleCount = 0;
@@ -1437,11 +1480,10 @@ function destructMesh(
  * @param {Uint32Array} indexBuffer - Array of face indices in the format [i0, i1, i2, i3, i4, i5, ...]
  * @param {number} count - Number of elements in indexBuffer
  * @param {number} offset - Starting index of the triangles to draw
- * @param {boolean} toClear - Should ctx be cleared before drawing?
  * @param {number} w - Canvas width
  * @param {number} h - Canvas height
- * @param {Int32Array} ctxStateBuffer - Persistent 3-slot fillStyle/strokeStyle/lineStyle dedup
- *   cache - see fillTriangles' doc for the full explanation.
+ * @param {Int32Array} ctxStateBuffer - Persistent per-layer ctx-state dedup cache; this function
+ *   uses only its own stroke slot (see shared/shaders.js for the slot layout).
  */
 function drawWireframe(
   ctx,
@@ -1501,8 +1543,8 @@ function drawWireframe(
 /**
  * Draws every face in [offset, offset+count) - the fill pass only: base color/texture for every
  * face, every shader, onto `ctx`. Shading and fog are separate passes (shadeTriangles,
- * fogTriangles below), called directly from render() instead of from inside this function - see
- * NEEDS_SHADE_PASS/NEEDS_FOG_PASS. This split exists because alternating draw calls between two
+ * fogTriangles below), called directly from render() instead of from inside this function, each
+ * gated on its own renderer-wide toggle. This split exists because alternating draw calls between two
  * separate <canvas> elements per face measured ~25x more expensive per call than batching on
  * Firefox, regardless of how much work each call does, so every `ctx` draw for a layer must
  * happen before any `shadeCtx`/`fogCtx` draw. See shaderRegistry.js's registerShader for the
@@ -1517,10 +1559,9 @@ function drawWireframe(
  * @param {number} count - Number of elements in indexBuffer
  * @param {number} offset - Starting index of the triangles to draw
  * @param {boolean} flush - Should ctx be cleared before drawing?
- * @param {number} w - Canvas width
- * @param {number} h - Canvas height
  * @param {Float32Array} clipGeometryBuffer - Array of clip geometry vertices in the format [x0, y0, z0, x1, y1, z1, ...]
- * @param {number} bgColor
+ * @param {number} bgColor - packed 0xRRGGBB painted over the layer when `flush` is set; -1
+ *   clears to transparent instead.
  * @param {number} fogType - Fog type
  * @param {number} fogColor - Fog color
  * @param {number} fogNearPane - Near plane distance
@@ -1541,8 +1582,6 @@ function drawWireframe(
  *   shared/shaders.js and flatShader/fog/fog.js.
  * @param {number} frameId - This frame's id (see render()), passed through to every shader
  *   dispatched below unchanged.
- * @returns {number} bitmask of NEEDS_SHADE_PASS / NEEDS_FOG_PASS - which of shadeTriangles /
- *   fogTriangles render() should call for this layer.
  */
 function fillTriangles(
   ctx,
@@ -1852,43 +1891,47 @@ function fillTriangles(
 }
 
 /**
- * Shade pass: only runs at all if fillTriangles' return value included NEEDS_SHADE_PASS for this
- * layer (see render()). Real shading for shaders that have it, an opaque-white fill
- * (whiteFillShade) for every other face - white is the identity for the `multiply` composite, and
- * drawing it is what stops shading already on the layer from showing through a nearer unshaded
- * face (see identityFill). Geometry (px/py/epx/epy) is
- * recomputed rather than cached from the fill pass - cheap ALU work, not worth a cache buffer
- * for. Ends by compositing `shadeCtx` onto `ctx` via `multiply`, if anything real was drawn.
- * @param {CanvasRenderingContext2D} ctx - this layer's shading buffer.
- * @param {boolean} flush
- * @param {Float32Array} vertexBuffer
- * @param {Uint32Array} vertexIndexBuffer
+ * Shade pass: resolves this layer's lighting into its own buffer, one opaque intensity per face.
+ * Faces whose shader has real shading get it; every other face gets an opaque-white fill
+ * (identityFill), white being the identity for the `multiply` this is later composited with.
+ * Painting that white is not optional - the shade buffer is painter's-algorithm like every other
+ * pass, so a nearer unshaded face has to overwrite the shading of whatever sits behind it.
+ *
+ * Draws into `ctx` only. render() composites the result onto the fill layer afterwards, and
+ * skips that composite entirely when nothing but white was drawn (CTX_STATE_SAW_REAL_SHADING).
+ *
+ * Screen geometry is recomputed here rather than cached from the fill pass - cheap ALU work, not
+ * worth a buffer - and is scaled into this buffer's own pixel space, which need not match the
+ * fill layer's (see Canvas2dViewport#setSize).
+ * @param {CanvasRenderingContext2D} ctx - this layer's shading buffer, not the fill layer.
+ * @param {boolean} flush - Should ctx be cleared before drawing?
+ * @param {Float32Array} vertexBuffer - Screen-space vertices, [x0, y0, x1, y1, ...].
+ * @param {Uint32Array} vertexIndexBuffer - Per-face-vertex offsets into vertexBuffer.
  * @param {Uint32Array} weldIdBuffer - Per-face-vertex adjacency identities (see destructMesh).
- * @param {Uint32Array} indexBuffer - depth-sorted face indices, same order fillTriangles used.
- * @param {Uint32Array} colorBuffer
- * @param {Uint8Array} shaderTypeBuffer
- * @param {number} count @param {number} offset
- * @param {number} offset
- * @param {number} w - ctx's (not shadeCtx's) width, for the final composite drawImage.
- * @param {number} h - ctx's (not shadeCtx's) height, for the final composite drawImage.
- * @param {Float32Array} clipGeometryBuffer
- * @param {number} fogType @param {number} fogColor @param {number} fogNearPane @param {number} fogFarPane
- * @param {number} fogColor
- * @param {number} fogNearPane
- * @param {number} fogFarPane
- * @param {number} ambientLightRgb
- * @param {Float32Array} faceNormalsBuffer @param {Float32Array} vertexNormalsBuffer
- * @param vertexNormalsBuffer
- * @param {Uint32Array} meshIndexBuffer @param {Uint32Array} meshFaceIndexBuffer
- * @param {Float32Array} meshFaceIndexBuffer
- * @param {Uint32Array} layerBuffers @param {number} layerOffset
- * @param layerOffset
- * @param {Uint32Array} lightsIndexBuffer @param {Object} gameObjects
- * @param gameObjects
- * @param {Int32Array} ctxStateBuffer
- * @param {Int32Array} statsBuffer
- * @param {number} frameId - This frame's id (see render()), passed through to every shader
- *   dispatched below unchanged.
+ * @param {Uint32Array} indexBuffer - Depth-sorted face indices, the same order fillTriangles used.
+ * @param {Uint32Array} colorBuffer - Packed per-face-vertex colors.
+ * @param {Uint8Array} shaderTypeBuffer - Per-face shader key, dispatched on below.
+ * @param {number} count - Number of faces to draw, starting at offset.
+ * @param {number} offset - Starting index into indexBuffer.
+ * @param {Float32Array} clipGeometryBuffer - Per-face-vertex camera-space positions.
+ * @param {number} fogType - Forwarded to the shader contract; shading itself is fog-independent,
+ *   fog being its own pass (see flatFog/fog.js).
+ * @param {number} fogColor - Forwarded, as above.
+ * @param {number} fogNearPane - Forwarded, as above.
+ * @param {number} fogFarPane - Forwarded, as above.
+ * @param {number} ambientLightRgb - Packed ambient term every lit shader starts from.
+ * @param {Float32Array} faceNormalsBuffer - World-space normal per face.
+ * @param {Float32Array} vertexNormalsBuffer - World-space normals per face vertex.
+ * @param {Uint32Array} meshIndexBuffer - Per-face mesh index within this layer.
+ * @param {Uint32Array} meshFaceIndexBuffer - Per-face index within its own mesh.
+ * @param {Uint32Array} layerBuffers - Flat per-layer GameObject index partitions (see groupLayers).
+ * @param {number} layerOffset - Start of this layer's partition inside layerBuffers.
+ * @param {Uint32Array} lightsIndexBuffer - Indices of active lights; element 0 is the count.
+ * @param {Object} gameObjects - The scene's object array, indexed into for meshes and lights.
+ * @param {Int32Array} ctxStateBuffer - Persistent per-layer ctx-state dedup cache; this pass uses
+ *   its own shade slot plus CTX_STATE_SAW_REAL_SHADING (see shared/shaders.js).
+ * @param {Int32Array} statsBuffer - Persistent per-layer draw-call counters.
+ * @param {number} frameId - This frame's id (see render()), passed to every shader unchanged.
  */
 function shadeTriangles(
   ctx,
