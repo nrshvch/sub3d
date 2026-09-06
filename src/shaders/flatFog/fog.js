@@ -19,6 +19,19 @@ const COLLINEAR_EPS = 0.05;
 export const CTX_STATE_FOG = 9;
 export const STATS_FOG_DRAW_CALLS = 1;
 
+/**
+ * Fog amount for one face: 0 at the near plane (untouched) through 1 at the far plane (fully
+ * fogged), from the face's camera-space centroid. Per face rather than per vertex - the whole fog
+ * pipeline treats a face as one flat fog value, which is what lets batchedFogFace merge
+ * neighbours that agree.
+ * @param {number} faceIdx - Index of the face, used to address clipGeometryBuffer.
+ * @param {Float32Array} clipGeometryBuffer - Per-face-vertex camera-space positions, 9 per face.
+ * @param {number} fogType - See CameraComponent.FogType; compared numerically here (0 NONE,
+ *   1 RADIAL, 2 RADIAL_FAST, 3 LINEAR). Anything but those three lit types yields 0.
+ * @param {number} fogNearPane - Distance at which fog starts.
+ * @param {number} fogFarPane - Distance at which fog is total.
+ * @returns {number} Fog amount clamped to [0, 1], so callers need no bounds guard of their own.
+ */
 export function computeFogAmount(
   faceIdx,
   clipGeometryBuffer,
@@ -103,8 +116,12 @@ export function computeFogAmount(
  * @param {Float32Array} clipGeometryBuffer - per-vertex camera-space geometry (see computeFogAmount).
  * @param {Uint32Array} counters - scratch counting-sort buckets, reused across all 4 passes.
  * @param {number} count - number of faces in indexBuffer to consider, starting at index 0.
- * @param {number} near @param {number} far - camera near/far clipping planes (matches radixSort).
- * @param {number} fogType @param {number} fogNearPane @param {number} fogFarPane
+ * @param {number} near - camera near clipping plane; with `far`, normalises depth into the
+ *   16-bit key the depth passes bucket on - the same mapping radixSort uses.
+ * @param {number} far - camera far clipping plane, as above.
+ * @param {number} fogType - see computeFogAmount; selects how the fog bucket key is derived.
+ * @param {number} fogNearPane - see computeFogAmount.
+ * @param {number} fogFarPane - see computeFogAmount.
  * @returns {number} the number of flat-shaded faces written to tempIndexBuffer.
  */
 export function fogSort(
@@ -257,17 +274,30 @@ export function fogSort(
  * `last` is true only for the final face fogTriangles passes in, so it is this pass's single
  * drain: the face is merged normally first, then every open polygon is flushed.
  * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer.
- * @param {number} px0 @param {number} py0
- * @param {number} px1 @param {number} py1
- * @param {number} px2 @param {number} py2 - unexpanded triangle coords, already scaled to
- *   fogCtx's pixel space by the caller.
- * @param {number} v0Idx @param {number} v1Idx @param {number} v2Idx
- * @param {Float32Array} clipGeometryBuffer
- * @param {number} faceIdx @param {number} meshIdx
- * @param {number} fogType @param {number} fogNearPane @param {number} fogFarPane
- * @param {Int32Array} ctxStateBuffer @param {Int32Array} statsBuffer
- * @param {number} frameId @param {boolean} last - see shaderRegistry.js's registerShader doc
- *   comment for the frameId/last contract.
+ * @param {number} px0 - first vertex x, already scaled into fogCtx's own pixel space.
+ * @param {number} py0 - first vertex y.
+ * @param {number} px1 - second vertex x.
+ * @param {number} py1 - second vertex y.
+ * @param {number} px2 - third vertex x.
+ * @param {number} py2 - third vertex y.
+ * @param {number} v0Idx - welded identity of the first vertex; the welder matches edges on these
+ *   rather than on coordinates, so a hard-edge mesh still reports its shared edges as shared.
+ * @param {number} v1Idx - welded identity of the second vertex.
+ * @param {number} v2Idx - welded identity of the third vertex.
+ * @param {Float32Array} clipGeometryBuffer - per-face-vertex camera-space positions, read by
+ *   computeFogAmount.
+ * @param {number} faceIdx - index of this face, used to address clipGeometryBuffer.
+ * @param {number} meshIdx - this face's mesh index within the layer; the welder refuses to merge
+ *   faces belonging to different meshes.
+ * @param {number} fogType - see computeFogAmount.
+ * @param {number} fogNearPane - see computeFogAmount.
+ * @param {number} fogFarPane - see computeFogAmount.
+ * @param {Int32Array} ctxStateBuffer - persistent per-layer ctx-state dedup cache; this pass uses
+ *   its own CTX_STATE_FOG slot.
+ * @param {Int32Array} statsBuffer - persistent per-layer draw-call counters.
+ * @param {number} frameId - this frame's id; welder state left from an older frame is dropped
+ *   rather than painted. See shaderRegistry.js's registerShader for the frameId/last contract.
+ * @param {boolean} last - final face of the pass, see above.
  */
 function batchedFogFace(
   fogCtx,
@@ -351,6 +381,13 @@ function batchedFogFace(
 
 let filterInvertSupported = null;
 
+/**
+ * Whether `ctx.filter = "invert(1)"` actually inverts on this browser, probed once by inverting a
+ * known black pixel and reading it back. compositeFogPass picks its invert on the result: the
+ * filtered self-blit where it works, a `difference` fill with white where it does not. The two
+ * produce byte-identical output.
+ * @returns {boolean} True if the filter path is usable; the result is cached after the first call.
+ */
 function supportsFilterInvert() {
   if (filterInvertSupported !== null) return filterInvertSupported;
 
@@ -379,10 +416,10 @@ supportsFilterInvert();
  * Composites this layer's fog buffer onto `ctx`: inverts `fogCtx` in place (keep -> fogAmount),
  * tints it by fogColor via multiply, then adds it back onto `ctx` via lighter - see fog.js's
  * fogFace for the per-face formula this composites.
- * @param {CanvasRenderingContext2D} ctx
- * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer (see
- *   fog.js's fogFace for what it holds).
- * @param {number} fogColor
+ * @param {CanvasRenderingContext2D} ctx - this layer's fill buffer, composited onto in place.
+ * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer, holding the keep factor;
+ *   inverted and tinted in place here, so it is consumed by this call.
+ * @param {number} fogColor - packed 0xRRGGBB, quantised to the 5-6-5 palette before use.
  */
 export function compositeFogPass(ctx, fogCtx, fogColor) {
   const cnv = ctx.canvas
@@ -424,30 +461,35 @@ export function compositeFogPass(ctx, fogCtx, fogColor) {
 }
 
 /**
- * Fog pass: only runs at all if drawTriangles' return value included NEEDS_FOG_PASS for this
- * layer (see render()) - draws this layer's flat-shaded faces, in the depth-dominant order
- * fogSort produced (see fog.js), into `fogCtx` (merging same-color same-mesh edge-adjacent
- * triangles via batchedFogFace along the way), then composites it onto `ctx` (see
- * compositeFogPass).
- * @param {CanvasRenderingContext2D} ctx
+ * Fog draw pass: draws this layer's flat-shaded faces, in the depth-dominant order fogSort
+ * produced, into `fogCtx` - merging same-colour same-mesh edge-adjacent triangles via
+ * batchedFogFace along the way. Gated in render() on the renderer-wide fog toggle and the
+ * camera's fogType.
+ *
+ * Touches no canvas but `fogCtx`, and leaves it holding the keep factor. render() composites it
+ * onto the fill layer separately, afterwards (see compositeFogPass).
+ *
+ * The buffer is cleared to opaque black first, which reads as keep=0 - fully fogged - so any
+ * area no face covers ends up pure fogColor once composited. That black is load-bearing, not
+ * just a reset.
  * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer.
- * @param {Float32Array} vertexBuffer
- * @param {Uint32Array} vertexIndexBuffer
- * @param {Uint32Array} weldIdBuffer
+ * @param {Float32Array} vertexBuffer - Screen-space vertices, [x0, y0, x1, y1, ...].
+ * @param {Uint32Array} vertexIndexBuffer - Per-face-vertex offsets into vertexBuffer.
+ * @param {Uint32Array} weldIdBuffer - Per-face-vertex adjacency identities (see destructMesh).
  * @param {Uint32Array} tempIndexBuffer - fogSort's output face indices.
  * @param {Uint32Array} meshIndexBuffer - per-face mesh index within this layer (see destructMesh).
  * @param {number} count - total valid entries in tempIndexBuffer, from fogSort.
- * @param {Float32Array} clipGeometryBuffer
- * @param {number} fogType
- * @param {number} fogNearPane
- * @param {number} fogFarPane
- * @param {Int32Array} ctxStateBuffer
- * @param {Int32Array} statsBuffer
+ * @param {Float32Array} clipGeometryBuffer - Per-face-vertex camera-space positions.
+ * @param {number} fogType - See computeFogAmount.
+ * @param {number} fogNearPane - See computeFogAmount.
+ * @param {number} fogFarPane - See computeFogAmount.
+ * @param {Int32Array} ctxStateBuffer - Persistent per-layer ctx-state dedup cache; this pass uses
+ *   its own CTX_STATE_FOG slot.
+ * @param {Int32Array} statsBuffer - Persistent per-layer draw-call counters.
  * @param {number} frameId - this frame's id, see batchedFogFace's doc comment and
  *   shaderRegistry.js's registerShader for the frameId/last contract.
  */
 export function fogTriangles(
-  ctx,
   fogCtx,
   vertexBuffer,
   vertexIndexBuffer,
