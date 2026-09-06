@@ -42,6 +42,7 @@ import {
   fogTriangles,
   STATS_FOG_DRAW_CALLS,
 } from "./shaders/flatFog/index.js";
+import { compositeFogPass } from "./shaders/flatFog/fog.js";
 
 const computeNormalMatrix = MeshComponent.computeNormalMatrix;
 const vec3TransformMat4 = math.vec3TransformMat4;
@@ -517,8 +518,6 @@ p.render = function (camera, viewport, stats) {
           l,
           0,
           flush,
-          vw,
-          vh,
           clipGeometryBuffer,
           cam.bgColor,
           cam.fogType,
@@ -550,7 +549,6 @@ p.render = function (camera, viewport, stats) {
       if (this.shadeEnabled) {
         const shadeStart = performance.now();
         shadeTriangles(
-          fillCtx,
           shadeCtx,
           flush,
           vertexBuffer,
@@ -561,14 +559,12 @@ p.render = function (camera, viewport, stats) {
           shaderTypeBuffer,
           l,
           0,
-          vw,
-          vh,
           clipGeometryBuffer,
-          camera.camera.fogType,
-          camera.camera.fogColor,
-          camera.camera.fogNearPane,
-          camera.camera.fogFarPane,
-          camera.camera.ambientLight,
+          cam.fogType,
+          cam.fogColor,
+          cam.fogNearPane,
+          cam.fogFarPane,
+          cam.ambientLight,
           faceNormalsBuffer,
           vertexNormalsBuffer,
           meshIndexBuffer,
@@ -582,9 +578,16 @@ p.render = function (camera, viewport, stats) {
           frameId,
         );
         totalShadeRasterTime += performance.now() - shadeStart;
+
+        if (ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING]) {
+          // Composite this layer's shading buffer onto the fill buffer.
+          fillCtx.globalCompositeOperation = "multiply";
+          fillCtx.drawImage(shadeCtx.canvas, 0, 0, fillCtx.canvas.width, fillCtx.canvas.height);
+          fillCtx.globalCompositeOperation = "source-over";
+        }
       }
 
-      if (this.fogEnabled && camera.camera.fogType !== FogType.NONE) {
+      if (this.fogEnabled && cam.fogType !== FogType.NONE) {
         // Sorts this layer's flat-shaded faces the same way radixSort does (depth, then mesh),
         // with fog bucket as an extra least-significant tie-break - depth stays dominant so
         // fogCtx's draw order always matches fillCtx's real occlusion (see fog.js's fogSort).
@@ -601,9 +604,9 @@ p.render = function (camera, viewport, stats) {
           l,
           cam.nearClippingPane,
           cam.farClippingPane,
-          camera.camera.fogType,
-          camera.camera.fogNearPane,
-          camera.camera.fogFarPane,
+          cam.fogType,
+          cam.fogNearPane,
+          cam.fogFarPane,
         );
         totalFogSortTime += performance.now() - fogSortStart;
 
@@ -617,18 +620,17 @@ p.render = function (camera, viewport, stats) {
           tempIndexBuffer,
           meshIndexBuffer,
           fogFaceCount,
-          vw,
-          vh,
           clipGeometryBuffer,
-          camera.camera.fogType,
-          camera.camera.fogColor,
-          camera.camera.fogNearPane,
-          camera.camera.fogFarPane,
+          cam.fogType,
+          cam.fogNearPane,
+          cam.fogFarPane,
           ctxStateBuffer,
           statsBuffer,
           frameId,
         );
         totalFogRasterTime += performance.now() - fogStart;
+
+        compositeFogPass(fillCtx, fogCtx, cam.fogColor);
       }
 
       // fillTriangles resets these slots itself (see its reset block) regardless of which passes
@@ -1553,8 +1555,6 @@ function fillTriangles(
   count,
   offset,
   flush,
-  w,
-  h,
   clipGeometryBuffer,
   bgColor,
   fogType,
@@ -1574,6 +1574,9 @@ function fillTriangles(
   statsBuffer,
   frameId,
 ) {
+  const cnv = ctx.canvas;
+  const w = cnv.width;
+  const h = cnv.height;
   const halfW = w * 0.5,
     halfH = h * 0.5;
 
@@ -1594,9 +1597,9 @@ function fillTriangles(
       const key = (qr << 8) | (qg << 3) | (qb >> 3);
 
       ctx.fillStyle = PALETTE_16BIT[key];
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.fillRect(0, 0, w, h);
     } else {
-      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.clearRect(0, 0, w, h);
     }
   }
 
@@ -1856,8 +1859,7 @@ function fillTriangles(
  * face (see identityFill). Geometry (px/py/epx/epy) is
  * recomputed rather than cached from the fill pass - cheap ALU work, not worth a cache buffer
  * for. Ends by compositing `shadeCtx` onto `ctx` via `multiply`, if anything real was drawn.
- * @param {CanvasRenderingContext2D} ctx - this layer's fill buffer, composited onto at the end.
- * @param {CanvasRenderingContext2D} shadeCtx - this layer's shading buffer.
+ * @param {CanvasRenderingContext2D} ctx - this layer's shading buffer.
  * @param {boolean} flush
  * @param {Float32Array} vertexBuffer
  * @param {Uint32Array} vertexIndexBuffer
@@ -1890,7 +1892,6 @@ function fillTriangles(
  */
 function shadeTriangles(
   ctx,
-  shadeCtx,
   flush,
   vertexBuffer,
   vertexIndexBuffer,
@@ -1900,8 +1901,6 @@ function shadeTriangles(
   shaderTypeBuffer,
   count,
   offset,
-  w,
-  h,
   clipGeometryBuffer,
   fogType,
   fogColor,
@@ -1920,14 +1919,18 @@ function shadeTriangles(
   statsBuffer,
   frameId,
 ) {
+  const cnv = ctx.canvas;
+  const w = cnv.width;
+  const h = cnv.height;
+
   if (flush) {
-    shadeCtx.clearRect(0, 0, shadeCtx.canvas.width, shadeCtx.canvas.height);
+    ctx.clearRect(0, 0, w, h);
   }
 
-  // Scale factors derived from shadeCtx's own backing size rather than from w/h, so they stay
+  // Scale factors derived from ctx's own backing size rather than from w/h, so they stay
   // correct whatever resolution the shade buffer is allocated at (see Canvas2dViewport.js).
-  const halfShadeW = shadeCtx.canvas.width * 0.5,
-    halfShadeH = shadeCtx.canvas.height * 0.5;
+  const halfShadeW = w * 0.5,
+    halfShadeH = h * 0.5;
 
   const len = offset + count;
 
@@ -1942,7 +1945,7 @@ function shadeTriangles(
     const w1Idx = weldIdBuffer[idx * 3 + 1];
     const w2Idx = weldIdBuffer[idx * 3 + 2];
 
-    // Scaled into shadeCtx's own pixel space, not ctx's (see halfShadeW/H above).
+    // Scaled into ctx's own pixel space, not ctx's (see halfShadeW/H above).
     const px0 = vertexBuffer[v0Idx] * halfShadeW + halfShadeW;
     const py0 = vertexBuffer[v0Idx + 1] * halfShadeH + halfShadeH;
     const px1 = vertexBuffer[v1Idx] * halfShadeW + halfShadeW;
@@ -1963,7 +1966,7 @@ function shadeTriangles(
     switch (shaderKey) {
       case ALBEDO_FLAT: {
         flatShaderShade(
-          shadeCtx,
+          ctx,
           px0,
           py0,
           px1,
@@ -1998,7 +2001,7 @@ function shadeTriangles(
       case TEXTURE: {
         // Texture changes the albedo, not the lighting - shaded like flat colour.
         flatShaderShade(
-          shadeCtx,
+          ctx,
           px0,
           py0,
           px1,
@@ -2033,7 +2036,7 @@ function shadeTriangles(
       case EMISSIVE_FLAT: {
         // EMISSIVE - forward-only, nothing real to shade.
         identityFill(
-          shadeCtx,
+          ctx,
           px0,
           py0,
           px1,
@@ -2067,7 +2070,7 @@ function shadeTriangles(
       }
       case AVG_ALBEDO_FLAT: {
         avgFlatShaderShade(
-          shadeCtx,
+          ctx,
           px0,
           py0,
           px1,
@@ -2101,7 +2104,7 @@ function shadeTriangles(
       }
       case SMOOTH_ALBEDO_FLAT: {
         smoothShaderShade(
-          shadeCtx,
+          ctx,
           px0,
           py0,
           px1,
@@ -2141,7 +2144,7 @@ function shadeTriangles(
         const shadeFn = shadeShaderRegistry[shaderKey];
 
         shadeFn(
-          shadeCtx,
+          ctx,
           px0,
           py0,
           px1,
@@ -2175,12 +2178,5 @@ function shadeTriangles(
         break;
       }
     }
-  }
-
-  if (ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING]) {
-    // Composite this layer's shading buffer onto the fill buffer.
-    ctx.globalCompositeOperation = "multiply";
-    ctx.drawImage(shadeCtx.canvas, 0, 0, w, h);
-    ctx.globalCompositeOperation = "source-over";
   }
 }

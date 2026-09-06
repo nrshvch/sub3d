@@ -383,12 +383,17 @@ supportsFilterInvert();
  * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer (see
  *   fog.js's fogFace for what it holds).
  * @param {number} fogColor
- * @param {number} w
- * @param {number} h
  */
-function compositeFogPass(ctx, fogCtx, fogColor, w, h) {
+export function compositeFogPass(ctx, fogCtx, fogColor) {
+  const cnv = ctx.canvas
+  const fogCnv = fogCtx.canvas;
+  const w = cnv.width;
+  const h = cnv.height;
+  const fogW = fogCnv.width;
+  const fogH = fogCnv.height;
+
   ctx.globalCompositeOperation = "multiply";
-  ctx.drawImage(fogCtx.canvas, 0, 0, w, h);
+  ctx.drawImage(fogCnv, 0, 0, w, h);
 
   const fqr = fogColor >>> 16;
   const fqg = (fogColor >>> 8) & 255;
@@ -399,22 +404,22 @@ function compositeFogPass(ctx, fogCtx, fogColor, w, h) {
 
   if (filterInvertSupported) {
     fogCtx.filter = "invert(1)";
-    fogCtx.drawImage(fogCtx.canvas, 0, 0);
+    fogCtx.drawImage(fogCnv, 0, 0);
     fogCtx.filter = "none";
   } else {
     fogCtx.globalCompositeOperation = "difference";
     fogCtx.fillStyle = "#ffffff";
-    fogCtx.fillRect(0, 0, fogCtx.canvas.width, fogCtx.canvas.height);
+    fogCtx.fillRect(0, 0, fogW, fogH);
     fogCtx.globalCompositeOperation = "source-over";
   }
 
   fogCtx.globalCompositeOperation = "multiply";
   fogCtx.fillStyle = fogStyle;
-  fogCtx.fillRect(0, 0, fogCtx.canvas.width, fogCtx.canvas.height);
+  fogCtx.fillRect(0, 0, fogW, fogH);
   fogCtx.globalCompositeOperation = "source-over";
 
   ctx.globalCompositeOperation = "lighter";
-  ctx.drawImage(fogCtx.canvas, 0, 0, w, h);
+  ctx.drawImage(fogCnv, 0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
 }
 
@@ -432,11 +437,8 @@ function compositeFogPass(ctx, fogCtx, fogColor, w, h) {
  * @param {Uint32Array} tempIndexBuffer - fogSort's output face indices.
  * @param {Uint32Array} meshIndexBuffer - per-face mesh index within this layer (see destructMesh).
  * @param {number} count - total valid entries in tempIndexBuffer, from fogSort.
- * @param {number} w - ctx's (not fogCtx's) width, for the final composite drawImage.
- * @param {number} h - ctx's (not fogCtx's) height, for the final composite drawImage.
  * @param {Float32Array} clipGeometryBuffer
  * @param {number} fogType
- * @param {number} fogColor
  * @param {number} fogNearPane
  * @param {number} fogFarPane
  * @param {Int32Array} ctxStateBuffer
@@ -453,23 +455,23 @@ export function fogTriangles(
   tempIndexBuffer,
   meshIndexBuffer,
   count,
-  w,
-  h,
   clipGeometryBuffer,
   fogType,
-  fogColor,
   fogNearPane,
   fogFarPane,
   ctxStateBuffer,
   statsBuffer,
   frameId,
 ) {
-  const halfFogW = fogCtx.canvas.width * 0.5,
-    halfFogH = fogCtx.canvas.height * 0.5;
+  const cnv = fogCtx.canvas;
+  const w = cnv.width;
+  const h = cnv.height;
+  const halfFogW = w * 0.5,
+    halfFogH = h * 0.5;
 
   // Reset every frame - compositeFogPass mutates fogCtx in place, so stale pixels would leak.
   fogCtx.fillStyle = "#000000";
-  fogCtx.fillRect(0, 0, fogCtx.canvas.width, fogCtx.canvas.height);
+  fogCtx.fillRect(0, 0, w, h);
 
   for (let i = 0; i < count; i++) {
     const idx = tempIndexBuffer[i];
@@ -520,6 +522,4 @@ export function fogTriangles(
       last,
     );
   }
-
-  compositeFogPass(ctx, fogCtx, fogColor, w, h);
 }
