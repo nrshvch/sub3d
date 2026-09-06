@@ -32,7 +32,6 @@ import {
   STATS_FILL_DRAW_CALLS,
   STATS_SHADE_DRAW_CALLS,
   CTX_STATE_FILL_PASS_FILL_STYLE_SLOT,
-  CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT,
 } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
 import { smoothShaderShade } from "./shaders/smoothShade.js";
@@ -168,10 +167,40 @@ export default function Canvas2dRenderer() {
   // fogSort's ping-pong scratch across its 4 passes - see fog.js.
   this.fogSortScratchBuffer = new Uint32Array(0);
   this.counters = new Uint32Array(256);
-  /*
-  Persistent per-layer state shaders read/write directly via flatFill - see shared/shaders.js's
-  registerShader doc comment for the full slot layout (fillStyle dedup keys, saw-real-shading
-  flag). Slots 1/2 are reserved for drawWireframe's own independent stroke-only rendering.
+  /**
+   * Persistent canvas-state cache the passes and their shaders read and write directly, so a run
+   * of same-styled faces touches `fillStyle`/`strokeStyle` once instead of once per face. One
+   * buffer serves every pass and every layer, so slots must not collide - the constants live
+   * beside the code that owns them (shared/shaders.js, flatFog/fog.js) and are listed here.
+   *
+   * Colour slots hold a 16-bit 5-6-5 palette key (see palette.js), which is what the passes
+   * compare against; -1 means "unset, set the style explicitly on the next face". render() resets
+   * 0, 3 and 9 to -1 per layer, because the cached value describes whichever canvas was drawn to
+   * last and each layer has its own three.
+   *
+   *   0  CTX_STATE_FILL_PASS_FILL_STYLE_SLOT  the colour of whatever is drawing onto the layer's
+   *      fill canvas - the fill pass, or drawWireframe, which stands in for it entirely and so
+   *      can share the slot rather than reserve its own (it resets the slot itself on entry,
+   *      since it runs on a canvas the fill pass may have styled on an earlier frame). Both
+   *      fillStyle and strokeStyle are set together from it, by both: the welder strokes the seam
+   *      in the fill colour, and the wireframe strokes in its own. textureWeld.js forces it back
+   *      to -1 after a pattern fill, since a CanvasPattern is not a palette entry and the cached
+   *      key would no longer describe ctx.
+   *   1-2  free
+   *   3  CTX_STATE_SHADE_FILL  shade pass colour, on the layer's shade canvas.
+   *   4-7  free
+   *   8  CTX_STATE_SAW_REAL_SHADING  flag, not a colour: 0/1, reset to 0 per layer. Raised when
+   *      the shade pass emits anything other than opaque white - by the welder and flatFill when
+   *      they set a non-white style, and directly by smoothShade, whose gradient fills bypass
+   *      that check. render() reads it to skip compositing a shade layer that says nothing, white
+   *      being the identity for the `multiply` that composite uses.
+   *   9  CTX_STATE_FOG  fog pass colour, on the layer's fog canvas - a quantised fog amount
+   *      rather than an albedo, but the same dedup.
+   *
+   * The welder takes its colour slot and its saw-real slot as arguments rather than hardcoding
+   * them (see weld.js's styleSlot/sawRealSlot), which is what lets all three flat passes share
+   * one implementation over three different colour spaces; -1 as the saw-real slot means "no
+   * flag to raise", which is what the fill and fog passes pass.
    */
   this.ctxStateBuffer = new Int32Array(10);
   // Separate from ctxStateBuffer on purpose - pure draw-call counters with no bearing on how
@@ -1482,8 +1511,9 @@ function destructMesh(
  * @param {number} offset - Starting index of the triangles to draw
  * @param {number} w - Canvas width
  * @param {number} h - Canvas height
- * @param {Int32Array} ctxStateBuffer - Persistent per-layer ctx-state dedup cache; this function
- *   uses only its own stroke slot (see shared/shaders.js for the slot layout).
+ * @param {Int32Array} ctxStateBuffer - Persistent per-layer ctx-state dedup cache. Shares the
+ *   fill pass's colour slot rather than reserving one: wireframe replaces that pass outright, so
+ *   the two never draw in the same frame. Reset here on entry (see Canvas2dRenderer's slot map).
  */
 function drawWireframe(
   ctx,
@@ -1506,13 +1536,13 @@ function drawWireframe(
   // Reset once per layer, same as fillTriangles - canvas state (and this cache) can carry over
   // from whatever drew last, so force an explicit ctx style set on the first face drawn.
   ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = -1;
-  ctxStateBuffer[CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT] = -1;
 
   ctx.beginPath();
 
-  if (ctxStateBuffer[CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT] !== BLUE16) {
-    ctx.strokeStyle = PALETTE_16BIT[BLUE16]; // 0xf8 >> 3 = 31
-    ctxStateBuffer[CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT] = BLUE16;
+  if (ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] !== BLUE16) {
+    ctx.fillStyle = PALETTE_16BIT[BLUE16];
+    ctx.strokeStyle = PALETTE_16BIT[BLUE16];
+    ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = BLUE16;
   }
 
   for (let i = offset; i < len; i++) {

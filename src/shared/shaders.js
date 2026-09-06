@@ -4,7 +4,6 @@ import { PALETTE_16BIT, WHITE16 } from "../palette.js";
 // Slots into the shared ctxStateBuffer/statsBuffer Canvas2dRenderer.js owns (see
 // shaderRegistry.js's registerShader doc comment for the full layout).
 export const CTX_STATE_FILL_PASS_FILL_STYLE_SLOT = 0;
-export const CTX_STATE_FILL_PASS_STROKE_STYLE_SLOT = 1;
 export const CTX_STATE_SHADE_FILL = 3;
 
 export const CTX_STATE_SAW_REAL_SHADING = 8;
