@@ -23,7 +23,7 @@
  * several independent passes at once.
  */
 
-import { PALETTE_16BIT } from "../palette.js";
+import { PALETTE_16BIT, WHITE16 } from "../palette.js";
 
 // Polygons kept open at once, tracked by two int32 free-mask words. Enough that a face usually
 // finds its neighbour still open; past that, the added scan costs more than the merges it wins.
@@ -383,7 +383,7 @@ export function weldFlushSlot(
     ctx.fillStyle = style;
     ctx.strokeStyle = style;
     ctxStateBuffer[styleSlot] = color16;
-    if (sawRealSlot !== -1 && color16 !== 0xffff)
+    if (sawRealSlot !== -1 && color16 !== WHITE16)
       ctxStateBuffer[sawRealSlot] = 1;
   }
 
