@@ -105,7 +105,7 @@ export function identityFill(
     py1,
     px2,
     py2,
-    0xffff,
+    WHITE16,
     CTX_STATE_SHADE_FILL,
     ctxStateBuffer,
     statsBuffer,
