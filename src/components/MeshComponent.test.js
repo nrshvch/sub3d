@@ -93,3 +93,80 @@ describe("Mesh#updateWeldMap", () => {
     expect(Array.from(mesh.weldMap)).toEqual([0, 0]); // but contents fully recomputed
   });
 });
+
+describe("Mesh.computeAdjacency", () => {
+  it("pairs two triangles across their shared edge", () => {
+    // 0-1-2 and 3-2-1: the second presents edge 2->1, reversing the first's 1->2.
+    const r = Mesh.computeAdjacency(new Uint32Array([0, 1, 2, 3, 2, 1]), null);
+    expect(r.adjTri[1]).toBe(1); // tri 0, edge 1 -> tri 1
+    expect(r.adjEdge[1]).toBe(1); // ...at its edge 1
+    expect(r.adjTri[4]).toBe(0); // and symmetrically back
+    expect(r.adjEdge[4]).toBe(1);
+    expect(r.boundaryEdges).toBe(4); // the quad's outline
+  });
+
+  it("finds neighbours across split vertices via the weld map", () => {
+    // The same quad as a hard-edge mesh: every triangle owns private copies of its corners, so raw
+    // indices share nothing. This is the case that matters - without the weld map, adjacency finds
+    // no neighbours at all and every edge would expand.
+    const faces = new Uint32Array([0, 1, 2, 3, 4, 5]);
+    const weldMap = new Uint32Array([0, 1, 2, 3, 2, 1]); // 4->2, 5->1
+
+    expect(Mesh.computeAdjacency(faces, null).boundaryEdges).toBe(6);
+
+    const r = Mesh.computeAdjacency(faces, weldMap);
+    expect(r.adjTri[1]).toBe(1);
+    expect(r.adjTri[4]).toBe(0);
+    expect(r.boundaryEdges).toBe(4);
+  });
+
+  it("pairs a strip along its interior edges only", () => {
+    const faces = new Uint32Array([0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5]);
+    const r = Mesh.computeAdjacency(faces, null);
+    expect(r.boundaryEdges).toBe(12 - 6); // 3 interior edges, paired from both sides
+    for (const [t, e, nt] of [
+      [0, 1, 1],
+      [1, 0, 0],
+      [1, 2, 2],
+      [2, 0, 1],
+      [2, 1, 3],
+      [3, 0, 2],
+    ]) {
+      expect(r.adjTri[t * 3 + e]).toBe(nt);
+    }
+  });
+
+  it("leaves a co-oriented duplicate edge unpaired rather than mispairing it", () => {
+    // Non-manifold: three triangles on one edge, two presenting it the same way round. The first
+    // reversed pair wins and the extra face stays boundary.
+    const faces = new Uint32Array([0, 1, 2, 3, 2, 1, 4, 2, 1]);
+    const r = Mesh.computeAdjacency(faces, null);
+    expect(r.adjTri[1]).toBe(1);
+    expect(r.adjTri[4]).toBe(0);
+    expect(r.adjTri[7]).toBe(-1);
+  });
+
+  it("never makes a degenerate triangle its own neighbour", () => {
+    // Vertices 0 and 1 weld together, so edges 1->2 and 2->0 reverse each other within one
+    // triangle. Pairing them would let the welder merge a face into its own ring.
+    const r = Mesh.computeAdjacency(
+      new Uint32Array([0, 1, 2]),
+      new Uint32Array([0, 0, 2]),
+    );
+    expect(Array.from(r.adjTri)).toEqual([-1, -1, -1]);
+    expect(r.boundaryEdges).toBe(3);
+  });
+
+  it("reuses the output arrays when they are already the right size", () => {
+    const faces = new Uint32Array([0, 1, 2, 3, 2, 1]);
+    const first = Mesh.computeAdjacency(faces, null);
+    const again = Mesh.computeAdjacency(
+      faces,
+      null,
+      first.adjTri,
+      first.adjEdge,
+    );
+    expect(again.adjTri).toBe(first.adjTri);
+    expect(again.adjEdge).toBe(first.adjEdge);
+  });
+});

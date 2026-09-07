@@ -34,6 +34,7 @@
  * joining is exempt - a coplanar edge-sharing neighbour cannot occlude it.
  */
 import { CTX_STATE_FILL_PASS_FILL_STYLE_SLOT } from "../../shared/shaders.js";
+import { EXPAND } from "../../shared/weld.js";
 
 const N_SLOTS = 32;
 
@@ -48,6 +49,12 @@ const COPLANAR_DOT = 0.9999;
 // Worst screen-space deviation, in pixels, the chart's affine may show at an incoming face's
 // corners. Half a pixel keeps the merge below what the rasteriser can express.
 const FIT_EPS = 0.5;
+
+// The outward offset comes from the flat welder: the seam being repaired is a
+// property of how Canvas2D composites coverage, not of either welder, so both passes must offset by
+// the same amount or a textured face and a flat one meeting at an edge disagree about where the
+// boundary is.
+const GUARD_DILATE = 2 * EXPAND;
 
 const EDGE_CAP = 2048;
 const EDGE_MASK = EDGE_CAP - 1;
@@ -79,6 +86,9 @@ export function createTextureWeldState() {
     bu: new Float32Array(N_SLOTS * MAX_CHART_VERTS),
     bv: new Float32Array(N_SLOTS * MAX_CHART_VERTS),
     bid: new Int32Array(N_SLOTS * MAX_CHART_VERTS),
+    // 1 where the boundary edge LEAVING vertex i must be pushed outward at flush, i.e. the face
+    // across it is drawn later. See computeExpandMasks in shared/shaders.js.
+    bexp: new Uint8Array(N_SLOTS * MAX_CHART_VERTS),
     // The mesh each chart came from, to reach its texture pattern at flush.
     meshRef: new Array(N_SLOTS).fill(null),
     // Directed-edge table: (from -> to) -> slot, cleared in O(1) by bumping the generation.
@@ -187,9 +197,13 @@ function deindexRing(st, slot) {
 /**
  * Emits one chart as a single pattern fill and releases the slot.
  *
- * The boundary is emitted exactly as the geometry gives it - no outward offset. Merging already
- * removes the seam that mattered here, the one along a face's own diagonal, by never rasterising
- * it; the boundaries that remain are silhouettes, where an offset would only inflate the shape.
+ * The boundary is pushed outward as it is emitted, which is this pass's whole answer to seams - a
+ * pattern fill has no stroke to repair them with. Only the edges this chart OWNS move, meaning the
+ * ones whose neighbouring face is drawn later; see computeExpandMasks. Merging already removed the
+ * seam that mattered most, a face's own diagonal, by never rasterising it.
+ *
+ * The offset lives here rather than in the ring, so what the fit test and the edge table see stays
+ * the true projected geometry.
  *
  * @param {object} st welder state
  * @param {number} slot chart to emit; a free slot is a no-op
@@ -240,17 +254,53 @@ export function textureWeldFlushSlot(
   // its own style rather than trusting a stale hit.
   ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = -1;
 
-  ctx.setTransform(
-    st.affine[ab],
-    st.affine[ab + 1],
-    st.affine[ab + 2],
-    st.affine[ab + 3],
-    st.affine[ab + 4],
-    st.affine[ab + 5],
-  );
+  const a = st.affine[ab];
+  const b = st.affine[ab + 1];
+  const c = st.affine[ab + 2];
+  const d = st.affine[ab + 3];
+
+  ctx.setTransform(a, b, c, d, st.affine[ab + 4], st.affine[ab + 5]);
+
+  // Seam repair. Two vertices are ADDED per repaired edge - the boundary steps out and back -
+  // rather than the edge lines being offset and re-intersected at the corners. Re-intersecting
+  // moves the vertices at both ends of every edge it touches, and those corners are shared with
+  // edges nobody asked to move, so the chart pokes out from under the neighbour that was supposed
+  // to cover it. Stepping out leaves every original corner exactly where the fit put it.
+  //
+  // The path is in texture space but the offset is a pixel count, so the edge is measured on
+  // SCREEN and only the resulting displacement is mapped back. Translation drops out of that: an
+  // offset is a difference of points, so the linear part is all that is needed either way. The
+  // displacement is constant along an edge, so one inverse-map serves both of its ends.
+  const det = a * d - b * c;
+  const invDet = det > 1e-12 || det < -1e-12 ? 1 / det : 0;
+  const bexp = st.bexp;
+
   ctx.beginPath();
-  ctx.moveTo(bu[base], bv[base]);
-  for (let i = 1; i < len; i++) ctx.lineTo(bu[base + i], bv[base + i]);
+  for (let i = 0; i < len; i++) {
+    const u = bu[base + i];
+    const v = bv[base + i];
+    if (i === 0) ctx.moveTo(u, v);
+    else ctx.lineTo(u, v);
+    if (bexp[base + i] === 0) continue;
+
+    const j = i + 1 === len ? 0 : i + 1;
+    const uj = bu[base + j];
+    const vj = bv[base + j];
+    const ex = a * (uj - u) + c * (vj - v);
+    const ey = b * (uj - u) + d * (vj - v);
+    // Outward is (ey, -ex), the same convention as the flat welder.
+    const px = ex < 0 ? -ex : ex;
+    const py = ey < 0 ? -ey : ey;
+    const l = px > py ? px + 0.4 * py : py + 0.4 * px; // octagonal norm, no sqrt
+    if (l < 1e-6) continue;
+    const inv = EXPAND / l;
+    const nx = ey * inv;
+    const ny = -ex * inv;
+    const du = (d * nx - c * ny) * invDet;
+    const dv = (a * ny - b * nx) * invDet;
+    ctx.lineTo(u + du, v + dv);
+    ctx.lineTo(uj + du, vj + dv);
+  }
   ctx.fill();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -331,6 +381,7 @@ export function textureWeldAddFace(
   id2,
   px2,
   py2,
+  expandMask = 0,
 ) {
   const slots = st.slots;
   const seq = ++st.seq;
@@ -346,6 +397,8 @@ export function textureWeldAddFace(
   let newU = 0;
   let newV = 0;
   let newId = -1;
+  let cancelled = -1; // triangle edge the single match cancels
+  let survivor = -1; // triangle edge that outlives a notch
 
   if (st.live > 0) {
     // A consistently wound neighbour presents the shared edge reversed, so a match is a lookup of
@@ -418,16 +471,19 @@ export function textureWeldAddFace(
           newU = u2;
           newV = v2;
           newId = id2;
+          cancelled = 0;
         } else if (at1 !== -1) {
           hitA = at1;
           newU = u0;
           newV = v0;
           newId = id0;
+          cancelled = 1;
         } else {
           hitA = at2;
           newU = u1;
           newV = v1;
           newId = id1;
+          cancelled = 2;
         }
         target = s;
       } else if (matches === 2) {
@@ -439,6 +495,8 @@ export function textureWeldAddFace(
         if (first === -1) continue;
         hitA = first;
         hitB = (first + 1) % len;
+        // Two of the triangle's edges cancel; the third survives onto the boundary.
+        survivor = at0 === -1 ? 0 : at1 === -1 ? 1 : 2;
         target = s;
       }
       // Three matches would close the ring into nothing; refuse and let it seed.
@@ -452,8 +510,12 @@ export function textureWeldAddFace(
       if (s === target) continue;
       if (slots[s * SL_STRIDE + SL_USED] === 0) continue;
       const g = s << 2;
-      if (aabb[g] > fx1 || aabb[g + 2] < fx0) continue;
-      if (aabb[g + 1] > fy1 || aabb[g + 3] < fy0) continue;
+      // Dilated like the flat welder's: a flush paints up to EXPAND outside the geometry it was
+      // given, so two charts that merely abut still contend for the pixels between them.
+      if (aabb[g] > fx1 + GUARD_DILATE || aabb[g + 2] < fx0 - GUARD_DILATE)
+        continue;
+      if (aabb[g + 1] > fy1 + GUARD_DILATE || aabb[g + 3] < fy0 - GUARD_DILATE)
+        continue;
       textureWeldFlushSlot(st, s, ctx, ctxStateBuffer, statsBuffer, callsSlot);
     }
   }
@@ -465,6 +527,7 @@ export function textureWeldAddFace(
     const bu = st.bu;
     const bv = st.bv;
     const bid = st.bid;
+    const bexp = st.bexp;
 
     if (hitB === -1) {
       // Extend: the new corner goes between the endpoints of the matched edge.
@@ -475,10 +538,14 @@ export function textureWeldAddFace(
         bu[base + i] = bu[base + i - 1];
         bv[base + i] = bv[base + i - 1];
         bid[base + i] = bid[base + i - 1];
+        bexp[base + i] = bexp[base + i - 1];
       }
       bu[base + hitA + 1] = newU;
       bv[base + hitA + 1] = newV;
       bid[base + hitA + 1] = newId;
+      // The matched edge is gone and the triangle's other two take its place, in cyclic order.
+      bexp[base + hitA] = (expandMask >> ((cancelled + 1) % 3)) & 1;
+      bexp[base + hitA + 1] = (expandMask >> ((cancelled + 2) % 3)) & 1;
       slots[sb + SL_LEN] = len + 1;
       edgeInsert(st, from, newId, target);
       edgeInsert(st, newId, to, target);
@@ -494,7 +561,11 @@ export function textureWeldAddFace(
         bu[base + i] = bu[base + i + 1];
         bv[base + i] = bv[base + i + 1];
         bid[base + i] = bid[base + i + 1];
+        bexp[base + i] = bexp[base + i + 1];
       }
+      // Removing the mid vertex slides `from` down one when it wrapped past the end.
+      bexp[base + (hitA < mid ? hitA : hitA - 1)] =
+        (expandMask >> survivor) & 1;
       slots[sb + SL_LEN] = len - 1;
       edgeInsert(st, from, to, target);
     }
@@ -566,6 +637,10 @@ export function textureWeldAddFace(
   st.bu[base + 2] = u2;
   st.bv[base + 2] = v2;
   st.bid[base + 2] = id2;
+  // Vertex k's outgoing edge IS triangle edge k, by construction of the seed ring.
+  st.bexp[base] = expandMask & 1;
+  st.bexp[base + 1] = (expandMask >> 1) & 1;
+  st.bexp[base + 2] = (expandMask >> 2) & 1;
 
   const sb = slot * SL_STRIDE;
   slots[sb + SL_USED] = 1;

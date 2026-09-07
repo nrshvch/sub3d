@@ -48,6 +48,9 @@ export function flatShaderShade(
   statsBuffer,
   frameId,
   last,
+  // 1 bit per triangle edge: this face owns that edge's seam repair and must push it outward at
+  // flush. See computeExpandMasks in shared/shaders.js and weldFlushSlot in shared/weld.js.
+  expandMask,
 ) {
   // Shading is texture-independent - the same lit intensity multiplies either the raw albedo or
   // the texture once composited, so there's no texture branch here at all. It's fog-independent
@@ -130,6 +133,7 @@ export function flatShaderShade(
     px2,
     py2,
     v2Idx,
+    expandMask,
   );
 
   if (last) {

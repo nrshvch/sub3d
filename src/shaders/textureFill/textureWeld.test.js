@@ -5,6 +5,7 @@ import {
   textureWeldFlushAll,
   textureWeldReset,
 } from "./textureWeld.js";
+import { EXPAND } from "../../shared/weld.js";
 
 /**
  * The merge is guarded by one test - does the pending face's affine still reproduce the incoming
@@ -57,7 +58,7 @@ function makeRig() {
   const mesh = { textureImage: {}, texturePattern: null };
 
   // Each corner is [id, u, v, px, py]; the identity map is used unless a test says otherwise.
-  const add = (a, b, c, m = mesh, n = [0, 0, 1]) =>
+  const add = (a, b, c, m = mesh, n = [0, 0, 1], expandMask = 0) =>
     textureWeldAddFace(
       st,
       ctx,
@@ -83,6 +84,7 @@ function makeRig() {
       c[0],
       c[3],
       c[4],
+      expandMask,
     );
   const flush = () =>
     textureWeldFlushAll(st, ctx, ctxStateBuffer, statsBuffer, CALLS);
@@ -102,6 +104,16 @@ const T2 = [
   [3, 64, 64, 64, 64],
   [4, 0, 64, 0, 64],
 ];
+
+// Emitted points are exact - the offset moves them, nothing rounds them - so a tight tolerance is
+// right; it only absorbs the octagonal norm's ~1% and float32 storage of the affine.
+function expectAt(path, expected) {
+  expect(path).toHaveLength(expected.length);
+  for (let i = 0; i < expected.length; i++) {
+    expect(path[i][0], `vertex ${i} x`).toBeCloseTo(expected[i][0], 1);
+    expect(path[i][1], `vertex ${i} y`).toBeCloseTo(expected[i][1], 1);
+  }
+}
 
 describe("textured coplanar pair merger", () => {
   let r;
@@ -194,26 +206,57 @@ describe("textured coplanar pair merger", () => {
     expect(r.statsBuffer[CALLS]).toBe(0);
   });
 
-  it("emits the boundary exactly, with no outward offset", () => {
-    // Merging removes the seam that mattered - a face's own diagonal - by never rasterising it.
-    // What is left is silhouette, where an offset would only inflate the shape.
-    r.add(...T1);
-    r.add(...T2);
+  it("steps the owned edge out and back, leaving every original corner put", () => {
+    // Two charts meeting at an edge each antialias their own half of it, and source-over of two
+    // half coverages leaves the background showing through. A pattern has no stroke to close that,
+    // so the boundary detours outward - but only over edges whose neighbour is drawn later, or
+    // both sides push into each other and the boundary is displaced rather than repaired.
+    //
+    // Two vertices are ADDED. Offsetting the edge lines and re-intersecting at the corners instead
+    // would move corners shared with edges nobody asked to move, and the chart would poke out from
+    // under the neighbour meant to cover the detour.
+    r.add(T1[0], T1[1], T1[2], r.mesh, [0, 0, 1], 1);
     r.flush();
 
-    const path = r.ctx.paths[0];
-    const corners = [
+    // UVs map 1:1 to the screen here, so the offset reads directly.
+    expectAt(r.ctx.paths[0], [
+      [0, 0],
+      [0, -EXPAND],
+      [64, -EXPAND],
+      [64, 0],
+      [64, 64],
+    ]);
+  });
+
+  it("leaves geometry untouched when it owns no edge", () => {
+    r.add(T1[0], T1[1], T1[2]);
+    r.flush();
+    expectAt(r.ctx.paths[0], [
       [0, 0],
       [64, 0],
       [64, 64],
-      [0, 64],
-    ];
-    expect(path).toHaveLength(4);
-    for (const [ex, ey] of corners) {
-      const hit = path.some(
-        ([x, y]) => Math.abs(x - ex) < 1e-4 && Math.abs(y - ey) < 1e-4,
-      );
-      expect(hit, `no emitted vertex at ${ex},${ey}`).toBe(true);
-    }
+    ]);
+  });
+
+  it("sizes that offset in screen pixels, through the map", () => {
+    // The path is emitted in texture space, so a fixed step there would scale with the texture.
+    // Same chart under a map four times coarser: the texture-space step has to grow to land the
+    // same pixel on screen. Emitted points are mapped back through the affine, so the assertion is
+    // in screen pixels either way.
+    const shrink = ([id, u, v]) => [id, u, v, u * 0.25, v * 0.25];
+    const [a, b, c] = T1.map(shrink);
+    r.add(a, b, c, r.mesh, [0, 0, 1], 1);
+    r.flush();
+
+    expectAt(
+      r.ctx.paths[0].map(([x, y]) => [x * 0.25, y * 0.25]),
+      [
+        [0, 0],
+        [0, -EXPAND],
+        [16, -EXPAND],
+        [16, 0],
+        [16, 16],
+      ],
+    );
   });
 });

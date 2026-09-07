@@ -23,8 +23,11 @@ const weldState = createTextureWeldState();
  *
  * Faces are not drawn one at a time. Coplanar neighbours sharing a texture map are merged into one
  * chart first - see textureWeld.js - so a box side's two triangles become a single path, single
- * transform, single fill, with the shared diagonal never rasterised. This shader's only jobs are
- * to reject faces with no usable texture and to hand the rest to the welder.
+ * transform, single fill, with the shared diagonal never rasterised. The seams that remain, where
+ * one chart meets the next, are closed there too - by a sub-pixel outward offset, since a pattern
+ * fill has no way to match the flat welder's stroke. Only the edges whose neighbour is drawn later
+ * move, which is what keeps the offset invisible - see computeExpandMasks. This shader's only jobs
+ * are to reject faces with no usable texture and to hand the rest to the welder.
  */
 export function textureShaderFill(
   ctx,
@@ -56,6 +59,9 @@ export function textureShaderFill(
   statsBuffer,
   frameId,
   last,
+  // 1 bit per triangle edge: this face owns that edge's seam repair and must push it outward at
+  // flush. See computeExpandMasks in shared/shaders.js and textureWeldFlushSlot below.
+  expandMask,
 ) {
   if (weldState.frameId !== frameId) {
     // Charts left over from a frame that is over: drop them rather than painting last frame's
@@ -111,6 +117,7 @@ export function textureShaderFill(
         v2Idx,
         px2,
         py2,
+        expandMask,
       );
 
       if (last) {

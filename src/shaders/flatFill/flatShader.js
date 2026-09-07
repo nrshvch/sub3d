@@ -48,6 +48,9 @@ export function flatShaderFill(
   statsBuffer,
   frameId,
   last,
+  // 1 bit per triangle edge: this face owns that edge's seam repair and must push it outward at
+  // flush. See computeExpandMasks in shared/shaders.js and weldFlushSlot in shared/weld.js.
+  expandMask,
 ) {
   if (weldState.frameId !== frameId) {
     // Slots left over from a frame that is over: drop them rather than painting last frame's
@@ -83,6 +86,7 @@ export function flatShaderFill(
     px2,
     py2,
     v2Idx,
+    expandMask,
   );
 
   if (last) {
