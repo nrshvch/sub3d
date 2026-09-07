@@ -18,6 +18,12 @@ const weldState = createWeldState();
 // hairline T-junction crack, since the neighbour still has a vertex there.
 const COLLINEAR_EPS = 0.05;
 
+/**
+ * Shade pass for flat-coloured and textured faces alike - shading is texture-independent, since the
+ * same lit intensity multiplies either the raw albedo or the texture once composited.
+ *
+ * @type {import("../shaderRegistry.js").ShaderFn}
+ */
 export function flatShaderShade(
   shadeCtx,
   px0,

@@ -122,6 +122,13 @@ export function textureWeldReset(st) {
   st.live = 0;
 }
 
+/**
+ * Mixes a directed edge into a table index. Both endpoints are welded vertex identities.
+ *
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
+ * @returns {number} index into the edge table, already masked to its capacity
+ */
 function edgeHash(from, to) {
   let h = Math.imul(from, 0x9e3779b1) ^ Math.imul(to, 0x85ebca77);
   h ^= h >>> 15;
@@ -130,6 +137,14 @@ function edgeHash(from, to) {
   return h & EDGE_MASK;
 }
 
+/**
+ * Looks up which chart owns a directed boundary edge.
+ *
+ * @param {object} st welder state
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
+ * @returns {number} the chart slot owning (from -> to), or -1
+ */
 function edgeFind(st, from, to) {
   const gen = st.gen;
   let i = edgeHash(from, to);
@@ -143,6 +158,14 @@ function edgeFind(st, from, to) {
   return -1;
 }
 
+/**
+ * Records that `slot` owns the directed boundary edge (from -> to).
+ *
+ * @param {object} st welder state
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
+ * @param {number} slot chart the edge belongs to
+ */
 function edgeInsert(st, from, to, slot) {
   const gen = st.gen;
   let i = edgeHash(from, to);
@@ -161,6 +184,14 @@ function edgeInsert(st, from, to, slot) {
   }
 }
 
+/**
+ * Marks a directed boundary edge dead. Probing still treats the entry as occupied so it cannot
+ * break a chain; the whole table is discarded by the generation bump between frames.
+ *
+ * @param {object} st welder state
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
+ */
 function edgeDelete(st, from, to) {
   const gen = st.gen;
   let i = edgeHash(from, to);
@@ -176,6 +207,12 @@ function edgeDelete(st, from, to) {
   }
 }
 
+/**
+ * Publishes every edge of a chart's boundary ring into the edge table.
+ *
+ * @param {object} st welder state
+ * @param {number} slot chart whose ring to index
+ */
 function indexRing(st, slot) {
   const base = slot * MAX_CHART_VERTS;
   const len = st.slots[slot * SL_STRIDE + SL_LEN];
@@ -185,6 +222,12 @@ function indexRing(st, slot) {
   }
 }
 
+/**
+ * Removes every edge of a chart's boundary ring from the edge table.
+ *
+ * @param {object} st welder state
+ * @param {number} slot chart whose ring to drop
+ */
 function deindexRing(st, slot) {
   const base = slot * MAX_CHART_VERTS;
   const len = st.slots[slot * SL_STRIDE + SL_LEN];
@@ -355,6 +398,19 @@ export function textureWeldFlushAll(
  *   matched on - positions are never compared
  * @param {number} px0 true projected screen x of the first corner
  * @param {number} py0 true projected screen y of the first corner
+ * @param {number} u1 texture-space x of the second corner
+ * @param {number} v1 texture-space y of the second corner
+ * @param {number} id1 welded vertex identity of the second corner
+ * @param {number} px1 true projected screen x of the second corner
+ * @param {number} py1 true projected screen y of the second corner
+ * @param {number} u2 texture-space x of the third corner
+ * @param {number} v2 texture-space y of the third corner
+ * @param {number} id2 welded vertex identity of the third corner
+ * @param {number} px2 true projected screen x of the third corner
+ * @param {number} py2 true projected screen y of the third corner
+ * @param {number} [expandMask] 1 bit per triangle edge (edge k runs from corner k to corner k+1),
+ *   set where this face owns that edge's seam repair - see computeExpandMasks in shared/shaders.js.
+ *   0, the default, grows nothing, which is what a caller that has not opted in gets.
  */
 export function textureWeldAddFace(
   st,

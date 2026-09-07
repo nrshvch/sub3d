@@ -18,6 +18,12 @@ const weldState = createWeldState();
 // vertex there. Below ~0.05px that is under the antialiasing noise floor.
 const COLLINEAR_EPS = 0.05;
 
+/**
+ * Fill pass for flat-coloured faces: quantises the face colour and hands the triangle to this
+ * pass's welder, which merges it with any open same-colour polygon it shares an edge with.
+ *
+ * @type {import("../shaderRegistry.js").ShaderFn}
+ */
 export function flatShaderFill(
   ctx,
   px0,

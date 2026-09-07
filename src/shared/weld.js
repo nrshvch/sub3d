@@ -133,6 +133,13 @@ export function weldReset(st) {
 // Open-addressed, linear probing, keyed on the DIRECTED edge (from -> to). An entry maps that edge
 // to the ring node it leaves from, so `poolNext[node]` is the edge's other end.
 
+/**
+ * Mixes a directed edge into a table index. Both endpoints are welded vertex identities.
+ *
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
+ * @returns {number} index into the edge table, already masked to its capacity
+ */
 function edgeHash(from, to) {
   let h = Math.imul(from, 0x9e3779b1) ^ Math.imul(to, 0x85ebca77);
   h ^= h >>> 15;
@@ -141,7 +148,14 @@ function edgeHash(from, to) {
   return h & EDGE_MASK;
 }
 
-/** @returns the ring node owning directed edge (from -> to), or -1. */
+/**
+ * Looks up the ring node that owns a directed edge.
+ *
+ * @param {object} st welder state
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
+ * @returns {number} the ring node owning (from -> to), or -1 when the table holds no such edge
+ */
 export function edgeFind(st, from, to) {
   const gen = st.scal[SC_GEN];
   const eF = st.eFrom;
@@ -156,6 +170,18 @@ export function edgeFind(st, from, to) {
   return -1;
 }
 
+/**
+ * Records that `node` owns the directed edge (from -> to).
+ *
+ * A duplicate directed edge means two front-facing faces present it the same way round, which
+ * manifold geometry cannot do. The incumbent is kept: that costs a missed merge, never a corrupted
+ * ring.
+ *
+ * @param {object} st welder state
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
+ * @param {number} node ring node the edge leaves from
+ */
 function edgeInsert(st, from, to, node) {
   const gen = st.scal[SC_GEN];
   const eF = st.eFrom;
@@ -179,8 +205,14 @@ function edgeInsert(st, from, to, node) {
 }
 
 /**
+ * Removes a directed edge from the table.
+ *
  * Backward-shift deletion (Knuth 6.4 Alg. R). Tombstones are not an option here: roughly three
  * inserts per face against a 4096-entry table would saturate one within a frame.
+ *
+ * @param {object} st welder state
+ * @param {number} from vertex identity the edge leaves
+ * @param {number} to vertex identity the edge arrives at
  */
 function edgeDelete(st, from, to) {
   const gen = st.scal[SC_GEN];
@@ -220,6 +252,16 @@ function edgeDelete(st, from, to) {
 
 // --- ring nodes -------------------------------------------------------------------------------
 
+/**
+ * Takes a node off the free list and fills it in. Never allocates - the pool is sized once.
+ *
+ * @param {object} st welder state
+ * @param {number} x screen x of the boundary vertex
+ * @param {number} y screen y of the boundary vertex
+ * @param {number} id its welded vertex identity, which is what adjacency is matched on
+ * @param {number} slot the polygon this node belongs to
+ * @returns {number} the node, or -1 if the pool is exhausted
+ */
 function nodeAlloc(st, x, y, id, slot) {
   const n = st.scal[SC_FREEHEAD];
   if (n === -1) return -1;
@@ -233,6 +275,15 @@ function nodeAlloc(st, x, y, id, slot) {
   return n;
 }
 
+/**
+ * Returns a node to the free list, dropping the edge it owned.
+ *
+ * The outgoing edge must leave the table with the node, or a later lookup resolves to a recycled
+ * node and merges into the wrong ring.
+ *
+ * @param {object} st welder state
+ * @param {number} n node to release
+ */
 function nodeFree(st, n) {
   // A freed node's outgoing edge must leave the table with it, or a later lookup resolves to a
   // recycled node and merges into the wrong ring.
@@ -245,7 +296,13 @@ function nodeFree(st, n) {
   st.scal[SC_LIVE]--;
 }
 
-/** Points `a` at `b`, keeping the edge table in step with a's outgoing edge. */
+/**
+ * Points `a` at `b`, keeping the edge table in step with a's outgoing edge.
+ *
+ * @param {object} st welder state
+ * @param {number} a node whose successor changes
+ * @param {number} b new successor, or -1 to leave `a` dangling
+ */
 function relink(st, a, b) {
   const oldNext = st.poolNext[a];
   if (oldNext !== -1) edgeDelete(st, st.poolId[a], st.poolId[oldNext]);
@@ -535,6 +592,12 @@ export function weldFlushAll(
  * @param {number} x0 screen x of the first corner
  * @param {number} y0 screen y of the first corner
  * @param {number} id0 vertex identity of the first corner
+ * @param {number} x1 screen x of the second corner
+ * @param {number} y1 screen y of the second corner
+ * @param {number} id1 vertex identity of the second corner
+ * @param {number} x2 screen x of the third corner
+ * @param {number} y2 screen y of the third corner
+ * @param {number} id2 vertex identity of the third corner
  * @param {number} [expandMask] 1 bit per triangle edge (edge k runs from corner k to corner k+1),
  *   set where this face owns that edge's seam repair - see computeExpandMasks. 0, the default,
  *   expands nothing, which is what the tests want and what a caller that has not opted in gets.
