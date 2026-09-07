@@ -29,12 +29,41 @@ npm run preview      # preview the production build
 
 ## Engine conventions (see README for full detail)
 
-- **Zero GC in hot paths**: the render loop must not allocate objects/arrays. Reuse pre-allocated `Float32Array`/`Uint32Array` buffers for vectors, matrices, and coordinate lists.
-- **Minimal function calls in inner loops**: vector/matrix math in perf-critical sections (dot products, transforms) is inlined rather than calling out to `math.js` helpers. 
 - **16-bit 5-6-5 color palette**: colors are quantized from `#RRGGBB` hex for a retro look (`palette.js`).
+- Optimized code leveraging SIMD operations, target not just x86, but also ARM cpus.
 - Prefer editing existing shaders/components over adding new abstractions; this is a small, performance-sensitive codebase — keep additions inline with the existing "shader-like per-polygon" style.
-- Optimized code leveraging SIMD operations, target not just x86, but also ARM cpus. 
-- Use existing patterns
+- Use existing patterns.
+- **Structure for pluggability.** A new shader, primitive or component should slot in without the renderer learning about it — that is what `registerShader` and the `shaderType` key exist for. Do not grow monolithic code unless a measurement justifies it; when it does, say so in a comment.
+- Follow industry standard of 3d renderers, keep things abstract, changes in examples/implementation shoudnt affect code inside engine. E.g. mesh generation code updates shouldnt introduce changes in renderer, if theres a real reason for that (e.g. bug in renderer) - raise a hand.
+
+## Hot-loop rules
+
+These apply to the render loop and anything it calls per frame, per object, per face or per vertex — `Canvas2dRenderer`, the shaders, `weld.js`, `radixSort.js`, culling and `destructMesh`.
+
+- **Zero GC.** No objects, arrays, closures or string concatenation inside the loop. Reuse pre-allocated buffers for vectors, matrices and coordinate lists.
+- **Typed arrays only.** Read, write and iterate over `Float32Array`/`Uint32Array`/`Int32Array`; a plain array or a `Map` in a per-face path is a bug. Size them for the worst case and grow lazily — grown-and-copied when a frame exceeds capacity, never shrunk and never reallocated per frame.
+- **Keep function calls few, but do not inline everything.** Per-vertex math (dot products, transforms) is inlined rather than calling out to `math.js`. Major flow steps are still worth their own function — just keep those calls out of nested loops.
+- **Fast path by default, slow path as the fallback.** Branch to the general case for edge cases only; never make the universal path the default just because it covers everything.
+- **Precompute anything that is not per-frame.** The 5-6-5 palette, a mesh's adjacency and weld map, per-mesh normals — computed once and cached, not rebuilt per frame.
+- **Clear with a generation counter, not by writing the array.** A stamp compared against the current generation retires a whole table in O(1); where a pass must leave a buffer clean, restore only the entries it touched.
+- **Lay structured data out in lanes with named index constants.** One flat array, a `_STRIDE` constant and `SL_*`/`SD_*`-style offsets rather than one array per field. Keep the stride a power of two so indexing is a shift instead of a multiply.
+- **Keep dispatch monomorphic.** Built-in shader keys go through a fixed `switch`; only consumer keys reach a registry lookup.
+- **Own your state, and pass it explicitly.** A shader's scratch is module-private and the renderer knows nothing about it; state is handed in as an argument rather than captured in a closure, so one module can serve several passes at once.
+
+Outside those paths — event handlers, the React debug UI, scene-graph setup, mesh generation — write ordinary readable code. Do not carry hot-loop discipline into places that run once.
+
+## Documenting code
+
+- **Every function gets a JSDoc block listing every argument**, with types, in signature order. A shared positional signature is declared once as a `@callback` typedef and referenced with `@type`, so thirty parameters cannot drift apart across the shaders that implement it.
+- **Keep descriptions concise.** Say what the function does and the one thing a caller could otherwise get wrong. Do not restate the whole design, and do not write "see other-file.js for details" — a comment that needs a cross-reference to be understood is not finished. Name a collaborator only where the reader must go touch it too.
+- **No archaeology.** Comments describe the code as it stands. Leave out the alternative that was tried, the question someone asked, and the discussion that settled it.
+- **Business-logic-heavy functions get a short worked example** in the description — concrete inputs and what comes back.
+- **An array holding structured data gets its layout drawn in a comment**, e.g. `[flagA, flagB, ...flagN, count]`, kept aligned so the shape is readable at a glance.
+- **Where a decision was made on a measurement, record the number**, not the argument: "0.5px leaves the gap standing, 1px closes it" earns its line.
+
+## Naming
+
+- Human-friendly names throughout: `rightEdge`, not `re`. Single letters are acceptable only for loop counters and for the standard math shorthands in inlined vector code (`nx`, `dot`, `invLen`).
 
 ## Style
 
@@ -43,7 +72,13 @@ npm run preview      # preview the production build
 - ES modules (`"type": "module"`).
 - Keeping diff lean for easier reviews.
 - Push back and raise a hand noticing the task cannot be completed using precise changes, requiring major refactoring and leakign changes into otuside score of discussion or module, or file.
-- Follow industry standard of 3d renderers, keep things abstract, changes in examples/implementation shoudnt affect code inside engine. E.g. mesh generation code updates shouldnt introduce changes in renderer, if theres a real reason for that (e.g. bug in renderer) - raise a hand.
+
+## Preparing a change
+
+- **Bring the JSDoc of everything you touched up to date** — a new or removed argument means the block above it is now wrong, including the shared `ShaderFn` typedef when a shader signature changes.
+- Run `npm test`, and run Prettier over the files you touched.
+- Pointer-surgery code (ring merges, edge tables) needs an invariant test, not just a happy-path one; `src/shared/weld.test.js` walks every open ring after every face and found three bugs inspection had missed.
+- Check whether an example's `main.js` needs the same change, and whether `src/main.js` needs a new export.
 
 ## Working with examples
 
