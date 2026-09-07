@@ -33,6 +33,53 @@ shaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderFill;
 shadeShaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderShade;
 
 /**
+ * The fixed positional argument list every fill and shade function takes.
+ *
+ * Declared once here because it is the contract, not one shader's signature: a shader must match it
+ * exactly rather than take a prefix of it, since the renderer dispatches positionally. Reference it
+ * from a shader with `@type {ShaderFn}` instead of restating thirty parameters that would then
+ * drift apart.
+ *
+ * @callback ShaderFn
+ * @param {CanvasRenderingContext2D} ctx destination for this pass - the fill, shade or fog layer
+ * @param {number} px0 screen x of the first corner, in `ctx`'s own pixel space
+ * @param {number} py0 screen y of the first corner
+ * @param {number} px1 screen x of the second corner
+ * @param {number} py1 screen y of the second corner
+ * @param {number} px2 screen x of the third corner
+ * @param {number} py2 screen y of the third corner
+ * @param {Float32Array} clipGeometryBuffer camera-space position per face vertex, 9 per face
+ * @param {Uint32Array} colorBuffer packed 0xRRGGBB per face vertex, 3 per face
+ * @param {Float32Array} vertexNormalsBuffer world-space vertex normals, 9 per face
+ * @param {Float32Array} faceNormalsBuffer world-space face normal, 3 per face
+ * @param {number} v0Idx welded vertex identity of the first corner - what adjacency is matched on,
+ *   never a coordinate offset (see destructMesh's weldIdBuffer)
+ * @param {number} v1Idx welded vertex identity of the second corner
+ * @param {number} v2Idx welded vertex identity of the third corner
+ * @param {number} faceIdx this face's index into the per-face buffers above
+ * @param {object} mesh the owning MeshComponent
+ * @param {number} meshFaceIdx this face's offset into `mesh.faces`
+ * @param {number[]} ambientLightRgb camera ambient light
+ * @param {Uint32Array} lightsIndexBuffer light object indices, length in element 0
+ * @param {object[]} gameObjects the frame's flat object array, indexed by the lights buffer
+ * @param {number} fogType camera fog mode
+ * @param {number} fogColor packed fog colour
+ * @param {number} fogNearPane fog start distance
+ * @param {number} fogFarPane fog end distance
+ * @param {number} meshIdx index of the owning mesh within this layer
+ * @param {Int32Array} ctxStateBuffer shared cache of what is currently set on `ctx`
+ * @param {Int32Array} statsBuffer shared per-frame counters
+ * @param {number} frameId increments once per render() call; a shader compares it against a value
+ *   stored beside its own state to detect state that predates this frame
+ * @param {boolean} last this is the final face of a contiguous run of this shaderKey - handle the
+ *   face normally first, then flush whatever is pending. A shader that buffers nothing ignores it
+ * @param {number} [expandMask] 1 bit per triangle edge (edge k runs from corner k to corner k+1),
+ *   set where this face owns that edge's seam repair - see computeExpandMasks in shared/shaders.js.
+ *   Only the batching flat-family shaders read it
+ * @returns {void}
+ */
+
+/**
  * Registers a consumer shader (see Canvas2dRenderer.js's drawTriangles/shadeTriangles default
  * cases): fillFn/shadeFn take the same large fixed positional-argument list as the built-ins
  * (match an existing shader's exact signature rather than a subset of it). Returns the numeric
@@ -73,6 +120,10 @@ shadeShaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderShade;
  * flushes whatever is now pending before returning. A shader that never buffers anything (most
  * built-ins, and any consumer shader that just draws immediately) needs no code for `last` at
  * all - it's simply never referenced.
+ *
+ * @param {ShaderFn} fillFn fill-pass function for this shader
+ * @param {ShaderFn} [shadeFn] shade-pass function; omit for a shader with nothing to shade
+ * @returns {number} the shaderKey to assign to a mesh's `shaderType`
  */
 export function registerShader(fillFn, shadeFn) {
   const key = nextKey++;

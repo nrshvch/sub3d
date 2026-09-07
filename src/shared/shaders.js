@@ -14,6 +14,22 @@ export const STATS_SHADE_DRAW_CALLS = 2;
 // Strokes in the fill colour to close the conflation seam. The welder repairs the same seam by
 // offsetting the edges a face owns instead, which it can only do because it knows the draw order -
 // an immediate-mode face has no such context, so the stroke stays here.
+/**
+ * Immediate-mode triangle fill: one stroke()+fill() per face, nothing batched or deferred.
+ *
+ * @param {CanvasRenderingContext2D} targetCtx destination for this pass
+ * @param {number} px0 screen x of the first corner
+ * @param {number} py0 screen y of the first corner
+ * @param {number} px1 screen x of the second corner
+ * @param {number} py1 screen y of the second corner
+ * @param {number} px2 screen x of the third corner
+ * @param {number} py2 screen y of the third corner
+ * @param {number} color16 quantised 5-6-5 palette index to fill and stroke with
+ * @param {number} slot index in `ctxStateBuffer` holding the colour `targetCtx` is set to, which
+ *   also selects which draw-call counter this face reports to
+ * @param {Int32Array} ctxStateBuffer shared cache of what is currently set on the context
+ * @param {Int32Array} statsBuffer shared per-frame counters
+ */
 export function flatFill(
   targetCtx,
   px0,
@@ -65,6 +81,8 @@ export function flatFill(
  * Keeps the full normalized shade signature every shader shares (see shaderRegistry.js's
  * registerShader doc comment) so it stays a drop-in for the dispatch table. It buffers nothing, so
  * it needs no `last` handling.
+ *
+ * @type {import("../shaders/shaderRegistry.js").ShaderFn}
  */
 export function identityFill(
   shadeCtx,

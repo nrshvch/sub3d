@@ -28,6 +28,8 @@ const weldState = createTextureWeldState();
  * fill has no way to match the flat welder's stroke. Only the edges whose neighbour is drawn later
  * move, which is what keeps the offset invisible - see computeExpandMasks. This shader's only jobs
  * are to reject faces with no usable texture and to hand the rest to the welder.
+ *
+ * @type {import("../shaderRegistry.js").ShaderFn}
  */
 export function textureShaderFill(
   ctx,

@@ -299,6 +299,8 @@ export function fogSort(
  * @param {number} frameId - this frame's id; welder state left from an older frame is dropped
  *   rather than painted. See shaderRegistry.js's registerShader for the frameId/last contract.
  * @param {boolean} last - final face of the pass, see above.
+ * @param {number} expandMask - 1 bit per triangle edge (edge k runs from corner k to corner k+1),
+ *   set where this face owns that edge's seam repair. See computeExpandMasks in shared/shaders.js.
  */
 function batchedFogFace(
   fogCtx,
@@ -443,6 +445,12 @@ export function compositeFogPass(ctx, fogCtx, fogColor) {
  * @param {Uint32Array} weldIdBuffer - Per-face-vertex adjacency identities (see destructMesh).
  * @param {Uint32Array} tempIndexBuffer - fogSort's output face indices.
  * @param {Uint32Array} meshIndexBuffer - per-face mesh index within this layer (see destructMesh).
+ * @param {Uint8Array} expandMaskBuffer - out: per face, 1 bit per edge, set where this face owns
+ *   that edge's seam repair. Recomputed here against fog's own draw order, which differs from the
+ *   fill pass's because fogSort sorts separately.
+ * @param {Int32Array} neighbourFaceBuffer - per face vertex, the neighbouring face across that
+ *   edge, or -1 (see destructMesh).
+ * @param {Int32Array} faceRankBuffer - scratch for the ownership pass, -1 in and -1 out.
  * @param {number} count - total valid entries in tempIndexBuffer, from fogSort.
  * @param {Float32Array} clipGeometryBuffer - Per-face-vertex camera-space positions.
  * @param {number} fogType - See computeFogAmount.

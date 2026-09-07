@@ -1165,6 +1165,13 @@ let frameCounter = 0;
  * still reports its shared edges as shared. Offset per mesh so identities never collide.
  * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
+ * @param {Int32Array} neighbourFaceBuffer - Out: 3 per face, the face index across that edge, or -1
+ *   where the neighbour is absent from this frame (mesh boundary, culled, or clipped). Resolved
+ *   from each mesh's static adjacency table; read by computeExpandMasks to decide seam ownership.
+ * @param {Int32Array} triToFace - Scratch, mesh-local triangle index -> face index. Valid only for
+ *   the mesh being processed, which triToFaceStamp rather than a clear is what keeps honest.
+ * @param {Int32Array} triToFaceStamp - Scratch, parallel to triToFace: the mesh ordinal that wrote
+ *   each entry, so a stale entry from an earlier mesh reads as absent.
  * @param {Int32Array} vMapping - Persistent buffer storing the vertexBuffer offset for the current mesh.
  * @param {Uint32Array} vTags - Persistent buffer storing the callId tag to validate vMapping entries.
  * @returns {number} The total count of processed (visible) faces.
@@ -1698,6 +1705,12 @@ function drawWireframe(
  * @param {Float32Array} vertexNormalsBuffer - Array of vertex normals in the format [nx0, ny0, nz0, nx1, ny1, nz1, ...]
  * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
+ * @param {Uint8Array} expandMaskBuffer - Out: per face, 1 bit per edge, set where this face owns
+ *   that edge's seam repair. Recomputed here for this pass's draw order, then read per face.
+ * @param {Int32Array} neighbourFaceBuffer - Per face vertex, the neighbouring face across that
+ *   edge, or -1 (see destructMesh).
+ * @param {Int32Array} faceRankBuffer - Scratch for the ownership pass, -1 everywhere on entry and
+ *   restored to that on exit, so it needs no generation stamp.
  * @param {Uint32Array} layerBuffers - Single 1D flat typed array storing GameObject indices.
  * @param {number} layerOffset - Starting index of the partition inside layerBuffers.
  * @param {Uint32Array} lightsIndexBuffer - Indices of active lights.
@@ -2067,6 +2080,12 @@ function fillTriangles(
  * @param {Float32Array} vertexNormalsBuffer - World-space normals per face vertex.
  * @param {Uint32Array} meshIndexBuffer - Per-face mesh index within this layer.
  * @param {Uint32Array} meshFaceIndexBuffer - Per-face index within its own mesh.
+ * @param {Uint8Array} expandMaskBuffer - Out: per face, 1 bit per edge, set where this face owns
+ *   that edge's seam repair. Recomputed here rather than shared with the fill pass: the two are
+ *   independent, and reusing one mask would silently couple them.
+ * @param {Int32Array} neighbourFaceBuffer - Per face vertex, the neighbouring face across that
+ *   edge, or -1 (see destructMesh).
+ * @param {Int32Array} faceRankBuffer - Scratch for the ownership pass, -1 in and -1 out.
  * @param {Uint32Array} layerBuffers - Flat per-layer GameObject index partitions (see groupLayers).
  * @param {number} layerOffset - Start of this layer's partition inside layerBuffers.
  * @param {Uint32Array} lightsIndexBuffer - Indices of active lights; element 0 is the count.
