@@ -26,6 +26,7 @@ import {
   SMOOTH_ALBEDO_FLAT,
 } from "./shaders/shaderRegistry.js";
 import {
+  computeExpandMasks,
   identityFill,
   CTX_STATE_SHADE_FILL,
   CTX_STATE_SAW_REAL_SHADING,
@@ -154,6 +155,19 @@ export default function Canvas2dRenderer() {
   // a shader's batcher see triangles on opposite sides of a tile boundary as sharing an edge.
   // Derived from mesh.weldMap when the mesh has one (see MeshComponent#updateWeldMap).
   this.weldIdBuffer = new Uint32Array(0);
+  // Per face: which of its three edges it owns the seam repair for (see shared/weld.js). Recomputed
+  // per pass by computeExpandMasks, because ownership follows that pass's own draw order.
+  this.expandMaskBuffer = new Uint8Array(0);
+  // Per face vertex: the face index of the neighbour across that edge, or -1 for none. Resolved
+  // once per frame by destructMesh from each mesh's static adjacency table.
+  this.neighbourFaceBuffer = new Int32Array(0);
+  // Per face: position in the current pass's draw order, or -1 when not in it. Each pass writes its
+  // own ranks and clears them again, so it needs no generation stamp.
+  this.faceRankBuffer = new Int32Array(0);
+  // destructMesh scratch: mesh-local triangle index -> face index, valid only for the mesh being
+  // processed, which a per-mesh stamp rather than a clear keeps honest.
+  this.triToFace = new Int32Array(0);
+  this.triToFaceStamp = new Int32Array(0);
   this.visibleObjectsBuffer = new Uint32Array(100);
   /*
   Buffer to store light source indices. First element store length.
@@ -308,6 +322,9 @@ p.render = function (camera, viewport, stats) {
     meshIndexBuffer = this.meshIndexBuffer,
     meshFaceIndexBuffer = this.meshFaceIndexBuffer,
     weldIdBuffer = this.weldIdBuffer,
+    expandMaskBuffer = this.expandMaskBuffer,
+    neighbourFaceBuffer = this.neighbourFaceBuffer,
+    faceRankBuffer = this.faceRankBuffer,
     visibleObjectsBuffer = this.visibleObjectsBuffer,
     lightsIndexBuffer = this.lightsIndexBuffer,
     layerBuffersOffsets = this.layerBuffersOffsets,
@@ -339,7 +356,12 @@ p.render = function (camera, viewport, stats) {
   let totalFogRasterTime = 0;
 
   const cam = camera.camera;
-  const flush = cam.flush || this.wireframe || !this.fillEnabled || !this.shadeEnabled || !this.fogEnabled;
+  const flush =
+    cam.flush ||
+    this.wireframe ||
+    !this.fillEnabled ||
+    !this.shadeEnabled ||
+    !this.fogEnabled;
 
   //worst case scenario - every object is visible
   if (visibleObjectsBuffer.length < gameObjects.length) {
@@ -494,6 +516,24 @@ p.render = function (camera, viewport, stats) {
       let _weldIdBuffer = new Uint32Array(maxFacesCount * 3);
       _weldIdBuffer.set(weldIdBuffer);
       this.weldIdBuffer = weldIdBuffer = _weldIdBuffer;
+
+      const _expandMaskBuffer = new Uint8Array(maxFacesCount);
+      _expandMaskBuffer.set(expandMaskBuffer);
+      this.expandMaskBuffer = expandMaskBuffer = _expandMaskBuffer;
+
+      const _neighbourFaceBuffer = new Int32Array(maxFacesCount * 3);
+      _neighbourFaceBuffer.set(neighbourFaceBuffer);
+      this.neighbourFaceBuffer = neighbourFaceBuffer = _neighbourFaceBuffer;
+
+      // -1 everywhere: a face outside the pass being ranked must read as "not in it".
+      const _faceRankBuffer = new Int32Array(maxFacesCount).fill(-1);
+      _faceRankBuffer.set(faceRankBuffer);
+      this.faceRankBuffer = faceRankBuffer = _faceRankBuffer;
+
+      // maxFacesCount sums every mesh's triangle count, so it also bounds any single mesh's -
+      // which is what these two are indexed by.
+      this.triToFace = new Int32Array(maxFacesCount);
+      this.triToFaceStamp = new Int32Array(maxFacesCount);
     }
 
     const processStart = performance.now();
@@ -522,6 +562,9 @@ p.render = function (camera, viewport, stats) {
       weldIdBuffer,
       meshIndexBuffer,
       meshFaceIndexBuffer,
+      neighbourFaceBuffer,
+      this.triToFace,
+      this.triToFaceStamp,
       this.vMapping,
       this.vTags,
     );
@@ -602,6 +645,9 @@ p.render = function (camera, viewport, stats) {
           vertexNormalsBuffer,
           meshIndexBuffer,
           meshFaceIndexBuffer,
+          expandMaskBuffer,
+          neighbourFaceBuffer,
+          faceRankBuffer,
           layerBuffers,
           layerOffset + 1,
           lightsIndexBuffer,
@@ -612,7 +658,7 @@ p.render = function (camera, viewport, stats) {
         );
         totalFillRasterTime += performance.now() - fillStart;
       } else {
-        if(ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] !== WHITE16){
+        if (ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] !== WHITE16) {
           fillCtx.fillStyle = PALETTE_16BIT[WHITE16];
           ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = WHITE16;
         }
@@ -642,6 +688,9 @@ p.render = function (camera, viewport, stats) {
           vertexNormalsBuffer,
           meshIndexBuffer,
           meshFaceIndexBuffer,
+          expandMaskBuffer,
+          neighbourFaceBuffer,
+          faceRankBuffer,
           layerBuffers,
           layerOffset + 1,
           lightsIndexBuffer,
@@ -655,7 +704,13 @@ p.render = function (camera, viewport, stats) {
         if (ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING]) {
           // Composite this layer's shading buffer onto the fill buffer.
           fillCtx.globalCompositeOperation = "multiply";
-          fillCtx.drawImage(shadeCtx.canvas, 0, 0, fillCtx.canvas.width, fillCtx.canvas.height);
+          fillCtx.drawImage(
+            shadeCtx.canvas,
+            0,
+            0,
+            fillCtx.canvas.width,
+            fillCtx.canvas.height,
+          );
           fillCtx.globalCompositeOperation = "source-over";
         }
       }
@@ -691,6 +746,9 @@ p.render = function (camera, viewport, stats) {
           weldIdBuffer,
           tempIndexBuffer,
           meshIndexBuffer,
+          expandMaskBuffer,
+          neighbourFaceBuffer,
+          faceRankBuffer,
           fogFaceCount,
           clipGeometryBuffer,
           cam.fogType,
@@ -1136,6 +1194,9 @@ function destructMesh(
   weldIdBuffer,
   meshIndexBuffer,
   meshFaceIndexBuffer,
+  neighbourFaceBuffer,
+  triToFace,
+  triToFaceStamp,
   vMapping,
   vTags,
 ) {
@@ -1186,6 +1247,18 @@ function destructMesh(
     const weldMap = mesh.weldMap;
     const meshWeldBase = weldBase;
     weldBase += ((mesh.vertices.length / 3) | 0) + 1;
+
+    // Face adjacency is static per mesh, so build it once on first sight. It decides which side of
+    // each shared edge carries the seam repair (see shared/weld.js); a mesh whose geometry is
+    // rebuilt must call updateAdjacency() itself, exactly as it already must for updateWeldMap().
+    if (mesh.adjTri === null) mesh.updateAdjacency();
+    const adjTri = mesh.adjTri;
+    // triToFace is scratch shared by every mesh, so stamp it rather than clearing it per mesh.
+    // j + 1 keeps the stamp non-zero, which a freshly allocated array is.
+    const meshStamp = j + 1;
+    // First face slot this mesh writes into. Surviving faces land contiguously in
+    // [meshFaceStart, i), since `i` only advances for faces that pass clipping and culling.
+    const meshFaceStart = i;
 
     const faces = mesh.faces,
       verts = mesh.vertices,
@@ -1354,6 +1427,12 @@ function destructMesh(
       meshIndexBuffer[i] = j;
       meshFaceIndexBuffer[i] = f;
 
+      // Note where this mesh-local triangle ended up, so the resolve below can turn the mesh's
+      // static adjacency into this frame's face indices.
+      const tIdx = (f / 3) | 0;
+      triToFace[tIdx] = i;
+      triToFaceStamp[tIdx] = meshStamp;
+
       // WORLD-SPACE LIGHTING
       const fnx = faceNormals[f],
         fny = faceNormals[f + 1],
@@ -1492,6 +1571,24 @@ function destructMesh(
       faceNormalsBuffer[fnIdx + 2] = wnz * invMag;
 
       i++;
+    }
+
+    // Resolve this mesh's static adjacency into this frame's face indices, now that every
+    // surviving face of it has a slot. A neighbour that was culled or clipped leaves -1, which the
+    // ownership pass treats exactly like no neighbour at all - nothing abuts that edge in this
+    // frame, so there is no seam there to hand to anyone.
+    for (let k = meshFaceStart; k < i; k++) {
+      const ff = meshFaceIndexBuffer[k];
+      const k3 = k * 3;
+      const a0 = adjTri[ff];
+      const a1 = adjTri[ff + 1];
+      const a2 = adjTri[ff + 2];
+      neighbourFaceBuffer[k3] =
+        a0 >= 0 && triToFaceStamp[a0] === meshStamp ? triToFace[a0] : -1;
+      neighbourFaceBuffer[k3 + 1] =
+        a1 >= 0 && triToFaceStamp[a1] === meshStamp ? triToFace[a1] : -1;
+      neighbourFaceBuffer[k3 + 2] =
+        a2 >= 0 && triToFaceStamp[a2] === meshStamp ? triToFace[a2] : -1;
     }
   }
   return i;
@@ -1635,6 +1732,9 @@ function fillTriangles(
   vertexNormalsBuffer,
   meshIndexBuffer,
   meshFaceIndexBuffer,
+  expandMaskBuffer,
+  neighbourFaceBuffer,
+  faceRankBuffer,
   layerBuffers,
   layerOffset,
   lightsIndexBuffer,
@@ -1671,6 +1771,16 @@ function fillTriangles(
       ctx.clearRect(0, 0, w, h);
     }
   }
+
+  // Seam-repair ownership for this pass's draw order (see computeExpandMasks).
+  computeExpandMasks(
+    indexBuffer,
+    offset,
+    len,
+    neighbourFaceBuffer,
+    faceRankBuffer,
+    expandMaskBuffer,
+  );
 
   // FILL PASS: every face, every shader - base color/texture onto `ctx`.
   for (let i = offset; i < len; i++) {
@@ -1740,6 +1850,7 @@ function fillTriangles(
           statsBuffer,
           frameId,
           last,
+          expandMaskBuffer[idx],
         );
         break;
       }
@@ -1774,6 +1885,7 @@ function fillTriangles(
           statsBuffer,
           frameId,
           last,
+          expandMaskBuffer[idx],
         );
         break;
       }
@@ -1808,6 +1920,7 @@ function fillTriangles(
           statsBuffer,
           frameId,
           last,
+          expandMaskBuffer[idx],
         );
         break;
       }
@@ -1984,6 +2097,9 @@ function shadeTriangles(
   vertexNormalsBuffer,
   meshIndexBuffer,
   meshFaceIndexBuffer,
+  expandMaskBuffer,
+  neighbourFaceBuffer,
+  faceRankBuffer,
   layerBuffers,
   layerOffset,
   lightsIndexBuffer,
@@ -2006,6 +2122,17 @@ function shadeTriangles(
     halfShadeH = h * 0.5;
 
   const len = offset + count;
+
+  // Shade draws in the same order as fill, but ownership is recomputed rather than shared: the two
+  // passes are independent, and reusing one mask would silently couple them.
+  computeExpandMasks(
+    indexBuffer,
+    offset,
+    len,
+    neighbourFaceBuffer,
+    faceRankBuffer,
+    expandMaskBuffer,
+  );
 
   for (let i = offset; i < len; i++) {
     const idx = indexBuffer[i];
@@ -2068,6 +2195,7 @@ function shadeTriangles(
           statsBuffer,
           frameId,
           last,
+          expandMaskBuffer[idx],
         );
         break;
       }
@@ -2103,6 +2231,7 @@ function shadeTriangles(
           statsBuffer,
           frameId,
           last,
+          expandMaskBuffer[idx],
         );
         break;
       }

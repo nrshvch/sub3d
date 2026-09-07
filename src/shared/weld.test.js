@@ -6,6 +6,7 @@ import {
   weldReset,
   edgeFind,
   N_SLOTS,
+  EXPAND,
 } from "./weld.js";
 
 /**
@@ -14,20 +15,15 @@ import {
  * through weldAddFace and assert the emitted path.
  */
 
-// Records each completed path as its ring of distinct [x, y] corners.
-//
-// The emitter closes the loop with an explicit lineTo back to the first point, because stroke()
-// does not draw the closing edge of an unclosed subpath. That repeated point is trimmed here and
-// recorded in `closed` instead, so shape assertions stay about corners while one test can still
-// assert the closing edge is really emitted.
+// Records each completed path as its ring of [x, y] corners. Nothing is trimmed: the emitter draws
+// no closing edge of its own, since fill() closes the subpath implicitly and there is no stroke.
 function stubCtx() {
   const paths = [];
-  const closed = [];
   let cur = null;
   return {
     paths,
-    closed,
     closePathCalls: 0,
+    strokeCalls: 0,
     fillStyle: "",
     strokeStyle: "",
     lineWidth: 0,
@@ -44,13 +40,11 @@ function stubCtx() {
     closePath() {
       this.closePathCalls++;
     },
-    stroke() {},
+    stroke() {
+      this.strokeCalls++;
+    },
     fill() {
-      const n = cur.length;
-      const isClosed =
-        n > 1 && cur[0][0] === cur[n - 1][0] && cur[0][1] === cur[n - 1][1];
-      closed.push(isClosed);
-      paths.push(isClosed ? cur.slice(0, -1) : cur);
+      paths.push(cur);
       cur = null;
     },
   };
@@ -70,7 +64,7 @@ function makeRig() {
   const stats = new Int32Array(8);
 
   // (id, x, y) triples; colour and mesh default to one green mesh.
-  const add = (a, b, c, color = GREEN, mesh = 0) =>
+  const add = (a, b, c, color = GREEN, mesh = 0, expandMask = 0) =>
     weldAddFace(
       st,
       ctx,
@@ -91,9 +85,10 @@ function makeRig() {
       c[1],
       c[2],
       c[0],
+      expandMask,
     );
   const flush = () =>
-    weldFlushAll(st, ctx, ctxState, STYLE, -1, stats, CALLS, VERTS, EPS);
+    weldFlushAll(st, ctx, ctxState, STYLE, -1, stats, CALLS, EPS);
 
   return { st, ctx, stats, add, flush };
 }
@@ -279,15 +274,72 @@ describe("multi-slot welder", () => {
     expect(r.stats[CALLS]).toBe(1000);
   });
 
-  it("closes the stroked loop with an explicit lineTo, not closePath", () => {
-    // stroke() does not draw the closing edge of an unclosed subpath, while fill() closes it
-    // implicitly - so without the explicit lineTo every polygon would be filled with one of its
-    // edges never stroked, leaving exactly the seam the stroke exists to repair. closePath() is
-    // not the fix: in Blink it recomputes the whole path's bounds per call.
+  it("emits a bare fill: no stroke, and no closePath", () => {
+    // Seam repair is an outward offset of the edges this face owns now, so there is no stroke and
+    // therefore no closing edge to draw by hand - fill() closes the subpath implicitly.
+    // closePath() stays out regardless: it recomputes the whole path's bounds per call.
     r.add([1, 0, 0], [2, 10, 0], [3, 10, 10]);
     r.flush();
-    expect(r.ctx.closed).toEqual([true]);
+    expect(r.ctx.strokeCalls).toBe(0);
     expect(r.ctx.closePathCalls).toBe(0);
+    expect(r.ctx.paths).toHaveLength(1);
+  });
+
+  it("steps the flagged edge out and back, leaving every original vertex put", () => {
+    // Right triangle (0,0)-(10,0)-(10,10) with only edge 0 flagged. Screen y is negated relative
+    // to the maths convention, so outward for that edge is -y.
+    //
+    // The repair ADDS two vertices rather than moving any: the loop detours out along the edge and
+    // returns. Offsetting the edge lines and re-intersecting them instead would move the corners at
+    // both ends, and those corners belong to edges nobody asked to move - the hypotenuse here -
+    // so the shape would poke out past the neighbour that is supposed to cover the detour.
+    r.add([1, 0, 0], [2, 10, 0], [3, 10, 10], GREEN, 0, 1);
+    r.flush();
+
+    expect(r.ctx.paths[0]).toEqual([
+      [0, 0],
+      [0, -EXPAND],
+      [10, -EXPAND],
+      [10, 0],
+      [10, 10],
+    ]);
+  });
+
+  it("leaves geometry untouched when no edge is flagged", () => {
+    // A face whose neighbours all own their shared edges expands nowhere: it paints its true
+    // coverage, and their offsets cover the seams from the other side.
+    r.add([1, 0, 0], [2, 10, 0], [3, 10, 10]);
+    r.flush();
+    expectCorners(r.ctx.paths[0], [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+    ]);
+  });
+
+  it("only collapses a collinear run whose edges agree on expansion", () => {
+    // Two triangles welding into a quad whose bottom run (0,0)-(10,0)-(20,0) is straight. With
+    // both halves flagged the middle vertex decimates away and one detour covers the whole run;
+    // with only one half flagged the middle vertex must survive, or the unflagged half gets
+    // dragged outward with it and grows a boundary it does not own.
+    r.add([1, 0, 0], [2, 10, 0], [4, 0, 10], GREEN, 0, 1);
+    r.add([2, 10, 0], [3, 20, 0], [4, 0, 10], GREEN, 0, 1);
+    r.flush();
+
+    // 3 corners + one detour over the merged run.
+    expect(r.ctx.paths[0]).toHaveLength(5);
+    expect(r.ctx.paths[0]).toContainEqual([0, -EXPAND]);
+    expect(r.ctx.paths[0]).toContainEqual([20, -EXPAND]);
+
+    const r2 = makeRig();
+    r2.add([1, 0, 0], [2, 10, 0], [4, 0, 10], GREEN, 0, 1);
+    r2.add([2, 10, 0], [3, 20, 0], [4, 0, 10], GREEN, 0, 0);
+    r2.flush();
+
+    // The run kept its middle vertex, so only its first half detours.
+    expect(r2.ctx.paths[0]).toContainEqual([10, 0]);
+    expect(r2.ctx.paths[0]).toContainEqual([10, -EXPAND]);
+    expect(r2.ctx.paths[0]).not.toContainEqual([20, -EXPAND]);
   });
 
   it("rejoins a strip fed out of order: A B E F C D lands in one slot", () => {

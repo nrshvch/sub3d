@@ -96,6 +96,22 @@ p.bounds = null;
 p.weldMap = null;
 
 /**
+ * Face adjacency over welded vertex identities, only computed by calling updateAdjacency().
+ *
+ * `adjTri[3 * t + e]` is the triangle sharing edge `e` of triangle `t`, or -1 where that edge is a
+ * boundary; `adjEdge[3 * t + e]` says which of the neighbour's three edges it is. Edge `e` runs
+ * from the triangle's vertex `e` to its vertex `(e + 1) % 3`.
+ *
+ * Static per mesh - the geometry does not change between frames, only which faces survive culling -
+ * so it is built once and reused by every pass. Keyed on weldMap identities, without which a
+ * hard-edge mesh finds no neighbours at all.
+ *
+ * @type {Int32Array|null}
+ */
+p.adjTri = null;
+p.adjEdge = null;
+
+/**
  * Generates both face and vertex normals.
  * Uses area-weighting for vertex normals to provide smoother shading.
  * @param {number} winding - Set to 1 for CCW (Standard), -1 for CW.
@@ -186,6 +202,24 @@ p.updateNormals = function (winding = 1) {
  */
 p.updateWeldMap = function (epsilon) {
   this.weldMap = Mesh.computeWeldMap(this.vertices, this.weldMap, epsilon);
+};
+
+/**
+ * Computes adjTri/adjEdge from the mesh's current faces - see their doc comment above.
+ *
+ * Depends on weldMap, so call it after updateWeldMap() and again whenever the faces change. The
+ * renderer builds it lazily on first sight, so a mesh that never changes needs no call at all.
+ */
+p.updateAdjacency = function () {
+  const a = Mesh.computeAdjacency(
+    this.faces,
+    this.weldMap,
+    this.adjTri,
+    this.adjEdge,
+  );
+  this.adjTri = a.adjTri;
+  this.adjEdge = a.adjEdge;
+  return a;
 };
 
 p.setGameObject = function (gameObject) {
@@ -391,4 +425,62 @@ Mesh.computeWeldMap = function (vertices, out, epsilon = 1e-4) {
   }
 
   return weldMap;
+};
+
+/**
+ * Builds the face adjacency table described on [[adjTri]].
+ *
+ * Two triangles are neighbours when one presents an edge the other presents reversed - the same
+ * test the runtime welder makes, and sound for the same reason: every front-facing triangle
+ * survives one backface cull, so they all carry the same winding.
+ *
+ * A directed edge seen twice means non-manifold input (two co-oriented faces on one edge). The
+ * first occurrence keeps the pairing and the later one is left as boundary, which costs a missed
+ * merge and never a wrong one.
+ *
+ * @param {Uint32Array} faces flat [i0, i1, i2, ...] triangle indices
+ * @param {Uint32Array|null} weldMap from computeWeldMap(); raw indices are used when null, which is
+ *   correct for a mesh that already shares one index per position
+ * @param {Int32Array|null} [outTri] reused when already the right length
+ * @param {Int32Array|null} [outEdge]
+ * @returns {{adjTri: Int32Array, adjEdge: Int32Array, boundaryEdges: number}}
+ */
+Mesh.computeAdjacency = function (faces, weldMap, outTri, outEdge) {
+  const triCount = (faces.length / 3) | 0;
+  const n = triCount * 3;
+  const adjTri = outTri && outTri.length === n ? outTri : new Int32Array(n);
+  const adjEdge = outEdge && outEdge.length === n ? outEdge : new Int32Array(n);
+  adjTri.fill(-1);
+  adjEdge.fill(-1);
+
+  // Directed edge -> the slot 3t+e that presented it. The key packs both endpoints into one
+  // double, exact while vertex indices stay under 2^21 - far past any mesh this renderer sorts.
+  // A Map is fine here: this runs once per mesh, never per frame.
+  const seen = new Map();
+  for (let t = 0; t < triCount; t++) {
+    for (let e = 0; e < 3; e++) {
+      const ra = faces[t * 3 + e];
+      const rb = faces[t * 3 + ((e + 1) % 3)];
+      const a = weldMap ? weldMap[ra] : ra;
+      const b = weldMap ? weldMap[rb] : rb;
+      if (a === b) continue; // degenerate edge - both ends weld together, cannot pair
+      const slot = t * 3 + e;
+      const mate = seen.get(b * 4294967296 + a); // this edge, reversed
+      const mateTri = mate === undefined ? -1 : (mate / 3) | 0;
+      // mateTri === t is a triangle two of whose vertices weld together, so its own edges reverse
+      // each other. Pairing it with itself would let the welder merge a face into its own ring;
+      // leave it as boundary instead, since a face with zero area draws nothing anyway.
+      if (mate !== undefined && adjTri[mate] === -1 && mateTri !== t) {
+        adjTri[slot] = mateTri;
+        adjEdge[slot] = mate - mateTri * 3;
+        adjTri[mate] = t;
+        adjEdge[mate] = e;
+      }
+      if (!seen.has(a * 4294967296 + b)) seen.set(a * 4294967296 + b, slot);
+    }
+  }
+
+  let boundaryEdges = 0;
+  for (let i = 0; i < n; i++) if (adjTri[i] === -1) boundaryEdges++;
+  return { adjTri, adjEdge, boundaryEdges };
 };

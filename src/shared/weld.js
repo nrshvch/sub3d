@@ -30,6 +30,16 @@ import { PALETTE_16BIT, WHITE16 } from "../palette.js";
 export const N_SLOTS = 64;
 export const MAX_POLY_VERTS = 128;
 
+// Outward offset applied to a boundary edge whose neighbour is drawn LATER, in destination pixels.
+// One pixel, not a half: a pixel straddling the boundary needs the earlier polygon to cover ALL of
+// it, and half a pixel measurably leaves gap standing. Past 1px nothing further changes.
+export const EXPAND = 1;
+
+// Slack on the deferral guard's overlap test, one EXPAND for each of the two faces. A flush paints
+// up to EXPAND outside the geometry it was handed, so two regions that merely ABUT still contend
+// for the pixels along their shared edge while overlapping by exactly zero.
+const GUARD_DILATE = 2 * EXPAND;
+
 const POOL_CAP = 2048; // ring nodes, with headroom over the peak held across all slots
 const EDGE_CAP = 4096; // power of two; live edges <= POOL_CAP so load stays under 0.25
 const EDGE_MASK = EDGE_CAP - 1;
@@ -69,6 +79,9 @@ export function createWeldState() {
     poolId: new Int32Array(POOL_CAP),
     poolNext: new Int32Array(POOL_CAP),
     poolSlot: new Int8Array(POOL_CAP),
+    // 1 where the boundary edge LEAVING this node must be pushed outward at flush, i.e. the face
+    // across it is drawn later. See the expansion note in weldFlushSlot.
+    poolExpand: new Uint8Array(POOL_CAP),
     eFrom: new Int32Array(EDGE_CAP),
     eTo: new Int32Array(EDGE_CAP),
     eNode: new Int32Array(EDGE_CAP),
@@ -76,6 +89,7 @@ export function createWeldState() {
     scal: new Int32Array(8),
     emitX: new Float32Array(MAX_POLY_VERTS),
     emitY: new Float32Array(MAX_POLY_VERTS),
+    emitF: new Uint8Array(MAX_POLY_VERTS),
     frameId: -1,
     evictions: 0,
   };
@@ -285,8 +299,10 @@ export function weldFlushSlot(
   const poolX = st.poolX;
   const poolY = st.poolY;
   const poolId = st.poolId;
+  const poolExpand = st.poolExpand;
   const emitX = st.emitX;
   const emitY = st.emitY;
+  const emitF = st.emitF;
 
   // Walk the ring once: collect points, decimate, and drop the slot's edges as we go.
   const eps2 = eps * eps;
@@ -296,10 +312,12 @@ export function weldFlushSlot(
     const nx = poolNext[n];
     const x = poolX[n];
     const y = poolY[n];
+    const fl = poolExpand[n];
 
     if (out < 2) {
       emitX[out] = x;
       emitY[out] = y;
+      emitF[out] = fl;
       out++;
     } else {
       const px = emitX[out - 2];
@@ -311,12 +329,19 @@ export function weldFlushSlot(
       const bx = x - px;
       const by = y - py;
       const cross = ax * by - ay * bx;
-      if (cross * cross <= eps2 * (bx * bx + by * by)) {
+      // A collinear run only collapses when its two edges agree on expansion: one offset has to
+      // serve the whole merged run, and picking either would open a seam or bloat a silhouette.
+      if (
+        emitF[out - 2] === emitF[out - 1] &&
+        cross * cross <= eps2 * (bx * bx + by * by)
+      ) {
         emitX[out - 1] = x; // q was collinear between p and this point - replace it
         emitY[out - 1] = y;
+        emitF[out - 1] = fl;
       } else {
         emitX[out] = x;
         emitY[out] = y;
+        emitF[out] = fl;
         out++;
       }
     }
@@ -358,6 +383,7 @@ export function weldFlushSlot(
       by = ry - py;
     const cr = ax * by - ay * bx;
     if (cr * cr > eps2 * (bx * bx + by * by)) break;
+    if (emitF[out - 2] !== emitF[out - 1]) break;
     out--;
   }
   while (out - start >= 4) {
@@ -373,6 +399,7 @@ export function weldFlushSlot(
       by = ry - py;
     const cr = ax * by - ay * bx;
     if (cr * cr > eps2 * (bx * bx + by * by)) break;
+    if (emitF[out - 1] !== emitF[start]) break;
     start++;
   }
 
@@ -387,19 +414,50 @@ export function weldFlushSlot(
       ctxStateBuffer[sawRealSlot] = 1;
   }
 
+  // Seam repair, in place of the stroke this replaces.
+  //
   // Canvas2D composites each fill's antialiased coverage separately, so two polygons sharing a
-  // boundary each cover about half the pixels along it, anÏd source-over of two half coverages is
-  // three quarters - a hairline of background shows through. Painting that coverage back with a
-  // stroke in the fill colour is the only repair canvas2d offers. Stroke first, then fill, so the
-  // fill repaints the inner half and the stroke only ever extends coverage outward.
+  // boundary each cover about half the pixels along it, and source-over of two half coverages is
+  // three quarters - a hairline of background shows through. A stroke in the fill colour repairs
+  // that but rasterises every boundary a second time; growing the boundary outward folds into
+  // vertices the fill already emits.
+  //
+  // The growth is done by ADDING two vertices per repaired edge, never by offsetting the edge
+  // lines and re-intersecting them at the corners. Re-intersecting moves the vertices at both ends
+  // of every edge it touches, and a vertex is shared with edges nobody asked to move: the corner
+  // slides along whatever else meets there, so a silhouette grows and the polygon pokes out from
+  // under its neighbour. Stepping out and back leaves every original vertex exactly where the
+  // geometry put it, needs no mitre limit, and measures a smaller gap for the same cost.
+  //
+  // Only edges this face OWNS step out - the ones whose neighbour is drawn later, see
+  // computeExpandMasks. Growing an edge whose neighbour is already down would move the visible
+  // boundary rather than hide a gap, and growing a silhouette just makes the object too big.
+  const nv = out - start;
+
   ctx.beginPath();
-  ctx.moveTo(emitX[start], emitY[start]);
-  for (let k = start + 1; k < out; k++) ctx.lineTo(emitX[k], emitY[k]);
-  // Close the loop with an explicit lineTo, never closePath(). stroke() skips the closing edge of
-  // an unclosed subpath while fill() closes it implicitly, so without this one edge per polygon
-  // would be filled but never stroked; and closePath() recomputes the whole path's bounds per call.
-  ctx.lineTo(emitX[start], emitY[start]);
-  ctx.stroke();
+  for (let k = 0; k < nv; k++) {
+    const i = start + k;
+    if (k === 0) ctx.moveTo(emitX[i], emitY[i]);
+    else ctx.lineTo(emitX[i], emitY[i]);
+    if (emitF[i] === 0) continue;
+
+    const j = start + (k + 1 === nv ? 0 : k + 1);
+    const ex = emitX[j] - emitX[i];
+    const ey = emitY[j] - emitY[i];
+    // Outward is (ey, -ex): backface culling admits one sign of screen-space area and merging
+    // preserves it, so every boundary here runs the same way round.
+    const ax = ex < 0 ? -ex : ex;
+    const ay = ey < 0 ? -ey : ey;
+    const l = ax > ay ? ax + 0.4 * ay : ay + 0.4 * ax; // octagonal norm, no sqrt
+    if (l < 1e-6) continue;
+    const inv = EXPAND / l;
+    const nx = ey * inv;
+    const ny = -ex * inv;
+    ctx.lineTo(emitX[i] + nx, emitY[i] + ny);
+    ctx.lineTo(emitX[j] + nx, emitY[j] + ny);
+  }
+  // No stroke, so no explicit closing lineTo is needed - fill() closes the subpath implicitly.
+  // closePath() stays out regardless: it recomputes the whole path's bounds per call.
   ctx.fill();
 
   statsBuffer[callsSlot]++;
@@ -477,6 +535,9 @@ export function weldFlushAll(
  * @param {number} x0 screen x of the first corner
  * @param {number} y0 screen y of the first corner
  * @param {number} id0 vertex identity of the first corner
+ * @param {number} [expandMask] 1 bit per triangle edge (edge k runs from corner k to corner k+1),
+ *   set where this face owns that edge's seam repair - see computeExpandMasks. 0, the default,
+ *   expands nothing, which is what the tests want and what a caller that has not opted in gets.
  */
 export function weldAddFace(
   st,
@@ -498,8 +559,10 @@ export function weldAddFace(
   x2,
   y2,
   id2,
+  expandMask = 0,
 ) {
   const slots = st.slots;
+  const poolExpand = st.poolExpand;
 
   // Deferral guard.
   //
@@ -531,8 +594,14 @@ export function weldAddFace(
     const gc = slots[gs * SL_STRIDE + SL_COLOR];
     if (gc === -1 || gc === color16) continue;
     const ga = gs << 2;
-    if (aabb[ga] > fx1 || aabb[ga + 2] < fx0) continue;
-    if (aabb[ga + 1] > fy1 || aabb[ga + 3] < fy0) continue;
+    // Dilated by GUARD_DILATE: a flush paints up to EXPAND outside the geometry it was given, so
+    // two regions that merely abut still contend for the pixels along their shared edge while
+    // overlapping by exactly zero. Only the test is dilated - the stored bounds stay exact, so the
+    // slack cannot compound as a polygon grows.
+    if (aabb[ga] > fx1 + GUARD_DILATE || aabb[ga + 2] < fx0 - GUARD_DILATE)
+      continue;
+    if (aabb[ga + 1] > fy1 + GUARD_DILATE || aabb[ga + 3] < fy0 - GUARD_DILATE)
+      continue;
     weldFlushSlot(
       st,
       gs,
@@ -607,6 +676,9 @@ export function weldAddFace(
       if (poolNext[mj] === mi) {
         const b = si * SL_STRIDE;
         relink(st, mj, poolNext[mi]);
+        // Edges i and i+1 both cancel, so the triangle's one surviving edge is i+2, and mj is the
+        // node that now leaves along it.
+        poolExpand[mj] = (expandMask >> ((i + 2) % 3)) & 1;
         // mi is about to be freed, so the head must not still point at it. mj survives and is on
         // the same ring, so it is always a valid replacement.
         if (slots[b + SL_HEAD] === mi) slots[b + SL_HEAD] = mj;
@@ -635,8 +707,13 @@ export function weldAddFace(
         if (after !== -1) edgeDelete(st, st.poolId[vNodeB], st.poolId[after]);
         poolNext[vNodeB] = -1;
 
+        // mi takes over the stretch of B's ring that vNodeB was carrying, so it inherits that
+        // node's edge flag; mj ends up leaving along the triangle's one surviving edge, i+2.
+        const vExpand = poolExpand[vNodeB];
         relink(st, mi, after);
         relink(st, mj, uNode);
+        poolExpand[mi] = vExpand;
+        poolExpand[mj] = (expandMask >> ((i + 2) % 3)) & 1;
         nodeFree(st, vNodeB);
 
         // Retag the WHOLE merged ring. Walking either original length is wrong now that the two
@@ -681,6 +758,11 @@ export function weldAddFace(
       if (nn !== -1) {
         relink(st, nn, poolNext[mm]);
         relink(st, mm, nn);
+        // Matched triangle edge mk is cancelled and the ring gains the other two in cyclic order,
+        // so mm now leaves along edge mk+1 and the new node along edge mk+2.
+        const mk = m0 !== -1 ? 0 : m1 !== -1 ? 1 : 2;
+        poolExpand[mm] = (expandMask >> ((mk + 1) % 3)) & 1;
+        poolExpand[nn] = (expandMask >> ((mk + 2) % 3)) & 1;
         slots[b + SL_LEN]++;
         slots[b + SL_SEQ] = seq;
         const ea = ss << 2;
@@ -740,6 +822,10 @@ export function weldAddFace(
   relink(st, n0, n1);
   relink(st, n1, n2);
   relink(st, n2, n0);
+  // Node k's outgoing edge IS triangle edge k, by construction of the seed ring.
+  poolExpand[n0] = expandMask & 1;
+  poolExpand[n1] = (expandMask >> 1) & 1;
+  poolExpand[n2] = (expandMask >> 2) & 1;
 
   const b = slot * SL_STRIDE;
   slots[b + SL_COLOR] = color16;

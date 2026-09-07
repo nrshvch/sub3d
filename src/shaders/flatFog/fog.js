@@ -7,6 +7,7 @@ import {
   weldFlushAll,
   weldReset,
 } from "../../shared/weld.js";
+import { computeExpandMasks } from "../../shared/shaders.js";
 
 // This pass's pending geometry, keyed on quantised fog amount rather than albedo.
 const weldState = createWeldState();
@@ -320,6 +321,9 @@ function batchedFogFace(
   statsBuffer,
   frameId,
   last,
+  // 1 bit per triangle edge: this face owns that edge's seam repair and must push it outward at
+  // flush. See computeExpandMasks in shared/shaders.js and weldFlushSlot in shared/weld.js.
+  expandMask,
 ) {
   const fogAmount = computeFogAmount(
     faceIdx,
@@ -361,6 +365,7 @@ function batchedFogFace(
     px2,
     py2,
     v2Idx,
+    expandMask,
   );
 
   // Fog's `last` only fires on the final face of the whole pass (fogSort emits shaderKey-0 faces
@@ -389,7 +394,7 @@ function batchedFogFace(
  * @param {number} fogColor - packed 0xRRGGBB, quantised to the 5-6-5 palette before use.
  */
 export function compositeFogPass(ctx, fogCtx, fogColor) {
-  const cnv = ctx.canvas
+  const cnv = ctx.canvas;
   const fogCnv = fogCtx.canvas;
   const w = cnv.width;
   const h = cnv.height;
@@ -456,6 +461,9 @@ export function fogTriangles(
   weldIdBuffer,
   tempIndexBuffer,
   meshIndexBuffer,
+  expandMaskBuffer,
+  neighbourFaceBuffer,
+  faceRankBuffer,
   count,
   clipGeometryBuffer,
   fogType,
@@ -474,6 +482,17 @@ export function fogTriangles(
   // Reset every frame - compositeFogPass mutates fogCtx in place, so stale pixels would leak.
   fogCtx.fillStyle = "#000000";
   fogCtx.fillRect(0, 0, w, h);
+
+  // Fog has its own sort, so its draw order - and with it which side of each shared edge owns the
+  // seam repair - differs from the fill pass's. Recompute against this order.
+  computeExpandMasks(
+    tempIndexBuffer,
+    0,
+    count,
+    neighbourFaceBuffer,
+    faceRankBuffer,
+    expandMaskBuffer,
+  );
 
   for (let i = 0; i < count; i++) {
     const idx = tempIndexBuffer[i];
@@ -522,6 +541,7 @@ export function fogTriangles(
       statsBuffer,
       frameId,
       last,
+      expandMaskBuffer[idx],
     );
   }
 }
