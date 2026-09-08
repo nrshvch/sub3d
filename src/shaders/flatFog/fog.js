@@ -7,7 +7,10 @@ import {
   weldFlushAll,
   weldReset,
 } from "../../shared/weld.js";
-import { computeExpandMasks } from "../../shared/shaders.js";
+import {
+  computeExpandMasks,
+  CTX_STATE_FILL_PASS_FILL_STYLE_SLOT,
+} from "../../shared/shaders.js";
 
 // This pass's pending geometry, keyed on quantised fog amount rather than albedo.
 const weldState = createWeldState();
@@ -18,10 +21,11 @@ let fogAmountBuffer = new Float32Array(0);
 let fogSkipBuffer = new Uint8Array(0);
 
 // What prepareFog learned on its way past this layer's faces, read only by fogPass:
-// [facesToDraw, anyFogged]
+// [facesToDraw, anyFogged, allFullyFogged]
 const prepared = new Int32Array(4);
 const PREP_FACE_COUNT = 0;
 const PREP_ANY_FOGGED = 1;
+const PREP_ALL_FOGGED = 2;
 
 // Screen bounds of every face that is not fully fogged, as [minX, minY, maxX, maxY] in fogCtx
 // pixels. Inverted when there are none, so an empty union fails every overlap test.
@@ -166,6 +170,7 @@ function prepareFog(
 ) {
   prepared[PREP_FACE_COUNT] = 0;
   prepared[PREP_ANY_FOGGED] = 0;
+  prepared[PREP_ALL_FOGGED] = 0;
 
   // Inverted, so the first lit face replaces both ends and a layer with none leaves bounds that
   // no face can overlap.
@@ -234,6 +239,14 @@ function prepareFog(
 
   // Nothing fogged, or nothing to draw: the caller drops the pass and never looks at the rest.
   if (prepared[PREP_ANY_FOGGED] === 0 || fogFaceCount === 0) return;
+
+  // Nothing lit anywhere, so the buffer stays the black it was cleared to from edge to edge and
+  // the composite resolves to flat fogColor. The caller paints that directly; the second walk
+  // below would only mark every face skipped to reach the same place the long way round.
+  if (fullyFoggedCount === fogFaceCount) {
+    prepared[PREP_ALL_FOGGED] = 1;
+    return;
+  }
 
   // Second walk, now that the lit union is closed: a fully fogged face clear of it can never
   // cover anything but the background it is the colour of. Only worth walking when there are
@@ -824,6 +837,21 @@ export function fogPass(
 
   if (prepared[PREP_ANY_FOGGED] === 0) return;
 
+  // Every face fully fogged: the buffer would be black edge to edge, and `fill * 0 + fogColor`
+  // is fogColor everywhere, sky included. Paint that and skip the sort, the raster and all four
+  // composite steps. The fill pass's style cache described this canvas and no longer does.
+  if (prepared[PREP_ALL_FOGGED] === 1) {
+    const fqr = fogColor >>> 16;
+    const fqg = (fogColor >>> 8) & 255;
+    const fqb = fogColor & 255;
+    const fogColor16 =
+      ((fqr & 0xf8) << 8) | ((fqg & 0xfc) << 3) | ((fqb & 0xf8) >> 3);
+    fillCtx.fillStyle = PALETTE_16BIT[fogColor16];
+    fillCtx.fillRect(0, 0, fillCtx.canvas.width, fillCtx.canvas.height);
+    ctxStateBuffer[CTX_STATE_FILL_PASS_FILL_STYLE_SLOT] = -1;
+    return;
+  }
+
   const sortStart = performance.now();
   const fogFaceCount = fogSort(
     indexBuffer,
@@ -838,7 +866,7 @@ export function fogPass(
     near,
     far,
   );
-  statsBuffer[STATS_FOG_SORT_MS] = (performance.now() - sortStart);
+  statsBuffer[STATS_FOG_SORT_MS] = performance.now() - sortStart;
 
   const rasterStart = performance.now();
   fogTriangles(
@@ -857,7 +885,7 @@ export function fogPass(
     statsBuffer,
     frameId,
   );
-  statsBuffer[STATS_FOG_RASTER_MS] = (performance.now() - rasterStart);
+  statsBuffer[STATS_FOG_RASTER_MS] = performance.now() - rasterStart;
 
   compositeFogPass(fillCtx, fogCtx, fogColor);
 }
