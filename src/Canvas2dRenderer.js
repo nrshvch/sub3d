@@ -38,11 +38,11 @@ import { flatShaderShade } from "./shaders/flatShade/index.js";
 import { smoothShaderShade } from "./shaders/smoothShade.js";
 import {
   CTX_STATE_FOG,
-  fogSort,
-  fogTriangles,
+  fogPass,
   STATS_FOG_DRAW_CALLS,
+  STATS_FOG_SORT_MS,
+  STATS_FOG_RASTER_MS,
 } from "./shaders/flatFog/index.js";
-import { compositeFogPass } from "./shaders/flatFog/fog.js";
 
 const computeNormalMatrix = MeshComponent.computeNormalMatrix;
 const vec3TransformMat4 = math.vec3TransformMat4;
@@ -217,9 +217,9 @@ export default function Canvas2dRenderer() {
    * flag to raise", which is what the fill and fog passes pass.
    */
   this.ctxStateBuffer = new Int32Array(10);
-  // Separate from ctxStateBuffer on purpose - pure draw-call counters with no bearing on how
-  // anything renders (see shared/shaders.js's registerShader doc comment for the layout).
-  this.statsBuffer = new Int32Array(3);
+  // [fill draw calls, fog draw calls, shade draw calls, free, fog sort ms,
+  // fog raster ms].
+  this.statsBuffer = new Float32Array(6);
 }
 
 var p = Canvas2dRenderer.prototype;
@@ -274,7 +274,7 @@ p.fillEnabled = true;
 p.shadeEnabled = true;
 
 /**
- * Renderer-wide override: when false, the fog pass (see fogTriangles) is skipped for
+ * Renderer-wide override: when false, the fog pass (see fogPass) is skipped for
  * every layer even when flat-shaded faces are present - see Canvas2dViewport#fogEnabled for the
  * public API.
  * @type {boolean}
@@ -607,6 +607,8 @@ p.render = function (camera, viewport, stats) {
     statsBuffer[STATS_FILL_DRAW_CALLS] = 0;
     statsBuffer[STATS_FOG_DRAW_CALLS] = 0;
     statsBuffer[STATS_SHADE_DRAW_CALLS] = 0;
+    statsBuffer[STATS_FOG_SORT_MS] = 0;
+    statsBuffer[STATS_FOG_RASTER_MS] = 0;
 
     if (this.wireframe) {
       drawWireframe(
@@ -716,11 +718,15 @@ p.render = function (camera, viewport, stats) {
       }
 
       if (this.fogEnabled && cam.fogType !== FogType.NONE) {
-        // Sorts this layer's flat-shaded faces the same way radixSort does (depth, then mesh),
-        // with fog bucket as an extra least-significant tie-break - depth stays dominant so
-        // fogCtx's draw order always matches fillCtx's real occlusion (see fog.js's fogSort).
-        const fogSortStart = performance.now();
-        const fogFaceCount = fogSort(
+        // A post-process over what the other two passes just drew: it decides for itself whether
+        // it has anything to contribute this frame, sorts, rasterises and composites, and reports
+        // its phase timings through statsBuffer. None of that reaches the passes above.
+        fogPass(
+          fillCtx,
+          fogCtx,
+          vertexBuffer,
+          vertexIndexBuffer,
+          weldIdBuffer,
           indexBuffer,
           tempIndexBuffer,
           fogSortScratchBuffer,
@@ -728,6 +734,9 @@ p.render = function (camera, viewport, stats) {
           meshIndexBuffer,
           depthBuffer,
           clipGeometryBuffer,
+          expandMaskBuffer,
+          neighbourFaceBuffer,
+          faceRankBuffer,
           counters,
           l,
           cam.nearClippingPane,
@@ -735,32 +744,11 @@ p.render = function (camera, viewport, stats) {
           cam.fogType,
           cam.fogNearPane,
           cam.fogFarPane,
-        );
-        totalFogSortTime += performance.now() - fogSortStart;
-
-        const fogStart = performance.now();
-        fogTriangles(
-          fogCtx,
-          vertexBuffer,
-          vertexIndexBuffer,
-          weldIdBuffer,
-          tempIndexBuffer,
-          meshIndexBuffer,
-          expandMaskBuffer,
-          neighbourFaceBuffer,
-          faceRankBuffer,
-          fogFaceCount,
-          clipGeometryBuffer,
-          cam.fogType,
-          cam.fogNearPane,
-          cam.fogFarPane,
+          cam.fogColor,
           ctxStateBuffer,
           statsBuffer,
           frameId,
         );
-        totalFogRasterTime += performance.now() - fogStart;
-
-        compositeFogPass(fillCtx, fogCtx, cam.fogColor);
       }
 
       // fillTriangles resets these slots itself (see its reset block) regardless of which passes
@@ -769,6 +757,8 @@ p.render = function (camera, viewport, stats) {
       fillDrawCalls += statsBuffer[STATS_FILL_DRAW_CALLS];
       fogDrawCalls += statsBuffer[STATS_FOG_DRAW_CALLS];
       shadeDrawCalls += statsBuffer[STATS_SHADE_DRAW_CALLS];
+      totalFogSortTime += statsBuffer[STATS_FOG_SORT_MS];
+      totalFogRasterTime += statsBuffer[STATS_FOG_RASTER_MS];
     }
 
     if (this.debugNormals) {
@@ -1677,12 +1667,7 @@ function drawWireframe(
 /**
  * Draws every face in [offset, offset+count) - the fill pass only: base color/texture for every
  * face, every shader, onto `ctx`. Shading and fog are separate passes (shadeTriangles,
- * fogTriangles below), called directly from render() instead of from inside this function, each
- * gated on its own renderer-wide toggle. This split exists because alternating draw calls between two
- * separate <canvas> elements per face measured ~25x more expensive per call than batching on
- * Firefox, regardless of how much work each call does, so every `ctx` draw for a layer must
- * happen before any `shadeCtx`/`fogCtx` draw. See shaderRegistry.js's registerShader for the
- * full two-function shader contract this dispatches into.
+ * and fogPass).
  * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
  * @param {Float32Array} vertexBuffer - Array of vertices in the format [x0, y0, color0, x1, y1, color1, x2, y2, color2]
  * @param {Uint32Array} vertexIndexBuffer - Array of indices in the format [i0, i1, i2, i3, i4, i5, ...]
