@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeExpandMasks,
   identityFill,
+  NO_MESH_NEIGHBOUR,
+  NEIGHBOUR_NOT_DRAWN,
   CTX_STATE_SHADE_FILL,
   CTX_STATE_SAW_REAL_SHADING,
   STATS_SHADE_DRAW_CALLS,
@@ -81,5 +84,98 @@ describe("identityFill", () => {
     const ctxStateBuffer = new Int32Array(10).fill(-1);
     run(stubCtx(), ctxStateBuffer, new Int32Array(8));
     expect(ctxStateBuffer[CTX_STATE_SAW_REAL_SHADING]).toBe(-1);
+  });
+});
+
+/**
+ * Seam ownership. Growing the wrong edge is not a small error: grow one whose neighbour is already
+ * down and the visible boundary moves, grow a silhouette and the object inflates. Both failures
+ * look like "slightly wrong outline" rather than anything that throws, so they are pinned here.
+ */
+describe("computeExpandMasks", () => {
+  // Three faces drawn in the order 0, 1, 2. Each row is one face's three edges.
+  const run = (neighbours, order = [0, 1, 2]) => {
+    const faceCount = neighbours.length / 3;
+    const masks = new Uint8Array(faceCount);
+    const ranks = new Int32Array(faceCount).fill(-1);
+    computeExpandMasks(
+      new Uint32Array(order),
+      0,
+      order.length,
+      new Int32Array(neighbours),
+      ranks,
+      masks,
+    );
+    return { masks: Array.from(masks), ranks: Array.from(ranks) };
+  };
+
+  const NONE = NEIGHBOUR_NOT_DRAWN;
+  const OPEN = NO_MESH_NEIGHBOUR;
+
+  it("gives a shared edge to whichever face is drawn first", () => {
+    // Faces 0 and 1 share an edge: 0's edge 0 faces 1, and 1's edge 0 faces 0.
+    // 0 is drawn first, so 0 owns the repair and 1 must leave it alone.
+    const { masks } = run([1, NONE, NONE, 0, NONE, NONE, NONE, NONE, NONE]);
+    expect(masks[0] & 1).toBe(1);
+    expect(masks[1] & 1).toBe(0);
+  });
+
+  it("never grows a silhouette, whichever bit it is", () => {
+    // Every edge's neighbour exists in the mesh but was culled - a closed mesh's outline. Growing
+    // any of them inflates the object, which is what the trees in isometric-world showed.
+    const { masks } = run([
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+    ]);
+    expect(masks).toEqual([0, 0, 0]);
+  });
+
+  it("grows an open mesh boundary, since no other face can own that seam", () => {
+    // The neighbour lives in a different mesh and intra-mesh adjacency cannot see it.
+    const { masks } = run([
+      OPEN,
+      OPEN,
+      OPEN,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+    ]);
+    expect(masks[0]).toBe(0b111);
+  });
+
+  it("tracks the draw order, not the face index", () => {
+    // Same shared edge as the first case, but face 1 is drawn first this time, so ownership flips.
+    const { masks } = run(
+      [1, NONE, NONE, 0, NONE, NONE, NONE, NONE, NONE],
+      [1, 0, 2],
+    );
+    expect(masks[1] & 1).toBe(1);
+    expect(masks[0] & 1).toBe(0);
+  });
+
+  it("leaves the rank scratch as it found it", () => {
+    // It carries no generation stamp, so a pass that dirtied it would poison the next one.
+    const { ranks } = run([
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+      NONE,
+    ]);
+    expect(ranks).toEqual([-1, -1, -1]);
   });
 });

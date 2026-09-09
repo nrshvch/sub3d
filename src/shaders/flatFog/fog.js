@@ -639,8 +639,8 @@ export function compositeFogPass(ctx, fogCtx, fogColor) {
  * @param {Uint8Array} expandMaskBuffer - out: per face, 1 bit per edge, set where this face owns
  *   that edge's seam repair. Recomputed here against fog's own draw order, which differs from the
  *   fill pass's because fogSort sorts separately.
- * @param {Int32Array} neighbourFaceBuffer - per face vertex, the neighbouring face across that
- *   edge, or -1 (see destructMesh).
+ * @param {Int32Array} neighbourFaceBuffer - per face vertex, the neighbouring face's index or a
+ *   no-neighbour sentinel (see destructMesh).
  * @param {Int32Array} faceRankBuffer - scratch for the ownership pass, -1 in and -1 out.
  * @param {number} count - total valid entries in tempIndexBuffer, from fogSort.
  * @param {Float32Array} fogAmountBuffer - Per-face fog amount from prepareFog.
