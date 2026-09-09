@@ -27,6 +27,8 @@ import {
 } from "./shaders/shaderRegistry.js";
 import {
   computeExpandMasks,
+  NO_MESH_NEIGHBOUR,
+  NEIGHBOUR_NOT_DRAWN,
   identityFill,
   CTX_STATE_SHADE_FILL,
   CTX_STATE_SAW_REAL_SHADING,
@@ -1155,9 +1157,9 @@ let frameCounter = 0;
  * still reports its shared edges as shared. Offset per mesh so identities never collide.
  * @param {Uint32Array} meshIndexBuffer - Parallel array storing the mesh index for each face.
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
- * @param {Int32Array} neighbourFaceBuffer - Out: 3 per face, the face index across that edge, or -1
- *   where the neighbour is absent from this frame (mesh boundary, culled, or clipped). Resolved
- *   from each mesh's static adjacency table; read by computeExpandMasks to decide seam ownership.
+ * @param {Int32Array} neighbourFaceBuffer - Out: 3 per face, the neighbouring face's index, or a
+ *   NO_MESH_NEIGHBOUR / NEIGHBOUR_NOT_DRAWN sentinel. Resolved from each mesh's static adjacency
+ *   table; read by computeExpandMasks to decide which edges own a seam repair.
  * @param {Int32Array} triToFace - Scratch, mesh-local triangle index -> face index. Valid only for
  *   the mesh being processed, which triToFaceStamp rather than a clear is what keeps honest.
  * @param {Int32Array} triToFaceStamp - Scratch, parallel to triToFace: the mesh ordinal that wrote
@@ -1571,9 +1573,10 @@ function destructMesh(
     }
 
     // Resolve this mesh's static adjacency into this frame's face indices, now that every
-    // surviving face of it has a slot. A neighbour that was culled or clipped leaves -1, which the
-    // ownership pass treats exactly like no neighbour at all - nothing abuts that edge in this
-    // frame, so there is no seam there to hand to anyone.
+    // surviving face of it has a slot. The two ways an edge can end up without a neighbour are
+    // kept apart here, because they call for opposite seam repairs: an edge the mesh never had a
+    // face across abuts another mesh, while a neighbour that failed the backface or clip test
+    // makes this edge a silhouette. See the sentinels in shared/shaders.js.
     for (let k = meshFaceStart; k < i; k++) {
       const ff = meshFaceIndexBuffer[k];
       const k3 = k * 3;
@@ -1581,11 +1584,23 @@ function destructMesh(
       const a1 = adjTri[ff + 1];
       const a2 = adjTri[ff + 2];
       neighbourFaceBuffer[k3] =
-        a0 >= 0 && triToFaceStamp[a0] === meshStamp ? triToFace[a0] : -1;
+        a0 < 0
+          ? NO_MESH_NEIGHBOUR
+          : triToFaceStamp[a0] === meshStamp
+            ? triToFace[a0]
+            : NEIGHBOUR_NOT_DRAWN;
       neighbourFaceBuffer[k3 + 1] =
-        a1 >= 0 && triToFaceStamp[a1] === meshStamp ? triToFace[a1] : -1;
+        a1 < 0
+          ? NO_MESH_NEIGHBOUR
+          : triToFaceStamp[a1] === meshStamp
+            ? triToFace[a1]
+            : NEIGHBOUR_NOT_DRAWN;
       neighbourFaceBuffer[k3 + 2] =
-        a2 >= 0 && triToFaceStamp[a2] === meshStamp ? triToFace[a2] : -1;
+        a2 < 0
+          ? NO_MESH_NEIGHBOUR
+          : triToFaceStamp[a2] === meshStamp
+            ? triToFace[a2]
+            : NEIGHBOUR_NOT_DRAWN;
     }
   }
   return i;
@@ -1692,8 +1707,8 @@ function drawWireframe(
  * @param {Uint32Array} meshFaceIndexBuffer - Parallel array storing the local face index within the mesh for each face.
  * @param {Uint8Array} expandMaskBuffer - Out: per face, 1 bit per edge, set where this face owns
  *   that edge's seam repair. Recomputed here for this pass's draw order, then read per face.
- * @param {Int32Array} neighbourFaceBuffer - Per face vertex, the neighbouring face across that
- *   edge, or -1 (see destructMesh).
+ * @param {Int32Array} neighbourFaceBuffer - Per face vertex, the neighbouring face's index or a
+ *   no-neighbour sentinel (see destructMesh).
  * @param {Int32Array} faceRankBuffer - Scratch for the ownership pass, -1 everywhere on entry and
  *   restored to that on exit, so it needs no generation stamp.
  * @param {Uint32Array} layerBuffers - Single 1D flat typed array storing GameObject indices.
@@ -2068,8 +2083,8 @@ function fillTriangles(
  * @param {Uint8Array} expandMaskBuffer - Out: per face, 1 bit per edge, set where this face owns
  *   that edge's seam repair. Recomputed here rather than shared with the fill pass: the two are
  *   independent, and reusing one mask would silently couple them.
- * @param {Int32Array} neighbourFaceBuffer - Per face vertex, the neighbouring face across that
- *   edge, or -1 (see destructMesh).
+ * @param {Int32Array} neighbourFaceBuffer - Per face vertex, the neighbouring face's index or a
+ *   no-neighbour sentinel (see destructMesh).
  * @param {Int32Array} faceRankBuffer - Scratch for the ownership pass, -1 in and -1 out.
  * @param {Uint32Array} layerBuffers - Flat per-layer GameObject index partitions (see groupLayers).
  * @param {number} layerOffset - Start of this layer's partition inside layerBuffers.

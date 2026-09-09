@@ -7,6 +7,20 @@ export const CTX_STATE_SHADE_FILL = 3;
 
 export const CTX_STATE_SAW_REAL_SHADING = 8;
 
+// `neighbourFaceBuffer` holds one of these per face edge:
+//
+//   [ >= 0            the neighbouring face's index in this pass
+//   | NO_MESH_NEIGHBOUR    the mesh has no face across this edge at all
+//   | NEIGHBOUR_NOT_DRAWN  it has one, but that face is not in this pass ]
+//
+// The two negatives must stay apart, because they want opposite seam repairs. An open mesh
+// boundary abuts a *different mesh* - two terrain chunks meeting - which intra-mesh adjacency
+// cannot see, so it grows. A neighbour that was backface-culled or clipped means this edge is a
+// silhouette: whatever is behind it already covers those pixels fully, there is no coverage
+// deficit, and growing it only inflates the object.
+export const NO_MESH_NEIGHBOUR = -1;
+export const NEIGHBOUR_NOT_DRAWN = -2;
+
 export const STATS_FILL_DRAW_CALLS = 0;
 export const STATS_SHADE_DRAW_CALLS = 2;
 
@@ -144,20 +158,19 @@ export function identityFill(
  * So ownership reads "my neighbour across this edge is drawn after me", which depends on the
  * pass's own draw order - fog sorts separately from fill, so this runs per pass, not per frame.
  *
- * An edge whose neighbour is -1 always expands. That covers two cases which cannot be told apart
- * from here: a face on the boundary of its mesh, whose real neighbour lives in another mesh and is
- * invisible to intra-mesh adjacency (two abutting terrain chunks - if neither side expanded, every
- * chunk seam would show as a hairline); and a neighbour culled this frame, where nothing abuts and
- * the expansion is only a half-pixel of silhouette bloat. The first case does pay the displacement
- * described above, since both sides expand into each other and the later one wins - a worse-looking
- * seam is the alternative, and it is confined to cross-mesh boundaries.
+ * An edge marked NO_MESH_NEIGHBOUR grows unconditionally: its real neighbour is in another mesh,
+ * invisible to intra-mesh adjacency, so nobody else can own the seam. Both sides grow into each
+ * other there and the later one wins, which displaces the boundary slightly - still better than the
+ * hairline every chunk seam would show otherwise. An edge marked NEIGHBOUR_NOT_DRAWN never grows:
+ * it is a silhouette, nothing abuts it, and growing it just inflates the object's outline.
  *
  * `faceRankBuffer` is left as it was found (-1 everywhere), so it needs no generation stamp.
  *
  * @param {Uint32Array} indexBuffer face indices in this pass's draw order
  * @param {number} offset first entry of the range to consider
  * @param {number} len one past the last entry
- * @param {Int32Array} neighbourFaceBuffer 3 per face: the face across that edge, or -1
+ * @param {Int32Array} neighbourFaceBuffer 3 per face: the neighbouring face's index, or one of the
+ *   NO_MESH_NEIGHBOUR / NEIGHBOUR_NOT_DRAWN sentinels above
  * @param {Int32Array} faceRankBuffer scratch, -1 everywhere on entry and on exit
  * @param {Uint8Array} expandMaskBuffer out: 1 bit per edge, set where this face owns the repair
  */
@@ -177,11 +190,14 @@ export function computeExpandMasks(
     const n0 = neighbourFaceBuffer[b];
     const n1 = neighbourFaceBuffer[b + 1];
     const n2 = neighbourFaceBuffer[b + 2];
-    // A neighbour outside this pass reads -1 and loses the compare, so it expands - see above.
     expandMaskBuffer[idx] =
-      (n0 < 0 || faceRankBuffer[n0] > i ? 1 : 0) |
-      (n1 < 0 || faceRankBuffer[n1] > i ? 2 : 0) |
-      (n2 < 0 || faceRankBuffer[n2] > i ? 4 : 0);
+      (n0 === NO_MESH_NEIGHBOUR || (n0 >= 0 && faceRankBuffer[n0] > i)
+        ? 1
+        : 0) |
+      (n1 === NO_MESH_NEIGHBOUR || (n1 >= 0 && faceRankBuffer[n1] > i)
+        ? 2
+        : 0) |
+      (n2 === NO_MESH_NEIGHBOUR || (n2 >= 0 && faceRankBuffer[n2] > i) ? 4 : 0);
   }
 
   for (let i = offset; i < len; i++) faceRankBuffer[indexBuffer[i]] = -1;
