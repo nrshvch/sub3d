@@ -61,9 +61,12 @@ Outside those paths — event handlers, the React debug UI, scene-graph setup, m
 - **An array holding structured data gets its layout drawn in a comment**, e.g. `[flagA, flagB, ...flagN, count]`, kept aligned so the shape is readable at a glance.
 - **Where a decision was made on a measurement, record the number**, not the argument: "0.5px leaves the gap standing, 1px closes it" earns its line.
 
-## Naming
+## Naming and constants
 
 - Human-friendly names throughout: `rightEdge`, not `re`. Single letters are acceptable only for loop counters and for the standard math shorthands in inlined vector code (`nx`, `dot`, `invLen`).
+- **Name every magic number.** Sentinels, lane offsets into a flat buffer, bitmask bits, palette keys and tuning thresholds each get a named `const` — `SL_STRIDE`, `CTX_STATE_FILL_PASS_FILL_STYLE_SLOT`, `EXPAND`, `COPLANAR_DOT`. Export it when a second module has to agree on the value rather than restating the literal.
+- A bare literal does not just cost readability, it lets two meanings quietly share one value. `neighbourFaceBuffer` used `-1` for both "this mesh has no face across the edge" and "it has one, but it was culled" — opposite seam repairs — and the collision inflated every silhouette in the scene until `NO_MESH_NEIGHBOUR` and `NEIGHBOUR_NOT_DRAWN` pulled them apart. Give a sentinel a name and the next case that needs one is forced to declare itself.
+- Loop bounds, `0`, `1`, and the identity elements of the maths are not magic and need no name.
 
 ## Style
 
