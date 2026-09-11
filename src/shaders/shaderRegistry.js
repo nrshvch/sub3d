@@ -1,36 +1,38 @@
 import { flatShaderFill } from "./flatFill/index.js";
 import { textureShaderFill } from "./textureFill/index.js";
 import { avgFlatShaderFill, avgFlatShaderShade } from "./avgFlatFill/index.js";
-import { smoothShaderFill } from "./smoothFill.js";
 import { identityFill } from "../shared/shaders.js";
-import { smoothShaderShade } from "./smoothShade.js";
 import { flatShaderShade } from "./flatShade/index.js";
+import { gouraudShaderShade } from "./gouraudShade/index.js";
 
 export const shaderRegistry = [];
 
 export const shadeShaderRegistry = [];
-let nextKey = 5;
+let nextKey = 6;
 
 export const ALBEDO_FLAT = 0;
 export const TEXTURE = 1;
 export const EMISSIVE_FLAT = 2;
 export const AVG_ALBEDO_FLAT = 3;
-export const SMOOTH_ALBEDO_FLAT = 4;
+export const GOURAUD_SHADE = 4;
+// Flat albedo fill, Gouraud shade: the deferred smooth-shading pair. Its fill is ordinary
+// flatShaderFill, so all the smoothness lives in the shade layer that multiplies over it.
 
-// Built-ins (keys 0-4) are registered here too, purely for consistency with consumer shaders -
+// Built-ins (keys 0-5) are registered here too, purely for consistency with consumer shaders -
 // Canvas2dRenderer.js's fillTriangles/shadeTriangles switch statements still call them directly
 // by fixed key (see their case comments), never through these arrays.
 shaderRegistry[ALBEDO_FLAT] = flatShaderFill;
 shadeShaderRegistry[ALBEDO_FLAT] = flatShaderShade;
-// Texture replaces the albedo, not the lighting, so it shades exactly as the flat colour does.
+// Texture replaces the albedo, not the lighting, so it shades per vertex normal like any other
+// smooth mesh. A hard-edged mesh is unaffected - its vertex normals are its face normals.
 shaderRegistry[TEXTURE] = textureShaderFill;
-shadeShaderRegistry[TEXTURE] = flatShaderShade;
+shadeShaderRegistry[TEXTURE] = gouraudShaderShade;
 shaderRegistry[EMISSIVE_FLAT] = flatShaderFill;
 shadeShaderRegistry[EMISSIVE_FLAT] = identityFill;
 shaderRegistry[AVG_ALBEDO_FLAT] = avgFlatShaderFill;
 shadeShaderRegistry[AVG_ALBEDO_FLAT] = avgFlatShaderShade;
-shaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderFill;
-shadeShaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderShade;
+shaderRegistry[GOURAUD_SHADE] = flatShaderFill;
+shadeShaderRegistry[GOURAUD_SHADE] = gouraudShaderShade;
 
 /**
  * The fixed positional argument list every fill and shade function takes.
@@ -53,7 +55,9 @@ shadeShaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderShade;
  * @param {Float32Array} vertexNormalsBuffer world-space vertex normals, 9 per face
  * @param {Float32Array} faceNormalsBuffer world-space face normal, 3 per face
  * @param {number} v0Idx welded vertex identity of the first corner - what adjacency is matched on,
- *   never a coordinate offset (see destructMesh's weldIdBuffer)
+ *   never a coordinate offset (see destructMesh's weldIdBuffer). The exceptions are the two keys
+ *   shaded by gouraudShaderShade - TEXTURE and GOURAUD_SHADE - which take vertexBuffer offsets here
+ *   instead, because that shader has to read vertexNormalsBuffer; both call sites say so
  * @param {number} v1Idx welded vertex identity of the second corner
  * @param {number} v2Idx welded vertex identity of the third corner
  * @param {number} faceIdx this face's index into the per-face buffers above
@@ -75,7 +79,7 @@ shadeShaderRegistry[SMOOTH_ALBEDO_FLAT] = smoothShaderShade;
  *   face normally first, then flush whatever is pending. A shader that buffers nothing ignores it
  * @param {number} [expandMask] 1 bit per triangle edge (edge k runs from corner k to corner k+1),
  *   set where this face owns that edge's seam repair - see computeExpandMasks in shared/shaders.js.
- *   Only the batching flat-family shaders read it
+ *   Only the batching shaders read it
  * @returns {void}
  */
 
