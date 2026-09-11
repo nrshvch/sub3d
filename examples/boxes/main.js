@@ -25,7 +25,9 @@ function mulberry32(seed) {
 
 const ball = new scaliaEngine.Ball(...scaliaEngine.Ball.generate());
 ball.meshRenderer.layer = 1;
-ball.meshRenderer.shaderType = 0;
+// Flat albedo, Gouraud shade - the sphere's facets come from the shade layer, so smoothing it is a
+// shade-pass change and its fill still batches with every other flat-coloured face in the scene.
+ball.meshRenderer.shaderType = scaliaEngine.ShaderType.GOURAUD_SHADE;
 
 ball.transform.scale(20, 20, 20);
 

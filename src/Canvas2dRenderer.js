@@ -11,7 +11,6 @@ import * as debug from "./debug/debug.js";
 import radixSort from "./radixSort.js";
 import { flatShaderFill } from "./shaders/flatFill/index.js";
 import { textureShaderFill } from "./shaders/textureFill/index.js";
-import { smoothShaderFill } from "./shaders/smoothFill.js";
 import {
   avgFlatShaderFill,
   avgFlatShaderShade,
@@ -23,7 +22,7 @@ import {
   TEXTURE,
   shaderRegistry,
   shadeShaderRegistry,
-  SMOOTH_ALBEDO_FLAT,
+  GOURAUD_SHADE,
 } from "./shaders/shaderRegistry.js";
 import {
   computeExpandMasks,
@@ -37,7 +36,7 @@ import {
   CTX_STATE_FILL_PASS_FILL_STYLE_SLOT,
 } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
-import { smoothShaderShade } from "./shaders/smoothShade.js";
+import { gouraudShaderShade } from "./shaders/gouraudShade/index.js";
 import {
   CTX_STATE_FOG,
   fogPass,
@@ -1971,8 +1970,10 @@ function fillTriangles(
         );
         break;
       }
-      case SMOOTH_ALBEDO_FLAT: {
-        smoothShaderFill(
+      case GOURAUD_SHADE: {
+        // Smoothness lives entirely in the shade layer; the albedo is an ordinary flat fill, and
+        // welds with ALBEDO_FLAT's own faces because it goes through the same shader.
+        flatShaderFill(
           ctx,
           px0,
           py0,
@@ -2002,6 +2003,7 @@ function fillTriangles(
           statsBuffer,
           frameId,
           last,
+          expandMaskBuffer[idx],
         );
         break;
       }
@@ -2219,8 +2221,13 @@ function shadeTriangles(
         break;
       }
       case TEXTURE: {
-        // Texture changes the albedo, not the lighting - shaded like flat colour.
-        flatShaderShade(
+        // Texture changes the albedo, not the lighting, so it shades per vertex normal like any
+        // untextured smooth mesh - a textured sphere has no more reason to look facetted than a
+        // plain one. A hard-edged mesh is unaffected: its vertex normals ARE its face normals, so
+        // the field comes out constant per face and the welder emits the same flat fill.
+        //
+        // Fed v*Idx (vertexBuffer offsets) rather than w*Idx, as GOURAUD_SHADE is below.
+        gouraudShaderShade(
           ctx,
           px0,
           py0,
@@ -2232,9 +2239,9 @@ function shadeTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          w0Idx,
-          w1Idx,
-          w2Idx,
+          v0Idx,
+          v1Idx,
+          v2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -2323,8 +2330,11 @@ function shadeTriangles(
         );
         break;
       }
-      case SMOOTH_ALBEDO_FLAT: {
-        smoothShaderShade(
+      case GOURAUD_SHADE: {
+        // The one shader handed v*Idx (vertexBuffer offsets) rather than w*Idx (welded
+        // identities): it reads vertexNormalsBuffer, which destructMesh writes at those offsets.
+        // They double as its adjacency identities - see the note in gouraudShade/shade.js.
+        gouraudShaderShade(
           ctx,
           px0,
           py0,
@@ -2336,9 +2346,9 @@ function shadeTriangles(
           colorBuffer,
           vertexNormalsBuffer,
           faceNormalsBuffer,
-          w0Idx,
-          w1Idx,
-          w2Idx,
+          v0Idx,
+          v1Idx,
+          v2Idx,
           idx,
           mesh,
           meshFaceIndexBuffer[idx],
@@ -2354,6 +2364,7 @@ function shadeTriangles(
           statsBuffer,
           frameId,
           last,
+          expandMaskBuffer[idx],
         );
         break;
       }

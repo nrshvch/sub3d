@@ -1,5 +1,5 @@
 import { PALETTE_16BIT } from "../../palette.js";
-import { ALBEDO_FLAT, TEXTURE } from "../shaderRegistry.js";
+import { ALBEDO_FLAT, GOURAUD_SHADE, TEXTURE } from "../shaderRegistry.js";
 
 import {
   createWeldState,
@@ -186,7 +186,11 @@ function prepareFog(
     const idx = indexBuffer[i];
     const key = shaderTypeBuffer[idx];
 
-    if (key !== ALBEDO_FLAT && key !== TEXTURE) {
+    // The flat-fill family, by what the FILL pass draws: GOURAUD_SHADE is here because its fill is
+    // flatShaderFill, whatever its shade pass does. A key left out is marked skipped and keeps this
+    // buffer's black background, which composites as FULLY fogged - so omitting a flat-filled key
+    // renders its meshes solid fogColor rather than merely unfogged.
+    if (key !== ALBEDO_FLAT && key !== TEXTURE && key !== GOURAUD_SHADE) {
       outSkip[idx] = 1;
       continue;
     }
@@ -310,9 +314,10 @@ function prepareFog(
  * Significant)] -> [Mesh Index] -> [Fog Bucket (Least Significant)]), with fog bucket substituted
  * for shaderPass as the extra key. Anything else is skipped outright, never written to any buffer.
  *
- * Both flat fill shaders participate: fog is a function of depth alone, so an albedo face and a
- * textured one at the same distance are fogged identically, and admitting only one of them would
- * leave the other sitting on the buffer's black background - which reads as fully fogged.
+ * Every flat-filled key participates: fog is a function of depth alone, so an albedo face, a
+ * textured one and a Gouraud-shaded one at the same distance are fogged identically, and admitting
+ * only some of them would leave the rest sitting on the buffer's black background - which reads as
+ * fully fogged.
  *
  * Depth stays the dominant key on purpose: fog amount (especially RADIAL, full 3D distance) does
  * not reliably correlate with the camera-space Z radixSort/fill/shade occlude by - two faces at

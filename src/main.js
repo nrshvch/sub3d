@@ -18,7 +18,6 @@ import Canvas2dViewport from "./Canvas2dViewport.js";
 import Light from "./Light.js";
 import { showDebug } from "./debug/showDebug.jsx";
 import { flatShaderFill } from "./shaders/flatFill/index.js";
-import { smoothShaderFill } from "./shaders/smoothFill.js";
 import {
   avgFlatShaderFill,
   avgFlatShaderShade,
@@ -29,12 +28,12 @@ import {
   TEXTURE,
   EMISSIVE_FLAT,
   AVG_ALBEDO_FLAT,
-  SMOOTH_ALBEDO_FLAT,
+  GOURAUD_SHADE,
 } from "./shaders/shaderRegistry.js";
 import { textureShaderFill } from "./shaders/textureFill/index.js";
 import { identityFill } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
-import { smoothShaderShade } from "./shaders/smoothShade.js";
+import { gouraudShaderShade } from "./shaders/gouraudShade/index.js";
 
 export default window.scaliaEngine = {
   config: config,
@@ -64,12 +63,12 @@ export default window.scaliaEngine = {
     TEXTURE,
     EMISSIVE_FLAT,
     AVG_ALBEDO_FLAT,
-    SMOOTH_ALBEDO_FLAT,
+    GOURAUD_SHADE,
   },
   shaders: {
     flat: { fill: flatShaderFill, shade: flatShaderShade },
-    texture: { fill: textureShaderFill, shade: flatShaderShade },
+    texture: { fill: textureShaderFill, shade: gouraudShaderShade },
     avgFlat: { fill: avgFlatShaderFill, shade: avgFlatShaderShade },
-    smooth: { fill: smoothShaderFill, shade: smoothShaderShade },
+    gouraud: { fill: flatShaderFill, shade: gouraudShaderShade },
   },
 };
