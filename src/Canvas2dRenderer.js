@@ -1,6 +1,49 @@
 // TODO: dont pass gameObjects object into fillTriangles, move lights params into typed buffers
 // TODO: use Binary Scaling (Q-format) instead of floats for frequent math ops
 // TODO: calculate lightning at lower fps
+//
+// TODO: settle the per-corner index in the shader contract - one slot, two meanings.
+//
+// A shader is handed three per-corner numbers in the `v0Idx/v1Idx/v2Idx` positions, and this file
+// puts a DIFFERENT number there depending on the case:
+//
+//   most keys      weldIdBuffer[idx*3+k]      - an equivalence label, for adjacency
+//   TEXTURE,       vertexIndexBuffer[idx*3+k] - an offset into vertexBuffer/vertexNormalsBuffer,
+//   GOURAUD_SHADE                               because those shaders must read a vertex normal
+//
+// A positional contract whose meaning varies by call site is not a contract, and it has already
+// cost us: `shaders/avgFlatFill/avgFlatShader.js` and `shaders/smoothShade.js` both index
+// `vertexNormalsBuffer[v0Idx]` while being handed a welded identity, so they read normals from an
+// unrelated vertex. LATENT BUG, live today - neither shader is used by an example, which is why it
+// has gone unnoticed. Whatever shape the fix takes, those two are the things to re-check.
+//
+// The two numbers cannot be collapsed into one. Welding is an equivalence on POSITION, and vertex
+// attributes are not functions of position: `vMapping` already merges every corner that is safe to
+// merge, so the corners a weldMap merges on top of that are exactly the ones a generator split
+// BECAUSE their normal or uv differs. Point an attribute read at a welded representative and a
+// cube's three corner normals become one. The lossiness is the feature, and it is lossy in the one
+// dimension the attribute role needs.
+//
+// So the question is only whether the attribute offset belongs in the signature at all:
+//
+//   A. Write vertexNormalsBuffer per FACE VERTEX (9 per face, read by faceIdx) like every sibling
+//      attribute already is - clipGeometryBuffer 9/face, colorBuffer 3/face, faceNormalsBuffer
+//      3/face. The offset then leaves the contract entirely and the only per-corner scalar is the
+//      welded identity, whose one job is adjacency. Costs a per-face copy out of the existing
+//      per-unique-vertex buffer (keep that as scratch - recomputing the transform per corner is
+//      ~6x the sqrt work). Note ShaderFn's doc ALREADY claims "9 per face", so it documents A.
+//   B. Pass `vertexIndexBuffer` itself as one argument and let a shader slice it by faceIdx. No
+//      runtime cost, one parameter, but two indexing spaces remain in the mental model.
+//   C. Pass both, named apart (offsets vs identities). No runtime cost, widest signature.
+//
+// A also settles a sizing bug that B and C leave standing. `vertexBuffer` is allocated
+// `maxFacesCount * 6` under a comment reading "array of vec2 ... 3x per every face" - that is the
+// right size for stride 2. It is indexed at stride 3 (`uniqueVertexCount * 3`, slots +0/+1 used,
+// +2 dead) purely so the offset can be shared with vertexNormalsBuffer, which does need three
+// slots. A layer whose visible meshes total more unique vertices than 2x their faces therefore
+// writes past the end, which a typed array swallows silently; a Box sits exactly on the boundary
+// (24 verts, 12 faces) and a mesh of unshared triangles (3x) is over it. Moving normals off that
+// offset lets vertexBuffer go to stride 2, and the existing allocation becomes exactly right.
 
 import config from "./config.js";
 import MeshComponent from "./components/MeshComponent.js";
