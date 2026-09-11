@@ -1,6 +1,5 @@
 import scaliaEngine from "sub3d";
 import "sub3d/dist/sub3d.css";
-import { vec3 } from "gl-matrix";
 import earthTexture from "./earth-texture-equirectangular.jpg";
 import moonTexture from "./2k_moon.jpg";
 
@@ -28,9 +27,8 @@ function createMoon() {
   );
   moon.meshRenderer.layer = 1;
   moon.meshRenderer.shaderType = scaliaEngine.ShaderType.TEXTURE;
-  const randPos = vec3.random([], 800);
 
-  moon.transform.setPosition(randPos[0], randPos[1], randPos[2]);
+  moon.transform.setPosition(400, 0, 400);
 
   moon.meshRenderer.texture = moonTexture;
   myGame.world.scene.addGameObject(moon);
