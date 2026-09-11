@@ -1,5 +1,5 @@
 import scaliaEngine from "sub3d";
-import "sub3d/dist/sub3d.css";
+import "sub3d/sub3d.css";
 import earthTexture from "./earth-texture-equirectangular.jpg";
 import moonTexture from "./2k_moon.jpg";
 
