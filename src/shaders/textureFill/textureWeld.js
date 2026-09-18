@@ -238,6 +238,37 @@ function deindexRing(st, slot) {
 }
 
 /**
+ * Resolves what `ctx.createPattern` should actually read from for a texture image.
+ *
+ * Safari re-applies an image's embedded colour profile on every draw that references it, where
+ * Chrome/Firefox convert once and cache the result - a large, Safari-only cost that source images
+ * exported from an editor almost always carry, since sRGB tagging is the default in most export
+ * pipelines. Baking the image into an offscreen canvas once and building the pattern from that
+ * canvas instead of the live `<img>` pays the conversion here, at pattern-build time, rather than
+ * in every `fill()`. A canvas has no colour profile of its own, so nothing is lost by doing this
+ * unconditionally rather than gating it to one browser.
+ *
+ * Deliberately a plain function here rather than a getter on Mesh: an earlier version cached this
+ * behind a `texturePatternSource` accessor property on the mesh instead, identical in every other
+ * respect - same one-bake-per-texture-assignment result - and measurably regressed Safari again,
+ * most likely JSC handling the accessor property worse than a direct call once mesh shapes stop
+ * being perfectly monomorphic. Keep this off the mesh.
+ *
+ * @param {HTMLImageElement} image source image; caller has already checked `img.complete`
+ * @returns {HTMLImageElement|HTMLCanvasElement} a same-size canvas holding the decoded image, or
+ *   `image` itself where no `document` exists to create one (e.g. this module's own unit tests,
+ *   which run under Node rather than a browser)
+ */
+function texturePatternSource(image) {
+  if (typeof document === "undefined") return image;
+  const bake = document.createElement("canvas");
+  bake.width = image.naturalWidth;
+  bake.height = image.naturalHeight;
+  bake.getContext("2d").drawImage(image, 0, 0);
+  return bake;
+}
+
+/**
  * Emits one chart as a single pattern fill and releases the slot.
  *
  * The boundary is pushed outward as it is emitted, which is this pass's whole answer to seams - a
@@ -288,7 +319,10 @@ export function textureWeldFlushSlot(
     // 'repeat' rather than 'no-repeat'. Inside the chart's UV rect the two sample identically, but
     // a non-repeating pattern is transparent outside it, so any UV that strays past the edge would
     // punch a hole rather than sample a neighbouring texel.
-    pattern = ctx.createPattern(mesh.textureImage, "repeat");
+    pattern = ctx.createPattern(
+      texturePatternSource(mesh.textureImage),
+      "repeat",
+    );
     mesh.texturePattern = pattern;
   }
 
