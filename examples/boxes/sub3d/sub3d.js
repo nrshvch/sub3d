@@ -2797,6 +2797,11 @@ function mL(t, a) {
     j0(t, t.bid[s + p], t.bid[s + m]);
   }
 }
+function yL(t) {
+  if (typeof document > "u") return t;
+  const a = document.createElement("canvas");
+  return a.width = t.naturalWidth, a.height = t.naturalHeight, a.getContext("2d").drawImage(t, 0, 0), a;
+}
 function j2(t, a, s, f, p, m) {
   const v = t.slots, E = a * yl;
   if (v[E + zu] === 0) return;
@@ -2806,7 +2811,10 @@ function j2(t, a, s, f, p, m) {
   if (t.meshRef[a] = null, g < 3 || x === null) return;
   const b = a * Xl, C = t.bu, R = t.bv, _ = a * 6;
   let k = x.texturePattern;
-  k || (k = s.createPattern(x.textureImage, "repeat"), x.texturePattern = k), s.fillStyle = k, f[Ds] = -1;
+  k || (k = s.createPattern(
+    yL(x.textureImage),
+    "repeat"
+  ), x.texturePattern = k), s.fillStyle = k, f[Ds] = -1;
   const O = t.affine[_], z = t.affine[_ + 1], F = t.affine[_ + 2], Y = t.affine[_ + 3];
   s.setTransform(O, z, F, Y, t.affine[_ + 4], t.affine[_ + 5]);
   const P = O * Y - z * F, N = P > 1e-12 || P < -1e-12 ? 1 / P : 0, H = t.bexp;
@@ -2833,7 +2841,7 @@ function ib(t, a, s, f, p) {
     j2(t, v, a, s, f, p);
   }
 }
-function yL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe = 0) {
+function gL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe = 0) {
   const B = t.slots, $ = ++t.seq, J = R < F ? R < I ? R : I : F < I ? F : I, ee = R > F ? R > I ? R : I : F > I ? F : I, W = _ < Y ? _ < V ? _ : V : Y < V ? Y : V, X = _ > Y ? _ > V ? _ : V : Y > V ? Y : V;
   let ae = -1, de = -1, le = -1, ie = 0, se = 0, ve = -1, U = -1, Z = -1;
   if (t.live > 0) {
@@ -2926,7 +2934,7 @@ function S3(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
   if (X && X.complete && X.naturalWidth > 0 && O.uvs) {
     const le = O.uvs, ie = O.faces[z] * 2, se = O.faces[z + 1] * 2, ve = O.faces[z + 2] * 2, U = X.width, Z = X.height, xe = le[ie] * U, be = le[ie + 1] * Z, Le = le[se] * U, Me = le[se + 1] * Z, Oe = le[ve] * U, Pe = le[ve + 1] * Z, _e = xe * (Me - Pe) - be * (Le - Oe) + (Le * Pe - Oe * Me);
     if (Math.abs(_e) > 1e-5) {
-      yL(
+      gL(
         Id,
         t,
         B,
@@ -3179,12 +3187,12 @@ function w3(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
     lb
   );
 }
-const ml = 32, Kl = 16, aa = 4, ob = 1e-3, gL = 1e-3, SL = 1e-12, _0 = 2 * Jd, yh = 2048, o1 = yh - 1, gl = 4, Lu = 0, Ou = 1, Th = 2, I0 = 8, F2 = 0, P2 = 1, $2 = 2, q0 = 3, H2 = 4, Y0 = 5, V2 = 6, W0 = 7;
+const ml = 32, Kl = 16, aa = 4, ob = 1e-3, SL = 1e-3, EL = 1e-12, _0 = 2 * Jd, yh = 2048, o1 = yh - 1, gl = 4, Lu = 0, Ou = 1, Th = 2, I0 = 8, F2 = 0, P2 = 1, $2 = 2, q0 = 3, H2 = 4, Y0 = 5, V2 = 6, W0 = 7;
 function sb(t, a, s) {
   const f = t < 0 ? 0 : t > 255 ? 255 : t | 0, p = a < 0 ? 0 : a > 255 ? 255 : a | 0, m = s < 0 ? 0 : s > 255 ? 255 : s | 0;
   return (f & 248) << 8 | (p & 252) << 3 | (m & 248) >> 3;
 }
-function EL() {
+function xL() {
   return {
     slots: new Int32Array(ml * gl),
     // The shading field per chart, fitted from the face that seeded it (see the FD_* lanes).
@@ -3210,7 +3218,7 @@ function EL() {
     frameId: -1
   };
 }
-function xL(t) {
+function wL(t) {
   const a = t.slots;
   for (let s = 0; s < ml; s++) a[s * gl + Lu] = 0;
   t.gen++, t.seq = 0, t.live = 0;
@@ -3254,14 +3262,14 @@ function P0(t, a, s) {
     p = p + 1 & o1;
   }
 }
-function wL(t, a) {
+function bL(t, a) {
   const s = a * Kl, f = t.slots[a * gl + Ou];
   for (let p = 0; p < f; p++) {
     const m = p + 1 === f ? 0 : p + 1;
     F0(t, t.bid[s + p], t.bid[s + m], a);
   }
 }
-function bL(t, a) {
+function CL(t, a) {
   const s = a * Kl, f = t.slots[a * gl + Ou];
   for (let p = 0; p < f; p++) {
     const m = p + 1 === f ? 0 : p + 1;
@@ -3272,7 +3280,7 @@ function I2(t, a, s, f, p) {
   const m = t.slots, v = a * gl;
   if (m[v + Lu] === 0) return;
   const E = m[v + Ou];
-  if (bL(t, a), m[v + Lu] = 0, t.live--, E < 3) return;
+  if (CL(t, a), m[v + Lu] = 0, t.live--, E < 3) return;
   const g = a * Kl, x = t.bx, b = t.by, C = t.bexp, R = a * I0, _ = t.field[R + F2], k = t.field[R + P2];
   let O = 1 / 0, z = -1 / 0;
   for (let I = 0; I < E; I++) {
@@ -3288,7 +3296,7 @@ function I2(t, a, s, f, p) {
     t.field[R + Y0] + Y * z,
     t.field[R + W0] + P * z
   );
-  if (N === H || z - O < gL)
+  if (N === H || z - O < SL)
     f[Fo] !== N && (s.fillStyle = Sl[N], f[Fo] = N, N !== Jc && (f[ef] = 1));
   else {
     const I = s.createLinearGradient(
@@ -3310,7 +3318,7 @@ function I2(t, a, s, f, p) {
   }
   s.fill(), p[Qd]++;
 }
-function CL(t, a, s, f) {
+function TL(t, a, s, f) {
   const p = t.slots;
   for (; t.live > 0; ) {
     let m = -1, v = 2147483647;
@@ -3322,7 +3330,7 @@ function CL(t, a, s, f) {
     I2(t, m, a, s, f);
   }
 }
-function TL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I = 0) {
+function RL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I = 0) {
   const V = t.slots, oe = ++t.seq, B = E < _ ? E < P ? E : P : _ < P ? _ : P, $ = E > _ ? E > P ? E : P : _ > P ? _ : P, J = g < k ? g < N ? g : N : k < N ? k : N, ee = g > k ? g > N ? g : N : k > N ? k : N;
   let W = -1, X = -1, ae = -1, de = 0, le = 0, ie = -1, se = -1, ve = -1;
   if (t.live > 0) {
@@ -3400,7 +3408,7 @@ function TL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I 
   if (Oe > ob || Oe < -ob) {
     const Ce = 1 / Oe, qe = b - p, lt = z - p, Je = C - m, St = F - m, et = R - v, Et = Y - v, Ot = (qe * Me - lt * be) * Ce, $t = (xe * lt - Le * qe) * Ce, we = (Je * Me - St * be) * Ce, Ie = (xe * St - Le * Je) * Ce, it = (et * Me - Et * be) * Ce, We = (xe * Et - Le * et) * Ce, Mt = Ot * Ot + $t * $t, Ht = we * we + Ie * Ie, Ct = it * it + We * We;
     let ht, Ne, ft;
-    if (Mt >= Ht && Mt >= Ct ? (ht = Ot, Ne = $t, ft = Mt) : Ht >= Ct ? (ht = we, Ne = Ie, ft = Ht) : (ht = it, Ne = We, ft = Ct), ft > SL) {
+    if (Mt >= Ht && Mt >= Ct ? (ht = Ot, Ne = $t, ft = Mt) : Ht >= Ct ? (ht = we, Ne = Ie, ft = Ht) : (ht = it, Ne = We, ft = Ct), ft > EL) {
       const kt = 1 / Math.sqrt(ft);
       Be = ht * kt, ke = Ne * kt, $e = Ot * Be + $t * ke, Se = we * Be + Ie * ke, Ye = it * Be + We * ke;
     }
@@ -3412,9 +3420,9 @@ function TL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I 
   const yt = Z * gl;
   V[yt + Lu] = 1, V[yt + Ou] = 3, V[yt + Th] = oe, t.live++;
   const ct = Z << 2;
-  U[ct] = B, U[ct + 1] = J, U[ct + 2] = $, U[ct + 3] = ee, wL(t, Z);
+  U[ct] = B, U[ct + 1] = J, U[ct + 2] = $, U[ct + 3] = ee, bL(t, Z);
 }
-const ch = EL();
+const ch = xL();
 function Xd(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B, $, J, ee, W) {
   const X = F >>> 16 & 255, ae = F >>> 8 & 255, de = F & 255;
   let le = X, ie = ae, se = de, ve = X, U = ae, Z = de, xe = X, be = ae, Le = de;
@@ -3425,7 +3433,7 @@ function Xd(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
     const tt = Ae.light.color, yt = tt >>> 16 & 255, ct = tt >>> 8 & 255, Ce = tt & 255, qe = -Ae.transform.worldMatrix[8], lt = -Ae.transform.worldMatrix[9], Je = -Ae.transform.worldMatrix[10], St = Me * qe + Oe * lt + Pe * Je, et = _e * qe + je * lt + Be * Je, Et = ke * qe + $e * lt + Se * Je;
     St > 0 && (le += yt * St, ie += ct * St, se += Ce * St), et > 0 && (ve += yt * et, U += ct * et, Z += Ce * et), Et > 0 && (xe += yt * Et, be += ct * Et, Le += Ce * Et);
   }
-  le > 255 && (le = 255), ie > 255 && (ie = 255), se > 255 && (se = 255), ve > 255 && (ve = 255), U > 255 && (U = 255), Z > 255 && (Z = 255), xe > 255 && (xe = 255), be > 255 && (be = 255), Le > 255 && (Le = 255), ch.frameId !== J && (xL(ch), ch.frameId = J), TL(
+  le > 255 && (le = 255), ie > 255 && (ie = 255), se > 255 && (se = 255), ve > 255 && (ve = 255), U > 255 && (U = 255), Z > 255 && (Z = 255), xe > 255 && (xe = 255), be > 255 && (be = 255), Le > 255 && (Le = 255), ch.frameId !== J && (wL(ch), ch.frameId = J), RL(
     ch,
     t,
     B,
@@ -3449,10 +3457,10 @@ function Xd(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
     v,
     _,
     W
-  ), ee && CL(ch, t, B, $);
+  ), ee && TL(ch, t, B, $);
 }
 const nf = [], rf = [];
-let RL = 6;
+let ML = 6;
 const ep = 0, tp = 1, Dh = 2, Oh = 3, np = 4;
 nf[ep] = Nu;
 rf[ep] = w3;
@@ -3464,14 +3472,14 @@ nf[Oh] = E3;
 rf[Oh] = x3;
 nf[np] = Nu;
 rf[np] = Xd;
-function ML(t, a) {
-  const s = RL++;
+function _L(t, a) {
+  const s = ML++;
   return nf[s] = t, a && (rf[s] = a), s;
 }
 const fh = h3();
 let dh = new Float32Array(0), k2 = new Uint8Array(0);
 const No = new Int32Array(4), D2 = 0, $0 = 1, q2 = 2, qa = new Float32Array(4), ub = 0.05, Y2 = 9, G0 = 1, W2 = 4, G2 = 5, cb = 0;
-function _L(t, a, s, f, p) {
+function kL(t, a, s, f, p) {
   let m = 0;
   if (s === 2 || s === 1) {
     const v = a[t * 9], E = a[t * 9 + 1], g = a[t * 9 + 2], x = a[t * 9 + 3], b = a[t * 9 + 4], C = a[t * 9 + 5], R = a[t * 9 + 6], _ = a[t * 9 + 7], k = a[t * 9 + 8], O = (v + x + R) * 0.33333, z = (E + b + _) * 0.33333, F = (g + C + k) * 0.33333;
@@ -3486,7 +3494,7 @@ function _L(t, a, s, f, p) {
   }
   return m < 0 ? m = 0 : m > 1 && (m = 1), m;
 }
-function kL(t, a, s, f, p, m, v, E, g, x, b, C, R) {
+function DL(t, a, s, f, p, m, v, E, g, x, b, C, R) {
   No[D2] = 0, No[$0] = 0, No[q2] = 0, qa[0] = 1 / 0, qa[1] = 1 / 0, qa[2] = -1 / 0, qa[3] = -1 / 0;
   let _ = 0, k = 0;
   for (let P = 0; P < E; P++) {
@@ -3495,7 +3503,7 @@ function kL(t, a, s, f, p, m, v, E, g, x, b, C, R) {
       v[N] = 1;
       continue;
     }
-    const I = _L(
+    const I = kL(
       N,
       s,
       b,
@@ -3547,7 +3555,7 @@ function kL(t, a, s, f, p, m, v, E, g, x, b, C, R) {
   }
   No[D2] = _;
 }
-function DL(t, a, s, f, p, m, v, E, g, x, b) {
+function OL(t, a, s, f, p, m, v, E, g, x, b) {
   if (g === 0) return 0;
   const C = b - x > 1e-4 ? 65535 / (b - x) : 0;
   E.fill(0, 0, 32);
@@ -3615,7 +3623,7 @@ function DL(t, a, s, f, p, m, v, E, g, x, b) {
   }
   return R;
 }
-function OL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F) {
+function AL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F) {
   const Y = 255 * (1 - b) & 248, P = (Y & 248) << 8 | (Y & 252) << 3 | (Y & 248) >> 3;
   return fh.frameId !== O && (a1(fh), fh.frameId = O), (R || P !== cb) && (P !== cb && (R = !0), y3(
     fh,
@@ -3649,13 +3657,13 @@ function OL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F) {
     ub
   ), R;
 }
-function AL(t, a, s) {
+function zL(t, a, s) {
   const f = t.canvas, p = a.canvas, m = f.width, v = f.height, E = p.width, g = p.height;
   t.globalCompositeOperation = "multiply", t.drawImage(p, 0, 0, m, v);
   const x = s >>> 16, b = s >>> 8 & 255, C = s & 255, R = (x & 248) << 8 | (b & 252) << 3 | (C & 248) >> 3, _ = Sl[R];
   a.globalCompositeOperation = "difference", a.fillStyle = "#ffffff", a.fillRect(0, 0, E, g), a.globalCompositeOperation = "multiply", a.fillStyle = _, a.fillRect(0, 0, E, g), a.globalCompositeOperation = "source-over", t.globalCompositeOperation = "lighter", t.drawImage(p, 0, 0, m, v), t.globalCompositeOperation = "source-over";
 }
-function zL(t, a, s, f, p, m, v, E, g, x, b, C, R, _) {
+function LL(t, a, s, f, p, m, v, E, g, x, b, C, R, _) {
   const k = t.canvas, O = k.width, z = k.height, F = O * 0.5, Y = z * 0.5;
   t.fillStyle = "#000000", t.fillRect(0, 0, O, z), p3(
     p,
@@ -3668,7 +3676,7 @@ function zL(t, a, s, f, p, m, v, E, g, x, b, C, R, _) {
   let P = !1;
   for (let N = 0; N < x; N++) {
     const H = p[N], I = s[H * 3], V = s[H * 3 + 1], oe = s[H * 3 + 2], B = f[H * 3], $ = f[H * 3 + 1], J = f[H * 3 + 2], ee = a[I] * F + F, W = a[I + 1] * Y + Y, X = a[V] * F + F, ae = a[V + 1] * Y + Y, de = a[oe] * F + F, le = a[oe + 1] * Y + Y, ie = N === x - 1;
-    P = OL(
+    P = AL(
       t,
       ee,
       W,
@@ -3690,9 +3698,9 @@ function zL(t, a, s, f, p, m, v, E, g, x, b, C, R, _) {
     );
   }
 }
-function LL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B) {
+function NL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B) {
   const $ = a.canvas;
-  if (dh.length < z && (dh = new Float32Array(z), k2 = new Uint8Array(z)), kL(
+  if (dh.length < z && (dh = new Float32Array(z), k2 = new Uint8Array(z)), DL(
     m,
     g,
     C,
@@ -3712,7 +3720,7 @@ function LL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
     t.fillStyle = Sl[le], t.fillRect(0, 0, t.canvas.width, t.canvas.height), V[Ds] = -1;
     return;
   }
-  const J = performance.now(), ee = DL(
+  const J = performance.now(), ee = OL(
     m,
     v,
     E,
@@ -3727,7 +3735,7 @@ function LL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
   );
   oe[W2] = performance.now() - J;
   const W = performance.now();
-  zL(
+  LL(
     a,
     s,
     f,
@@ -3742,10 +3750,10 @@ function LL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
     V,
     oe,
     B
-  ), oe[G2] = performance.now() - W, AL(t, a, I);
+  ), oe[G2] = performance.now() - W, zL(t, a, I);
 }
-const NL = lr.computeNormalMatrix, O2 = FD, fb = Z0, UL = oL, jL = sL;
-function FL(t, a, s, f, p) {
+const UL = lr.computeNormalMatrix, O2 = FD, fb = Z0, jL = oL, FL = sL;
+function PL(t, a, s, f, p) {
   if (f === 1)
     return t;
   const m = t[0] + 1;
@@ -3792,7 +3800,7 @@ Ii.render = function(t, a, s) {
   let E = Q0.layersCount, g = a.width, x = a.height, b, C = this.vec3Cache1, R = this.vec3Cache2, _ = this.vec4Cache, k = this.depthBuffer, O = this.indexBuffer, z = this.vertexIndexBuffer, F = this.vertexBuffer, Y = this.clipGeometryBuffer, P = this.colorBuffer, N = this.shaderTypeBuffer, H = this.shaderPassBuffer, I = this.faceNormalsBuffer, V = this.vertexNormalsBuffer, oe = this.meshIndexBuffer, B = this.meshFaceIndexBuffer, $ = this.weldIdBuffer, J = this.expandMaskBuffer, ee = this.neighbourFaceBuffer, W = this.faceRankBuffer, X = this.visibleObjectsBuffer, ae = this.lightsIndexBuffer, de = this.layerBuffersOffsets, le = this.mat4Scratchpad1, ie = this.mat4Scratchpad2, se = a.getWorldToScreen(), ve = t.transform.getWorldToLocal(), U = t.camera.getClipSpaceMatrix();
   this.vMapping, this.vTags;
   let Z = this.tempIndexBuffer, xe = this.fogSortScratchBuffer, be = this.counters, Le = this.ctxStateBuffer, Me = this.statsBuffer;
-  const Oe = ++HL;
+  const Oe = ++VL;
   let Pe = 0, _e = 0, je = 0, Be = 0, ke = 0, $e = 0, Se = 0, Ye = 0, Ze = 0;
   const Ae = t.camera, tt = Ae.flush || this.wireframe || !this.fillEnabled || !this.shadeEnabled || !this.fogEnabled;
   if (X.length < m.length) {
@@ -3808,16 +3816,16 @@ Ii.render = function(t, a, s) {
     ), ae.set($t);
   }
   const yt = performance.now();
-  PL(
+  $L(
     m,
     U,
     X,
     ae
-  ), $L(X, m, U);
+  ), HL(X, m, U);
   const ct = performance.now() - yt, Ce = X[0] + 1, qe = X[0];
   E > 1 && this.layerBuffers.length < qe + E && (this.layerBuffers = new Uint32Array((qe + E) * 2));
   const lt = performance.now();
-  let Je = FL(
+  let Je = PL(
     X,
     m,
     de,
@@ -3858,7 +3866,7 @@ Ii.render = function(t, a, s) {
       const Hn = new Int32Array(We).fill(-1);
       Hn.set(W), this.faceRankBuffer = W = Hn, this.triToFace = new Int32Array(We), this.triToFaceStamp = new Int32Array(We);
     }
-    const Ct = performance.now(), ht = VL(
+    const Ct = performance.now(), ht = IL(
       Je,
       Ot + 1,
       m,
@@ -3904,7 +3912,7 @@ Ii.render = function(t, a, s) {
       ), et += performance.now() - Ne;
     }
     if (Le[Ds] = -1, Le[Fo] = -1, Le[Y2] = -1, Le[ef] = 0, Me[Po] = 0, Me[G0] = 0, Me[Qd] = 0, Me[W2] = 0, Me[G2] = 0, this.wireframe)
-      IL(
+      qL(
         we,
         F,
         z,
@@ -3918,7 +3926,7 @@ Ii.render = function(t, a, s) {
     else {
       if (this.fillEnabled) {
         const Ne = performance.now();
-        qL(
+        YL(
           we,
           F,
           z,
@@ -3955,7 +3963,7 @@ Ii.render = function(t, a, s) {
         Le[Ds] !== Jc && (we.fillStyle = Sl[Jc], Le[Ds] = Jc), we.fillRect(0, 0, we.canvas.width, we.canvas.height);
       if (this.shadeEnabled) {
         const Ne = performance.now();
-        YL(
+        WL(
           Ie,
           tt,
           F,
@@ -3994,7 +4002,7 @@ Ii.render = function(t, a, s) {
           we.canvas.height
         ), we.globalCompositeOperation = "source-over");
       }
-      this.fogEnabled && Ae.fogType !== i3.NONE && LL(
+      this.fogEnabled && Ae.fogType !== i3.NONE && NL(
         we,
         it,
         F,
@@ -4023,7 +4031,7 @@ Ii.render = function(t, a, s) {
         Oe
       ), je += Me[Po], Be += Me[G0], ke += Me[Qd], Ye += Me[W2], Ze += Me[G2];
     }
-    this.debugNormals && jL(
+    this.debugNormals && FL(
       we,
       F,
       z,
@@ -4037,9 +4045,9 @@ Ii.render = function(t, a, s) {
       ve
     ), tt && a.context.clearRect(0, 0, g, x), a.context.drawImage(we.canvas, 0, 0), Pe += ht, _e += ht, Ot += 1 + $t;
   }
-  this.debugAxis && UL(m, a.context, se, C), s.totalObjects = m.length, s.visibleObjects = Ce, s.drawCalls = Pe, s.faces = _e, s.fillDrawCalls = je, s.fogDrawCalls = Be, s.shadeDrawCalls = ke, s.drawCallsTotal = je + Be + ke, s.sortTime = et, s.cullTime = ct, s.groupTime = St, s.processTime = Et, s.fillRasterTime = $e, s.shadeRasterTime = Se, s.fogSortTime = Ye, s.fogRasterTime = Ze, s.updateTime = t.scene && t.scene.world ? t.scene.world.lastTickTime : 0, s.retrieveTime = v, s.dt = performance.now() - f;
+  this.debugAxis && jL(m, a.context, se, C), s.totalObjects = m.length, s.visibleObjects = Ce, s.drawCalls = Pe, s.faces = _e, s.fillDrawCalls = je, s.fogDrawCalls = Be, s.shadeDrawCalls = ke, s.drawCallsTotal = je + Be + ke, s.sortTime = et, s.cullTime = ct, s.groupTime = St, s.processTime = Et, s.fillRasterTime = $e, s.shadeRasterTime = Se, s.fogSortTime = Ye, s.fogRasterTime = Ze, s.updateTime = t.scene && t.scene.world ? t.scene.world.lastTickTime : 0, s.retrieveTime = v, s.dt = performance.now() - f;
 };
-function PL(t, a, s, f) {
+function $L(t, a, s, f) {
   let p = 0, m = 0;
   const v = a[0], E = a[1], g = a[2], x = a[3], b = a[4], C = a[5], R = a[6], _ = a[7], k = a[8], O = a[9], z = a[10], F = a[11], Y = a[12], P = a[13], N = a[14], H = a[15];
   let I = x + v, V = _ + b, oe = F + k, B = H + Y, $ = 1 / Math.sqrt(I * I + V * V + oe * oe);
@@ -4072,7 +4080,7 @@ function PL(t, a, s, f) {
   }
   s[0] = p, f[0] = m;
 }
-function $L(t, a, s) {
+function HL(t, a, s) {
   const f = s, p = f[0], m = f[1], v = f[2], E = f[3], g = f[4], x = f[5], b = f[6], C = f[7], R = f[8], _ = f[9], k = f[10], O = f[11], z = f[12], F = f[13], Y = f[14], P = f[15];
   let N = 0;
   const H = t[0] + 1;
@@ -4094,8 +4102,8 @@ function $L(t, a, s) {
   }
   t[0] = N;
 }
-let Kc = 0, HL = 0;
-function VL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B, $, J, ee) {
+let Kc = 0, VL = 0;
+function IL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B, $, J, ee) {
   let W = 0, X = 0, ae = 0;
   for (let de = 0; de < f; de++) {
     const le = t[a + de], ie = s[le], se = ie.meshRenderer;
@@ -4106,7 +4114,7 @@ function VL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
     const Z = O[0], xe = O[1], be = O[2], Le = O[3], Me = O[4], Oe = O[5], Pe = O[6], _e = O[7], je = O[8], Be = O[9], ke = O[10], $e = O[11], Se = O[12], Ye = O[13], Ze = O[14], Ae = O[15], tt = se.weldMap, yt = X;
     X += (se.vertices.length / 3 | 0) + 1, se.adjTri === null && se.updateAdjacency();
     const ct = se.adjTri, Ce = de + 1, qe = W, lt = se.faces, Je = se.vertices, St = se.faceNormals, et = se.vertexNormals;
-    NL(z, ve);
+    UL(z, ve);
     const Et = z, Ot = Et[0], $t = Et[1], we = Et[2], Ie = Et[3], it = Et[4], We = Et[5], Mt = Et[6], Ht = Et[7], Ct = Et[8], ht = lt.length;
     for (let Ne = 0; Ne < ht; Ne += 3) {
       const ft = lt[Ne], kt = lt[Ne + 1], Zt = lt[Ne + 2], nn = ft << 2, yn = kt << 2, Hn = Zt << 2;
@@ -4189,7 +4197,7 @@ function VL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
   }
   return W;
 }
-function IL(t, a, s, f, p, m, v, E, g) {
+function qL(t, a, s, f, p, m, v, E, g) {
   const x = v * 0.5, b = E * 0.5, C = m + p;
   t.clearRect(0, 0, t.canvas.width, t.canvas.height), g[Ds] = -1, t.beginPath(), g[Ds] !== C0 && (t.fillStyle = Sl[C0], t.strokeStyle = Sl[C0], g[Ds] = C0);
   for (let R = m; R < C; R++) {
@@ -4198,7 +4206,7 @@ function IL(t, a, s, f, p, m, v, E, g) {
   }
   t.stroke();
 }
-function qL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B, $, J, ee, W, X) {
+function YL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B, $, J, ee, W, X) {
   const ae = t.canvas, de = ae.width, le = ae.height, ie = de * 0.5, se = le * 0.5, ve = g + E;
   if (x)
     if (C !== -1) {
@@ -4427,7 +4435,7 @@ function qL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I,
     }
   }
 }
-function YL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B, $, J, ee, W) {
+function WL(t, a, s, f, p, m, v, E, g, x, b, C, R, _, k, O, z, F, Y, P, N, H, I, V, oe, B, $, J, ee, W) {
   const X = t.canvas, ae = X.width, de = X.height;
   a && t.clearRect(0, 0, ae, de);
   const le = ae * 0.5, ie = de * 0.5, se = x + g;
@@ -4795,7 +4803,7 @@ Kd.prototype = Object.create(ri.prototype);
 Kd.prototype.constructor = Kd;
 var D0 = { exports: {} }, ph = {}, O0 = { exports: {} }, dn = {};
 var pb;
-function WL() {
+function GL() {
   if (pb) return dn;
   pb = 1;
   var t = /* @__PURE__ */ Symbol.for("react.element"), a = /* @__PURE__ */ Symbol.for("react.portal"), s = /* @__PURE__ */ Symbol.for("react.fragment"), f = /* @__PURE__ */ Symbol.for("react.strict_mode"), p = /* @__PURE__ */ Symbol.for("react.profiler"), m = /* @__PURE__ */ Symbol.for("react.provider"), v = /* @__PURE__ */ Symbol.for("react.context"), E = /* @__PURE__ */ Symbol.for("react.forward_ref"), g = /* @__PURE__ */ Symbol.for("react.suspense"), x = /* @__PURE__ */ Symbol.for("react.memo"), b = /* @__PURE__ */ Symbol.for("react.lazy"), C = Symbol.iterator;
@@ -4992,7 +5000,7 @@ function WL() {
 var gh = { exports: {} };
 gh.exports;
 var vb;
-function GL() {
+function QL() {
   return vb || (vb = 1, (function(t, a) {
     process.env.NODE_ENV !== "production" && (function() {
       typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ < "u" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart == "function" && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
@@ -6252,10 +6260,10 @@ Check the top-level render call using <` + me + ">.");
 }
 var hb;
 function Ah() {
-  return hb || (hb = 1, process.env.NODE_ENV === "production" ? O0.exports = WL() : O0.exports = GL()), O0.exports;
+  return hb || (hb = 1, process.env.NODE_ENV === "production" ? O0.exports = GL() : O0.exports = QL()), O0.exports;
 }
 var mb;
-function QL() {
+function BL() {
   if (mb) return ph;
   mb = 1;
   var t = Ah(), a = /* @__PURE__ */ Symbol.for("react.element"), s = /* @__PURE__ */ Symbol.for("react.fragment"), f = Object.prototype.hasOwnProperty, p = t.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentOwner, m = { key: !0, ref: !0, __self: !0, __source: !0 };
@@ -6270,7 +6278,7 @@ function QL() {
 }
 var vh = {};
 var yb;
-function BL() {
+function XL() {
   return yb || (yb = 1, process.env.NODE_ENV !== "production" && (function() {
     var t = Ah(), a = /* @__PURE__ */ Symbol.for("react.element"), s = /* @__PURE__ */ Symbol.for("react.portal"), f = /* @__PURE__ */ Symbol.for("react.fragment"), p = /* @__PURE__ */ Symbol.for("react.strict_mode"), m = /* @__PURE__ */ Symbol.for("react.profiler"), v = /* @__PURE__ */ Symbol.for("react.provider"), E = /* @__PURE__ */ Symbol.for("react.context"), g = /* @__PURE__ */ Symbol.for("react.forward_ref"), x = /* @__PURE__ */ Symbol.for("react.suspense"), b = /* @__PURE__ */ Symbol.for("react.suspense_list"), C = /* @__PURE__ */ Symbol.for("react.memo"), R = /* @__PURE__ */ Symbol.for("react.lazy"), _ = /* @__PURE__ */ Symbol.for("react.offscreen"), k = Symbol.iterator, O = "@@iterator";
     function z(Q) {
@@ -6860,12 +6868,12 @@ React keys must be passed directly to JSX without using spread:
   })()), vh;
 }
 var gb;
-function XL() {
-  return gb || (gb = 1, process.env.NODE_ENV === "production" ? D0.exports = QL() : D0.exports = BL()), D0.exports;
-}
-var Xe = XL(), ia = Ah(), qd = {}, A0 = { exports: {} }, bi = {}, z0 = { exports: {} }, A2 = {};
-var Sb;
 function KL() {
+  return gb || (gb = 1, process.env.NODE_ENV === "production" ? D0.exports = BL() : D0.exports = XL()), D0.exports;
+}
+var Xe = KL(), ia = Ah(), qd = {}, A0 = { exports: {} }, bi = {}, z0 = { exports: {} }, A2 = {};
+var Sb;
+function ZL() {
   return Sb || (Sb = 1, (function(t) {
     function a(ie, se) {
       var ve = ie.length;
@@ -7066,7 +7074,7 @@ function KL() {
 }
 var z2 = {};
 var Eb;
-function ZL() {
+function JL() {
   return Eb || (Eb = 1, (function(t) {
     process.env.NODE_ENV !== "production" && (function() {
       typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ < "u" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart == "function" && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
@@ -7331,10 +7339,10 @@ function ZL() {
 }
 var xb;
 function KC() {
-  return xb || (xb = 1, process.env.NODE_ENV === "production" ? z0.exports = KL() : z0.exports = ZL()), z0.exports;
+  return xb || (xb = 1, process.env.NODE_ENV === "production" ? z0.exports = ZL() : z0.exports = JL()), z0.exports;
 }
 var wb;
-function JL() {
+function eN() {
   if (wb) return bi;
   wb = 1;
   var t = Ah(), a = KC();
@@ -12482,7 +12490,7 @@ Error generating stack: ` + w.message + `
 }
 var Ci = {};
 var bb;
-function eN() {
+function tN() {
   return bb || (bb = 1, process.env.NODE_ENV !== "production" && (function() {
     typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ < "u" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart == "function" && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
     var t = Ah(), a = KC(), s = t.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED, f = !1;
@@ -17899,7 +17907,7 @@ Check the render method of \`` + e + "`." : "";
         };
       }
     }
-    function lN(e) {
+    function oN(e) {
       return e;
     }
     function $T(e) {
@@ -20130,9 +20138,9 @@ Incoming: %s`, De, "[" + n.join(", ") + "]", "[" + e.join(", ") + "]");
       }
       return [T, h];
     }
-    function oN(e, n, l) {
-    }
     function sN(e, n, l) {
+    }
+    function uN(e, n, l) {
     }
     function qg(e, n, l) {
       var o = Nn, c = _o(), h, S = ga();
@@ -25896,7 +25904,7 @@ You might need to use a local HTTP server (instead of file://): https://reactjs.
   })()), Ci;
 }
 var Cb;
-function tN() {
+function nN() {
   if (Cb) return A0.exports;
   Cb = 1;
   function t() {
@@ -25910,13 +25918,13 @@ function tN() {
       }
     }
   }
-  return process.env.NODE_ENV === "production" ? (t(), A0.exports = JL()) : A0.exports = eN(), A0.exports;
+  return process.env.NODE_ENV === "production" ? (t(), A0.exports = eN()) : A0.exports = tN(), A0.exports;
 }
 var Tb;
-function nN() {
+function rN() {
   if (Tb) return qd;
   Tb = 1;
-  var t = tN();
+  var t = nN();
   if (process.env.NODE_ENV === "production")
     qd.createRoot = t.createRoot, qd.hydrateRoot = t.hydrateRoot;
   else {
@@ -25939,9 +25947,9 @@ function nN() {
   }
   return qd;
 }
-var rN = nN();
+var aN = rN();
 const Ql = (t) => typeof t != "number" ? "N/A" : `${Math.round(t)} ms`;
-function aN({ viewport: t }) {
+function iN({ viewport: t }) {
   const [a, s] = ia.useState({
     fps: 0,
     maxFps: 0,
@@ -26309,7 +26317,7 @@ function aN({ viewport: t }) {
     ] })
   ] });
 }
-function iN(t) {
+function lN(t) {
   if (!t || !t.canvas) {
     console.error("showDebug: Invalid viewport parameter passed.");
     return;
@@ -26319,9 +26327,9 @@ function iN(t) {
   let f = s.querySelector("#s3d-debug-root");
   if (f)
     return;
-  f = document.createElement("div"), f.id = "s3d-debug-root", f.className = "s3d-absolute s3d-top-4 s3d-right-4 s3d-z-[99999]", s.appendChild(f), rN.createRoot(f).render(/* @__PURE__ */ Xe.jsx(aN, { viewport: t }));
+  f = document.createElement("div"), f.id = "s3d-debug-root", f.className = "s3d-absolute s3d-top-4 s3d-right-4 s3d-z-[99999]", s.appendChild(f), aN.createRoot(f).render(/* @__PURE__ */ Xe.jsx(iN, { viewport: t }));
 }
-const uN = window.scaliaEngine = {
+const cN = window.scaliaEngine = {
   config: Q0,
   Game: kb,
   GameObject: ri,
@@ -26340,8 +26348,8 @@ const uN = window.scaliaEngine = {
   Ball: d3,
   Light: Kd,
   Canvas2dViewport: XC,
-  showDebug: iN,
-  registerShader: ML,
+  showDebug: lN,
+  registerShader: _L,
   whiteFillShade: r1,
   // Built-in shaderType keys, to set on a MeshComponent as `meshRenderer.shaderType`.
   ShaderType: {
@@ -26359,5 +26367,5 @@ const uN = window.scaliaEngine = {
   }
 };
 export {
-  uN as default
+  cN as default
 };
