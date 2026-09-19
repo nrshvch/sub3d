@@ -417,6 +417,10 @@ describe("multi-slot welder", () => {
       SL_HEAD = 1,
       SL_LEN = 2,
       SC_LIVE = 4;
+    const ND_STRIDE = 8,
+      ND_ID = 2,
+      ND_NEXT = 3,
+      ND_SLOT = 4;
 
     function assertConsistent(st, where) {
       let reachable = 0;
@@ -435,21 +439,25 @@ describe("multi-slot welder", () => {
           );
           seen.add(n);
           expect(
-            st.poolId[n],
+            st.nodes[n * ND_STRIDE + ND_ID],
             `${where}: slot ${slot} node ${n} freed`,
           ).not.toBe(-1);
           expect(
-            st.poolSlot[n],
+            st.nodes[n * ND_STRIDE + ND_SLOT],
             `${where}: slot ${slot} node ${n} mis-tagged`,
           ).toBe(slot);
-          const nx = st.poolNext[n];
+          const nx = st.nodes[n * ND_STRIDE + ND_NEXT];
           expect(
             nx,
             `${where}: slot ${slot} node ${n} has no successor`,
           ).not.toBe(-1);
           expect(
-            edgeFind(st, st.poolId[n], st.poolId[nx]),
-            `${where}: slot ${slot} edge ${st.poolId[n]}->${st.poolId[nx]} lost`,
+            edgeFind(
+              st,
+              st.nodes[n * ND_STRIDE + ND_ID],
+              st.nodes[nx * ND_STRIDE + ND_ID],
+            ),
+            `${where}: slot ${slot} edge ${st.nodes[n * ND_STRIDE + ND_ID]}->${st.nodes[nx * ND_STRIDE + ND_ID]} lost`,
           ).toBe(n);
           n = nx;
         }

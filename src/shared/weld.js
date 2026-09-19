@@ -40,17 +40,55 @@ export const EXPAND = 1;
 // for the pixels along their shared edge while overlapping by exactly zero.
 const GUARD_DILATE = 2 * EXPAND;
 
+// Two AABBs overlap exactly when their x ranges overlap AND their y ranges overlap, so the open
+// slots can be indexed on each axis separately instead of over a 2D grid of cells. SPAN_DIM
+// buckets per axis, 64px each, clamped at the edges - geometry outside lands in the border bucket,
+// which is conservative and so still correct.
+//
+// A slot publishes into the buckets it spans on each axis, which costs width + height writes
+// rather than width * height, so a large polygon needs no special case. The two tables together
+// are 512 bytes and stay resident, against 8KB for the 2D equivalent.
+const SPAN_SHIFT = 6;
+const SPAN_DIM = 32;
+const SPAN_LAST = SPAN_DIM - 1;
+
 const POOL_CAP = 2048; // ring nodes, with headroom over the peak held across all slots
+// One 32-byte record per ring node, read through an int view and a float view over the same
+// buffer: [x, y, id, next, slot, expand, -, -]. Allocating a node writes five of those fields and
+// the flush walk reads five, which as six parallel arrays was six cache lines per node and is now
+// one. Stride 8 so the index is a shift; the two spare words buy that shift.
+const ND_STRIDE = 8;
+const ND_X = 0; // float lane
+const ND_Y = 1; // float lane
+const ND_ID = 2;
+const ND_NEXT = 3;
+const ND_SLOT = 4;
+const ND_EXPAND = 5; // 1 where the boundary edge LEAVING this node must be pushed outward
 const EDGE_CAP = 4096; // power of two; live edges <= POOL_CAP so load stays under 0.25
 const EDGE_MASK = EDGE_CAP - 1;
+// One 16-byte record per entry: [stamp, from, to, node]. A probe step reads the stamp and both
+// endpoints, and four records share a cache line, so a short probe chain costs one line rather
+// than one per parallel array. Stride 4 so the index is a shift.
+const ED_STRIDE = 4;
+const ED_STAMP = 0;
+const ED_FROM = 1;
+const ED_TO = 2;
+const ED_NODE = 3;
 
 // Slot lanes. Stride 8 so `slot << 3` indexes without a multiply.
+// One 32-byte record per slot, read through an int view and a float view over the same buffer:
+// [color, head, len, seq, x0, y0, x1, y1]. The guard's per-candidate test touches the colour and
+// all four bounds, which is the whole record and so one cache line for two slots - as five
+// separate lane arrays it was five lines per candidate.
 const SL_STRIDE = 8;
 const SL_COLOR = 0; // -1 = free
 const SL_HEAD = 1; // pool index of some node on the ring
 const SL_LEN = 2;
 const SL_SEQ = 3; // face counter when last extended - drives victim selection
-const SL_MESH = 4;
+const SL_X0 = 4; // screen bounds, the overlap guard's only geometric input
+const SL_Y0 = 5;
+const SL_X1 = 6;
+const SL_Y1 = 7;
 
 // Scalars that have to be mutable by reference.
 const SC_FREEMASK = 0; // slots 0-31
@@ -70,22 +108,19 @@ const SC_LIVE = 4;
  * @returns {object} opaque state, passed back into every other function here
  */
 export function createWeldState() {
+  const slotBuf = new ArrayBuffer(N_SLOTS * SL_STRIDE * 4);
+  const poolBuf = new ArrayBuffer(POOL_CAP * ND_STRIDE * 4);
   const st = {
-    slots: new Int32Array(N_SLOTS * SL_STRIDE),
-    // Screen bounds per slot, as [x0, y0, x1, y1]. The overlap guard's only input.
-    aabb: new Float32Array(N_SLOTS * 4),
-    poolX: new Float32Array(POOL_CAP),
-    poolY: new Float32Array(POOL_CAP),
-    poolId: new Int32Array(POOL_CAP),
-    poolNext: new Int32Array(POOL_CAP),
-    poolSlot: new Int8Array(POOL_CAP),
-    // 1 where the boundary edge LEAVING this node must be pushed outward at flush, i.e. the face
-    // across it is drawn later. See the expansion note in weldFlushSlot.
-    poolExpand: new Uint8Array(POOL_CAP),
-    eFrom: new Int32Array(EDGE_CAP),
-    eTo: new Int32Array(EDGE_CAP),
-    eNode: new Int32Array(EDGE_CAP),
-    eStamp: new Int32Array(EDGE_CAP),
+    slots: new Int32Array(slotBuf),
+    slotsF: new Float32Array(slotBuf),
+    // Two int32 words of slot bits per bucket, one table per axis.
+    colBits: new Int32Array(SPAN_DIM * 2),
+    rowBits: new Int32Array(SPAN_DIM * 2),
+    // Buckets each slot last published into, as [cx0, cy0, cx1, cy1]; -1 = not published.
+    spanRect: new Int32Array(N_SLOTS * 4),
+    nodes: new Int32Array(poolBuf),
+    nodesF: new Float32Array(poolBuf),
+    edges: new Int32Array(EDGE_CAP * ED_STRIDE),
     scal: new Int32Array(8),
     emitX: new Float32Array(MAX_POLY_VERTS),
     emitY: new Float32Array(MAX_POLY_VERTS),
@@ -114,16 +149,18 @@ export function weldReset(st) {
 
   // Relink the whole pool. O(POOL_CAP) but called once per pass per frame at most, against
   // thousands of faces - not worth the bookkeeping needed to skip it safely.
-  const next = st.poolNext;
-  const ps = st.poolSlot;
-  for (let i = 0; i < POOL_CAP - 1; i++) {
-    next[i] = i + 1;
-    ps[i] = -1;
+  const nodes = st.nodes;
+  for (let i = 0; i < POOL_CAP; i++) {
+    const r = i << 3;
+    nodes[r + ND_NEXT] = i === POOL_CAP - 1 ? -1 : i + 1;
+    nodes[r + ND_SLOT] = -1;
   }
-  next[POOL_CAP - 1] = -1;
-  ps[POOL_CAP - 1] = -1;
   st.scal[SC_FREEHEAD] = 0;
   st.scal[SC_LIVE] = 0;
+
+  st.colBits.fill(0);
+  st.rowBits.fill(0);
+  st.spanRect.fill(-1);
 
   st.scal[SC_GEN]++; // clears the edge table in O(1) - every stamp is now stale
   st.scal[SC_SEQ] = 0;
@@ -131,7 +168,7 @@ export function weldReset(st) {
 
 // --- edge table -------------------------------------------------------------------------------
 // Open-addressed, linear probing, keyed on the DIRECTED edge (from -> to). An entry maps that edge
-// to the ring node it leaves from, so `poolNext[node]` is the edge's other end.
+// to the ring node it leaves from, so that node's ND_NEXT is the edge's other end.
 
 /**
  * Mixes a directed edge into a table index. Both endpoints are welded vertex identities.
@@ -158,13 +195,12 @@ function edgeHash(from, to) {
  */
 export function edgeFind(st, from, to) {
   const gen = st.scal[SC_GEN];
-  const eF = st.eFrom;
-  const eT = st.eTo;
-  const eS = st.eStamp;
+  const e = st.edges;
   let i = edgeHash(from, to);
   for (let p = 0; p < EDGE_CAP; p++) {
-    if (eS[i] !== gen) return -1; // empty slot ends the probe chain
-    if (eF[i] === from && eT[i] === to) return st.eNode[i];
+    const r = i << 2;
+    if (e[r + ED_STAMP] !== gen) return -1; // empty slot ends the probe chain
+    if (e[r + ED_FROM] === from && e[r + ED_TO] === to) return e[r + ED_NODE];
     i = (i + 1) & EDGE_MASK;
   }
   return -1;
@@ -184,22 +220,21 @@ export function edgeFind(st, from, to) {
  */
 function edgeInsert(st, from, to, node) {
   const gen = st.scal[SC_GEN];
-  const eF = st.eFrom;
-  const eT = st.eTo;
-  const eS = st.eStamp;
+  const e = st.edges;
   let i = edgeHash(from, to);
   for (let p = 0; p < EDGE_CAP; p++) {
-    if (eS[i] !== gen) {
-      eF[i] = from;
-      eT[i] = to;
-      st.eNode[i] = node;
-      eS[i] = gen;
+    const r = i << 2;
+    if (e[r + ED_STAMP] !== gen) {
+      e[r + ED_STAMP] = gen;
+      e[r + ED_FROM] = from;
+      e[r + ED_TO] = to;
+      e[r + ED_NODE] = node;
       return;
     }
     // A duplicate directed edge means two front-facing faces share an edge with the same
     // orientation - impossible on manifold geometry, possible on hand-authored meshes. Keep the
     // incumbent: the cost is a missed merge, never a corrupted ring.
-    if (eF[i] === from && eT[i] === to) return;
+    if (e[r + ED_FROM] === from && e[r + ED_TO] === to) return;
     i = (i + 1) & EDGE_MASK;
   }
 }
@@ -216,16 +251,14 @@ function edgeInsert(st, from, to, node) {
  */
 function edgeDelete(st, from, to) {
   const gen = st.scal[SC_GEN];
-  const eF = st.eFrom;
-  const eT = st.eTo;
-  const eS = st.eStamp;
-  const eN = st.eNode;
+  const e = st.edges;
 
   let i = edgeHash(from, to);
   let found = false;
   for (let p = 0; p < EDGE_CAP; p++) {
-    if (eS[i] !== gen) break;
-    if (eF[i] === from && eT[i] === to) {
+    const r = i << 2;
+    if (e[r + ED_STAMP] !== gen) break;
+    if (e[r + ED_FROM] === from && e[r + ED_TO] === to) {
       found = true;
       break;
     }
@@ -235,17 +268,19 @@ function edgeDelete(st, from, to) {
 
   let j = i;
   for (;;) {
-    eS[i] = gen - 1; // any stamp other than gen reads as empty
+    const ri = i << 2;
+    e[ri + ED_STAMP] = gen - 1; // any stamp other than gen reads as empty
     j = (j + 1) & EDGE_MASK;
-    if (eS[j] !== gen) return;
-    const k = edgeHash(eF[j], eT[j]);
+    const rj = j << 2;
+    if (e[rj + ED_STAMP] !== gen) return;
+    const k = edgeHash(e[rj + ED_FROM], e[rj + ED_TO]);
     // Keep j where it is if its home slot lies cyclically within (i, j].
     const keep = i <= j ? i < k && k <= j : i < k || k <= j;
     if (keep) continue;
-    eF[i] = eF[j];
-    eT[i] = eT[j];
-    eN[i] = eN[j];
-    eS[i] = gen;
+    e[ri + ED_STAMP] = gen;
+    e[ri + ED_FROM] = e[rj + ED_FROM];
+    e[ri + ED_TO] = e[rj + ED_TO];
+    e[ri + ED_NODE] = e[rj + ED_NODE];
     i = j;
   }
 }
@@ -265,12 +300,14 @@ function edgeDelete(st, from, to) {
 function nodeAlloc(st, x, y, id, slot) {
   const n = st.scal[SC_FREEHEAD];
   if (n === -1) return -1;
-  st.scal[SC_FREEHEAD] = st.poolNext[n];
-  st.poolX[n] = x;
-  st.poolY[n] = y;
-  st.poolId[n] = id;
-  st.poolNext[n] = -1;
-  st.poolSlot[n] = slot;
+  const nodes = st.nodes;
+  const r = n << 3;
+  st.scal[SC_FREEHEAD] = nodes[r + ND_NEXT];
+  st.nodesF[r + ND_X] = x;
+  st.nodesF[r + ND_Y] = y;
+  nodes[r + ND_ID] = id;
+  nodes[r + ND_NEXT] = -1;
+  nodes[r + ND_SLOT] = slot;
   st.scal[SC_LIVE]++;
   return n;
 }
@@ -287,11 +324,13 @@ function nodeAlloc(st, x, y, id, slot) {
 function nodeFree(st, n) {
   // A freed node's outgoing edge must leave the table with it, or a later lookup resolves to a
   // recycled node and merges into the wrong ring.
-  const nx = st.poolNext[n];
-  if (nx !== -1) edgeDelete(st, st.poolId[n], st.poolId[nx]);
-  st.poolSlot[n] = -1;
-  st.poolId[n] = -1;
-  st.poolNext[n] = st.scal[SC_FREEHEAD];
+  const nodes = st.nodes;
+  const r = n << 3;
+  const nx = nodes[r + ND_NEXT];
+  if (nx !== -1) edgeDelete(st, nodes[r + ND_ID], nodes[(nx << 3) + ND_ID]);
+  nodes[r + ND_SLOT] = -1;
+  nodes[r + ND_ID] = -1;
+  nodes[r + ND_NEXT] = st.scal[SC_FREEHEAD];
   st.scal[SC_FREEHEAD] = n;
   st.scal[SC_LIVE]--;
 }
@@ -304,10 +343,86 @@ function nodeFree(st, n) {
  * @param {number} b new successor, or -1 to leave `a` dangling
  */
 function relink(st, a, b) {
-  const oldNext = st.poolNext[a];
-  if (oldNext !== -1) edgeDelete(st, st.poolId[a], st.poolId[oldNext]);
-  st.poolNext[a] = b;
-  if (b !== -1) edgeInsert(st, st.poolId[a], st.poolId[b], a);
+  const nodes = st.nodes;
+  const ra = a << 3;
+  const oldNext = nodes[ra + ND_NEXT];
+  if (oldNext !== -1)
+    edgeDelete(st, nodes[ra + ND_ID], nodes[(oldNext << 3) + ND_ID]);
+  nodes[ra + ND_NEXT] = b;
+  if (b !== -1) edgeInsert(st, nodes[ra + ND_ID], nodes[(b << 3) + ND_ID], a);
+}
+
+/**
+ * Quantises a screen coordinate to an axis bucket, clamping to the table.
+ *
+ * @param {number} v screen coordinate in pixels
+ * @returns {number} bucket index in [0, SPAN_LAST]
+ */
+function bucketOf(v) {
+  const c = v > 0 ? v >>> SPAN_SHIFT : 0;
+  return c > SPAN_LAST ? SPAN_LAST : c;
+}
+
+/**
+ * Publishes a slot's current bounds into both axis tables, replacing what it published before.
+ *
+ * Bounds are dilated by GUARD_DILATE here so the query side needs no dilation of its own. A merge
+ * usually leaves the buckets exactly where they were, and republishing an unchanged span is pure
+ * cost, so that case returns early.
+ *
+ * @param {object} st welder state
+ * @param {number} slot slot whose bounds changed
+ */
+function spanPublish(st, slot) {
+  const sf = st.slotsF;
+  const sb = slot << 3;
+  const cx0 = bucketOf(sf[sb + SL_X0] - GUARD_DILATE);
+  const cy0 = bucketOf(sf[sb + SL_Y0] - GUARD_DILATE);
+  const cx1 = bucketOf(sf[sb + SL_X1] + GUARD_DILATE);
+  const cy1 = bucketOf(sf[sb + SL_Y1] + GUARD_DILATE);
+  const r = slot << 2;
+  const spanRect = st.spanRect;
+  if (
+    spanRect[r] === cx0 &&
+    spanRect[r + 1] === cy0 &&
+    spanRect[r + 2] === cx1 &&
+    spanRect[r + 3] === cy1
+  )
+    return;
+  spanRetire(st, slot);
+  spanRect[r] = cx0;
+  spanRect[r + 1] = cy0;
+  spanRect[r + 2] = cx1;
+  spanRect[r + 3] = cy1;
+  const word = slot >> 5;
+  const bit = 1 << (slot & 31);
+  const colBits = st.colBits;
+  const rowBits = st.rowBits;
+  for (let cx = cx0; cx <= cx1; cx++) colBits[(cx << 1) + word] |= bit;
+  for (let cy = cy0; cy <= cy1; cy++) rowBits[(cy << 1) + word] |= bit;
+}
+
+/**
+ * Removes a slot from both axis tables.
+ *
+ * @param {object} st welder state
+ * @param {number} slot slot to retire
+ */
+function spanRetire(st, slot) {
+  const r = slot << 2;
+  const spanRect = st.spanRect;
+  const cx0 = spanRect[r];
+  if (cx0 === -1) return;
+  const cy0 = spanRect[r + 1];
+  const cx1 = spanRect[r + 2];
+  const cy1 = spanRect[r + 3];
+  spanRect[r] = -1;
+  const word = slot >> 5;
+  const clear = ~(1 << (slot & 31));
+  const colBits = st.colBits;
+  const rowBits = st.rowBits;
+  for (let cx = cx0; cx <= cx1; cx++) colBits[(cx << 1) + word] &= clear;
+  for (let cy = cy0; cy <= cy1; cy++) rowBits[(cy << 1) + word] &= clear;
 }
 
 // --- flushing ---------------------------------------------------------------------------------
@@ -352,24 +467,26 @@ export function weldFlushSlot(
 
   const head = slots[base + SL_HEAD];
   const len = slots[base + SL_LEN];
-  const poolNext = st.poolNext;
-  const poolX = st.poolX;
-  const poolY = st.poolY;
-  const poolId = st.poolId;
-  const poolExpand = st.poolExpand;
+  const nodes = st.nodes;
+  const nodesF = st.nodesF;
   const emitX = st.emitX;
   const emitY = st.emitY;
   const emitF = st.emitF;
+  let freeHead = st.scal[SC_FREEHEAD];
+  // The ring closes back onto the head, whose id this walk clears on its very first step, so the
+  // closing edge's far endpoint has to be read before the walk starts.
+  const headId = nodes[(head << 3) + ND_ID];
 
   // Walk the ring once: collect points, decimate, and drop the slot's edges as we go.
   const eps2 = eps * eps;
   let out = 0;
   let n = head;
   for (let k = 0; k < len; k++) {
-    const nx = poolNext[n];
-    const x = poolX[n];
-    const y = poolY[n];
-    const fl = poolExpand[n];
+    const r = n << 3;
+    const nx = nodes[r + ND_NEXT];
+    const x = nodesF[r + ND_X];
+    const y = nodesF[r + ND_Y];
+    const fl = nodes[r + ND_EXPAND];
 
     if (out < 2) {
       emitX[out] = x;
@@ -403,20 +520,27 @@ export function weldFlushSlot(
       }
     }
 
-    if (nx !== -1) edgeDelete(st, poolId[n], poolId[nx]);
+    // Dropping the edge and freeing the node fold into this one walk: the successor's id was
+    // read above, and nothing later in the walk looks back at a node already passed. Freeing is
+    // written out rather than calling nodeFree, so the free head and the live count stay in
+    // registers across the ring instead of going through st.scal per node.
+    if (nx !== -1)
+      edgeDelete(
+        st,
+        nodes[r + ND_ID],
+        nx === head ? headId : nodes[(nx << 3) + ND_ID],
+      );
+    nodes[r + ND_SLOT] = -1;
+    nodes[r + ND_ID] = -1;
+    nodes[r + ND_NEXT] = freeHead;
+    freeHead = n;
     n = nx;
   }
-
-  // Free the ring after walking it, so the walk still sees intact ids.
-  n = head;
-  for (let k = 0; k < len; k++) {
-    const nx = poolNext[n];
-    poolNext[n] = -1; // edges were already dropped in the walk above
-    nodeFree(st, n);
-    n = nx;
-  }
+  st.scal[SC_FREEHEAD] = freeHead;
+  st.scal[SC_LIVE] -= len;
 
   slots[base + SL_COLOR] = -1;
+  spanRetire(st, slot);
   if (slot < 32) st.scal[SC_FREEMASK] |= 1 << slot;
   else st.scal[SC_FREEMASK2] |= 1 << (slot - 32);
 
@@ -625,7 +749,7 @@ export function weldAddFace(
   expandMask = 0,
 ) {
   const slots = st.slots;
-  const poolExpand = st.poolExpand;
+  const nodes = st.nodes;
 
   // Deferral guard.
   //
@@ -652,19 +776,71 @@ export function weldAddFace(
   // A straight indexed walk of every slot, not an iteration over the free-mask bits: occupancy runs
   // high enough that the branchy two-word bit walk loses, and the colour test rejects a free slot
   // just as cheaply.
-  const aabb = st.aabb;
-  for (let gs = 0; gs < N_SLOTS; gs++) {
-    const gc = slots[gs * SL_STRIDE + SL_COLOR];
-    if (gc === -1 || gc === color16) continue;
-    const ga = gs << 2;
-    // Dilated by GUARD_DILATE: a flush paints up to EXPAND outside the geometry it was given, so
-    // two regions that merely abut still contend for the pixels along their shared edge while
-    // overlapping by exactly zero. Only the test is dilated - the stored bounds stay exact, so the
-    // slack cannot compound as a polygon grows.
-    if (aabb[ga] > fx1 + GUARD_DILATE || aabb[ga + 2] < fx0 - GUARD_DILATE)
-      continue;
-    if (aabb[ga + 1] > fy1 + GUARD_DILATE || aabb[ga + 3] < fy0 - GUARD_DILATE)
-      continue;
+  const sf = st.slotsF;
+  const gx1 = fx1 + GUARD_DILATE;
+  const gx0 = fx0 - GUARD_DILATE;
+  const gy1 = fy1 + GUARD_DILATE;
+  const gy0 = fy0 - GUARD_DILATE;
+  // Slots sharing a column with this face, AND slots sharing a row with it, is exactly the set
+  // whose bounds overlap it - at bucket granularity, so the exact test below still decides.
+  const colBits = st.colBits;
+  const rowBits = st.rowBits;
+  const bx0 = bucketOf(fx0) << 1;
+  const bx1 = bucketOf(fx1) << 1;
+  const by0 = bucketOf(fy0) << 1;
+  const by1 = bucketOf(fy1) << 1;
+  let col0 = colBits[bx0];
+  let col1 = colBits[bx0 + 1];
+  for (let b = bx0 + 2; b <= bx1; b += 2) {
+    col0 |= colBits[b];
+    col1 |= colBits[b + 1];
+  }
+  let row0 = rowBits[by0];
+  let row1 = rowBits[by0 + 1];
+  for (let b = by0 + 2; b <= by1; b += 2) {
+    row0 |= rowBits[b];
+    row1 |= rowBits[b + 1];
+  }
+  let cand0 = col0 & row0;
+  let cand1 = col1 & row1;
+  let hit0 = 0;
+  let hit1 = 0;
+  while (cand0 !== 0) {
+    const gs = 31 - Math.clz32(cand0 & -cand0);
+    cand0 &= cand0 - 1;
+    const gb = gs << 3;
+    if (slots[gb + SL_COLOR] === color16) continue;
+    if (sf[gb + SL_X0] > gx1 || sf[gb + SL_X1] < gx0) continue;
+    if (sf[gb + SL_Y0] > gy1 || sf[gb + SL_Y1] < gy0) continue;
+    hit0 |= 1 << gs;
+  }
+  while (cand1 !== 0) {
+    const gs = 31 - Math.clz32(cand1 & -cand1);
+    cand1 &= cand1 - 1;
+    const gb = (gs + 32) << 3;
+    if (slots[gb + SL_COLOR] === color16) continue;
+    if (sf[gb + SL_X0] > gx1 || sf[gb + SL_X1] < gx0) continue;
+    if (sf[gb + SL_Y0] > gy1 || sf[gb + SL_Y1] < gy0) continue;
+    hit1 |= 1 << gs;
+  }
+  while (hit0 !== 0) {
+    const gs = 31 - Math.clz32(hit0 & -hit0);
+    hit0 &= hit0 - 1;
+    weldFlushSlot(
+      st,
+      gs,
+      ctx,
+      ctxStateBuffer,
+      styleSlot,
+      sawRealSlot,
+      statsBuffer,
+      callsSlot,
+      eps,
+    );
+  }
+  while (hit1 !== 0) {
+    const gs = 32 + 31 - Math.clz32(hit1 & -hit1);
+    hit1 &= hit1 - 1;
     weldFlushSlot(
       st,
       gs,
@@ -679,8 +855,6 @@ export function weldAddFace(
   }
 
   const seq = ++st.scal[SC_SEQ];
-  const poolSlot = st.poolSlot;
-  const poolNext = st.poolNext;
 
   // Reversed-edge lookups. m[k] owns the polygon edge that cancels triangle edge k.
   let m0 = edgeFind(st, id1, id0);
@@ -689,9 +863,9 @@ export function weldAddFace(
 
   // A match only counts if its slot holds this exact colour - slots are single-colour by
   // construction, which is what makes the guard above sound.
-  let s0 = m0 === -1 ? -1 : poolSlot[m0];
-  let s1 = m1 === -1 ? -1 : poolSlot[m1];
-  let s2 = m2 === -1 ? -1 : poolSlot[m2];
+  let s0 = m0 === -1 ? -1 : nodes[(m0 << 3) + ND_SLOT];
+  let s1 = m1 === -1 ? -1 : nodes[(m1 << 3) + ND_SLOT];
+  let s2 = m2 === -1 ? -1 : nodes[(m2 << 3) + ND_SLOT];
   if (s0 !== -1 && slots[s0 * SL_STRIDE + SL_COLOR] !== color16) {
     m0 = -1;
     s0 = -1;
@@ -736,23 +910,24 @@ export function weldAddFace(
       // Notch: both edges bound the same ring. Only mergeable when the shared vertex's node sits
       // directly between them - otherwise the two matched edges bound different parts of the loop
       // and splicing would fission it, so refuse and let the face seed a new slot.
-      if (poolNext[mj] === mi) {
+      if (nodes[(mj << 3) + ND_NEXT] === mi) {
         const b = si * SL_STRIDE;
-        relink(st, mj, poolNext[mi]);
+        relink(st, mj, nodes[(mi << 3) + ND_NEXT]);
         // Edges i and i+1 both cancel, so the triangle's one surviving edge is i+2, and mj is the
         // node that now leaves along it.
-        poolExpand[mj] = (expandMask >> ((i + 2) % 3)) & 1;
+        nodes[(mj << 3) + ND_EXPAND] = (expandMask >> ((i + 2) % 3)) & 1;
         // mi is about to be freed, so the head must not still point at it. mj survives and is on
         // the same ring, so it is always a valid replacement.
         if (slots[b + SL_HEAD] === mi) slots[b + SL_HEAD] = mj;
         nodeFree(st, mi);
         slots[b + SL_LEN]--;
+
         slots[b + SL_SEQ] = seq;
-        const na = si << 2;
-        if (fx0 < aabb[na]) aabb[na] = fx0;
-        if (fy0 < aabb[na + 1]) aabb[na + 1] = fy0;
-        if (fx1 > aabb[na + 2]) aabb[na + 2] = fx1;
-        if (fy1 > aabb[na + 3]) aabb[na + 3] = fy1;
+        if (fx0 < sf[b + SL_X0]) sf[b + SL_X0] = fx0;
+        if (fy0 < sf[b + SL_Y0]) sf[b + SL_Y0] = fy0;
+        if (fx1 > sf[b + SL_X1]) sf[b + SL_X1] = fx1;
+        if (fy1 > sf[b + SL_Y1]) sf[b + SL_Y1] = fy1;
+        spanPublish(st, si);
         return;
       }
     } else {
@@ -760,23 +935,28 @@ export function weldAddFace(
       const bB = sj * SL_STRIDE;
       const merged = slots[bA + SL_LEN] + slots[bB + SL_LEN] - 1;
       if (merged <= MAX_POLY_VERTS) {
-        const uNode = poolNext[mi]; // A's copy of the vertex the surviving edge runs to
-        const vNodeB = poolNext[mj]; // B's duplicate of the shared vertex - this one dies
-        const after = poolNext[vNodeB]; // must be read before it is freed
+        const uNode = nodes[(mi << 3) + ND_NEXT]; // A's copy of the vertex the surviving edge runs to
+        const vNodeB = nodes[(mj << 3) + ND_NEXT]; // B's duplicate of the shared vertex - this one dies
+        const after = nodes[(vNodeB << 3) + ND_NEXT]; // must be read before it is freed
 
         // vNodeB holds the SAME directed edge (v -> after) that mi is about to take over, and
         // edgeInsert keeps the incumbent on a duplicate key. Drop it first, and detach vNodeB so
         // nodeFree does not then delete the entry mi just claimed.
-        if (after !== -1) edgeDelete(st, st.poolId[vNodeB], st.poolId[after]);
-        poolNext[vNodeB] = -1;
+        if (after !== -1)
+          edgeDelete(
+            st,
+            nodes[(vNodeB << 3) + ND_ID],
+            nodes[(after << 3) + ND_ID],
+          );
+        nodes[(vNodeB << 3) + ND_NEXT] = -1;
 
         // mi takes over the stretch of B's ring that vNodeB was carrying, so it inherits that
         // node's edge flag; mj ends up leaving along the triangle's one surviving edge, i+2.
-        const vExpand = poolExpand[vNodeB];
+        const vExpand = nodes[(vNodeB << 3) + ND_EXPAND];
         relink(st, mi, after);
         relink(st, mj, uNode);
-        poolExpand[mi] = vExpand;
-        poolExpand[mj] = (expandMask >> ((i + 2) % 3)) & 1;
+        nodes[(mi << 3) + ND_EXPAND] = vExpand;
+        nodes[(mj << 3) + ND_EXPAND] = (expandMask >> ((i + 2) % 3)) & 1;
         nodeFree(st, vNodeB);
 
         // Retag the WHOLE merged ring. Walking either original length is wrong now that the two
@@ -784,24 +964,25 @@ export function weldAddFace(
         // about to be released and reused for another colour.
         let n = mi;
         for (let k = 0; k < merged; k++) {
-          poolSlot[n] = si;
-          n = poolNext[n];
+          const r = n << 3;
+          nodes[r + ND_SLOT] = si;
+          n = nodes[r + ND_NEXT];
           if (n === -1) break;
         }
         // mi is guaranteed live and on the merged ring, so it is a safe head.
         slots[bA + SL_HEAD] = mi;
         slots[bA + SL_LEN] = merged;
         slots[bA + SL_SEQ] = seq;
-        const sa = si << 2;
-        const sbB = sj << 2;
-        if (aabb[sbB] < aabb[sa]) aabb[sa] = aabb[sbB];
-        if (aabb[sbB + 1] < aabb[sa + 1]) aabb[sa + 1] = aabb[sbB + 1];
-        if (aabb[sbB + 2] > aabb[sa + 2]) aabb[sa + 2] = aabb[sbB + 2];
-        if (aabb[sbB + 3] > aabb[sa + 3]) aabb[sa + 3] = aabb[sbB + 3];
-        if (fx0 < aabb[sa]) aabb[sa] = fx0;
-        if (fy0 < aabb[sa + 1]) aabb[sa + 1] = fy0;
-        if (fx1 > aabb[sa + 2]) aabb[sa + 2] = fx1;
-        if (fy1 > aabb[sa + 3]) aabb[sa + 3] = fy1;
+        if (sf[bB + SL_X0] < sf[bA + SL_X0]) sf[bA + SL_X0] = sf[bB + SL_X0];
+        if (sf[bB + SL_Y0] < sf[bA + SL_Y0]) sf[bA + SL_Y0] = sf[bB + SL_Y0];
+        if (sf[bB + SL_X1] > sf[bA + SL_X1]) sf[bA + SL_X1] = sf[bB + SL_X1];
+        if (sf[bB + SL_Y1] > sf[bA + SL_Y1]) sf[bA + SL_Y1] = sf[bB + SL_Y1];
+        if (fx0 < sf[bA + SL_X0]) sf[bA + SL_X0] = fx0;
+        if (fy0 < sf[bA + SL_Y0]) sf[bA + SL_Y0] = fy0;
+        if (fx1 > sf[bA + SL_X1]) sf[bA + SL_X1] = fx1;
+        if (fy1 > sf[bA + SL_Y1]) sf[bA + SL_Y1] = fy1;
+        spanRetire(st, sj);
+        spanPublish(st, si);
         slots[bB + SL_COLOR] = -1;
         if (sj < 32) st.scal[SC_FREEMASK] |= 1 << sj;
         else st.scal[SC_FREEMASK2] |= 1 << (sj - 32);
@@ -819,20 +1000,20 @@ export function weldAddFace(
       const nid = m0 !== -1 ? id2 : m1 !== -1 ? id0 : id1;
       const nn = nodeAlloc(st, nx, ny, nid, ss);
       if (nn !== -1) {
-        relink(st, nn, poolNext[mm]);
+        relink(st, nn, nodes[(mm << 3) + ND_NEXT]);
         relink(st, mm, nn);
         // Matched triangle edge mk is cancelled and the ring gains the other two in cyclic order,
         // so mm now leaves along edge mk+1 and the new node along edge mk+2.
         const mk = m0 !== -1 ? 0 : m1 !== -1 ? 1 : 2;
-        poolExpand[mm] = (expandMask >> ((mk + 1) % 3)) & 1;
-        poolExpand[nn] = (expandMask >> ((mk + 2) % 3)) & 1;
+        nodes[(mm << 3) + ND_EXPAND] = (expandMask >> ((mk + 1) % 3)) & 1;
+        nodes[(nn << 3) + ND_EXPAND] = (expandMask >> ((mk + 2) % 3)) & 1;
         slots[b + SL_LEN]++;
         slots[b + SL_SEQ] = seq;
-        const ea = ss << 2;
-        if (fx0 < aabb[ea]) aabb[ea] = fx0;
-        if (fy0 < aabb[ea + 1]) aabb[ea + 1] = fy0;
-        if (fx1 > aabb[ea + 2]) aabb[ea + 2] = fx1;
-        if (fy1 > aabb[ea + 3]) aabb[ea + 3] = fy1;
+        if (fx0 < sf[b + SL_X0]) sf[b + SL_X0] = fx0;
+        if (fy0 < sf[b + SL_Y0]) sf[b + SL_Y0] = fy0;
+        if (fx1 > sf[b + SL_X1]) sf[b + SL_X1] = fx1;
+        if (fy1 > sf[b + SL_Y1]) sf[b + SL_Y1] = fy1;
+        spanPublish(st, ss);
         return;
       }
     }
@@ -886,21 +1067,20 @@ export function weldAddFace(
   relink(st, n1, n2);
   relink(st, n2, n0);
   // Node k's outgoing edge IS triangle edge k, by construction of the seed ring.
-  poolExpand[n0] = expandMask & 1;
-  poolExpand[n1] = (expandMask >> 1) & 1;
-  poolExpand[n2] = (expandMask >> 2) & 1;
+  nodes[(n0 << 3) + ND_EXPAND] = expandMask & 1;
+  nodes[(n1 << 3) + ND_EXPAND] = (expandMask >> 1) & 1;
+  nodes[(n2 << 3) + ND_EXPAND] = (expandMask >> 2) & 1;
 
   const b = slot * SL_STRIDE;
   slots[b + SL_COLOR] = color16;
-  slots[b + SL_MESH] = meshIdx;
   slots[b + SL_HEAD] = n0;
   slots[b + SL_LEN] = 3;
   slots[b + SL_SEQ] = seq;
-  const fa = slot << 2;
-  aabb[fa] = fx0;
-  aabb[fa + 1] = fy0;
-  aabb[fa + 2] = fx1;
-  aabb[fa + 3] = fy1;
+  sf[b + SL_X0] = fx0;
+  sf[b + SL_Y0] = fy0;
+  sf[b + SL_X1] = fx1;
+  sf[b + SL_Y1] = fy1;
+  spanPublish(st, slot);
   if (slot < 32) st.scal[SC_FREEMASK] &= ~(1 << slot);
   else st.scal[SC_FREEMASK2] &= ~(1 << (slot - 32));
 }
