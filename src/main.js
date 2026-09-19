@@ -17,17 +17,12 @@ import Ball from "./primitives/Ball.js";
 import Canvas2dViewport from "./Canvas2dViewport.js";
 import Light from "./Light.js";
 import { showDebug } from "./debug/showDebug.jsx";
-import { flatShaderFill } from "./shaders/flatFill/index.js";
-import {
-  avgFlatShaderFill,
-  avgFlatShaderShade,
-} from "./shaders/avgFlatFill/index.js";
+import { avgFlatShaderFill } from "./shaders/avgFlatFill/index.js";
 import {
   registerShader,
   ALBEDO_FLAT,
   TEXTURE,
   EMISSIVE_FLAT,
-  AVG_ALBEDO_FLAT,
   GOURAUD_SHADE,
 } from "./shaders/shaderRegistry.js";
 import { textureShaderFill } from "./shaders/textureFill/index.js";
@@ -62,13 +57,11 @@ export default window.scaliaEngine = {
     ALBEDO_FLAT,
     TEXTURE,
     EMISSIVE_FLAT,
-    AVG_ALBEDO_FLAT,
     GOURAUD_SHADE,
   },
   shaders: {
-    flat: { fill: flatShaderFill, shade: flatShaderShade },
+    flat: { fill: avgFlatShaderFill, shade: flatShaderShade },
     texture: { fill: textureShaderFill, shade: gouraudShaderShade },
-    avgFlat: { fill: avgFlatShaderFill, shade: avgFlatShaderShade },
-    gouraud: { fill: flatShaderFill, shade: gouraudShaderShade },
+    gouraud: { fill: avgFlatShaderFill, shade: gouraudShaderShade },
   },
 };

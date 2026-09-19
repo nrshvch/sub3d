@@ -45,7 +45,7 @@ p.textureImage = null;
 p.texturePattern = null;
 
 /**
- * Selects which shader draws this mesh's faces: 0 flat, 1 texture, 2 emissive, 3 avgFlat,
+ * Selects which shader draws this mesh's faces: 0 flat, 1 texture, 2 emissive,
  * 4 smooth. Each is dispatched through a fixed switch case straight to its src/shaders/*.js
  * implementation, kept monomorphic for the JIT regardless of how many other keys are in use
  * elsewhere. Wireframe rendering is unrelated to this property entirely - it's a

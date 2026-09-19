@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { flatShaderFill } from "./index.js";
+import { avgFlatShaderFill } from "./index.js";
 import { STATS_FILL_DRAW_CALLS } from "../../shared/shaders.js";
+import { PALETTE_16BIT } from "../../palette.js";
 
 /**
  * Covers this shader's side of the welder contract - the parts that break silently.
@@ -90,7 +91,7 @@ function makeHarness() {
     { last = false, meshIdx = 0, frame = frameId } = {},
   ) {
     const [a, b, c] = pts;
-    flatShaderFill(
+    avgFlatShaderFill(
       ctx,
       a[0],
       a[1],
@@ -186,7 +187,7 @@ describe("flat fill batching", () => {
       [10, 0, 2],
       [10, 10, 3],
     ]);
-    h.colorBuffer[1 * 3] = RED;
+    h.colorBuffer.fill(RED, 1 * 3, 1 * 3 + 3);
     h.face(1, [
       [1, 1, 10],
       [9, 1, 11],
@@ -213,7 +214,7 @@ describe("flat fill batching", () => {
     ]);
     expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(0);
 
-    h.colorBuffer[2 * 3] = RED;
+    h.colorBuffer.fill(RED, 2 * 3, 2 * 3 + 3);
     h.face(2, [
       [900, 900, 20],
       [910, 900, 21],
@@ -221,7 +222,7 @@ describe("flat fill batching", () => {
     ]);
     expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(0); // nothing overlapped, nothing flushed
 
-    h.colorBuffer[3 * 3] = RED;
+    h.colorBuffer.fill(RED, 3 * 3, 3 * 3 + 3);
     h.face(
       3,
       [
@@ -297,5 +298,54 @@ describe("flat fill batching", () => {
 
     // Exactly one polygon: this frame's. Last frame's was dropped, not painted.
     expect(h.statsBuffer[STATS_FILL_DRAW_CALLS]).toBe(1);
+  });
+});
+
+describe("flat fill face colour", () => {
+  let h;
+
+  beforeEach(() => {
+    h = makeHarness();
+  });
+
+  // What a flat fill is normally given: one colour on all three corners. The mean has to return
+  // that colour untouched, or every existing flat mesh shifts a shade.
+  it("leaves a uniform face's colour bit-exact", () => {
+    h.face(
+      0,
+      [
+        [0, 0, 1],
+        [10, 0, 2],
+        [10, 10, 3],
+      ],
+      { last: true },
+    );
+
+    const expected =
+      ((GREEN >>> 16) & 0xf8) * 256 +
+      (((GREEN >>> 8) & 0xfc) << 3) +
+      ((GREEN & 0xf8) >> 3);
+    expect(h.ctx.fillStyle).toBe(PALETTE_16BIT[expected]);
+  });
+
+  // Corner 0 is black and the other two are red: picking corner 0 would paint black, the mean
+  // paints 170 red. Asserts the face colour is not winding-order dependent.
+  it("averages three differing corner colours", () => {
+    h.colorBuffer[0] = 0x000000;
+    h.colorBuffer[1] = 0xff0000;
+    h.colorBuffer[2] = 0xff0000;
+
+    h.face(
+      0,
+      [
+        [0, 0, 1],
+        [10, 0, 2],
+        [10, 10, 3],
+      ],
+      { last: true },
+    );
+
+    // (0 + 255 + 255) / 3 = 170, quantised to 5 bits -> 168.
+    expect(h.ctx.fillStyle).toBe(PALETTE_16BIT[(168 & 0xf8) << 8]);
   });
 });

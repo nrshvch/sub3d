@@ -12,10 +12,10 @@
 //   GOURAUD_SHADE                               because those shaders must read a vertex normal
 //
 // A positional contract whose meaning varies by call site is not a contract, and it has already
-// cost us: `shaders/avgFlatFill/avgFlatShader.js` and `shaders/smoothShade.js` both index
-// `vertexNormalsBuffer[v0Idx]` while being handed a welded identity, so they read normals from an
-// unrelated vertex. LATENT BUG, live today - neither shader is used by an example, which is why it
-// has gone unnoticed. Whatever shape the fix takes, those two are the things to re-check.
+// cost us one shader: the old AVG_ALBEDO_FLAT indexed `vertexNormalsBuffer[v0Idx]` while being
+// handed a welded identity, so it read normals from an unrelated vertex. It has since been
+// deleted. Any new shader that reads a vertex attribute has to be added to the second row above
+// and handed vertexIndexBuffer offsets, or it inherits the same bug.
 //
 // The two numbers cannot be collapsed into one. Welding is an equivalence on POSITION, and vertex
 // attributes are not functions of position: `vMapping` already merges every corner that is safe to
@@ -52,15 +52,10 @@ import * as math from "./math.js";
 import { BLUE16, PALETTE_16BIT, WHITE16 } from "./palette.js";
 import * as debug from "./debug/debug.js";
 import radixSort from "./radixSort.js";
-import { flatShaderFill } from "./shaders/flatFill/index.js";
+import { avgFlatShaderFill } from "./shaders/avgFlatFill/index.js";
 import { textureShaderFill } from "./shaders/textureFill/index.js";
 import {
-  avgFlatShaderFill,
-  avgFlatShaderShade,
-} from "./shaders/avgFlatFill/index.js";
-import {
   ALBEDO_FLAT,
-  AVG_ALBEDO_FLAT,
   EMISSIVE_FLAT,
   TEXTURE,
   shaderRegistry,
@@ -1875,7 +1870,7 @@ function fillTriangles(
 
     switch (shaderKey) {
       case ALBEDO_FLAT: {
-        flatShaderFill(
+        avgFlatShaderFill(
           ctx,
           px0,
           py0,
@@ -1945,7 +1940,7 @@ function fillTriangles(
         break;
       }
       case EMISSIVE_FLAT: {
-        flatShaderFill(
+        avgFlatShaderFill(
           ctx,
           px0,
           py0,
@@ -1979,44 +1974,10 @@ function fillTriangles(
         );
         break;
       }
-      case AVG_ALBEDO_FLAT: {
-        avgFlatShaderFill(
-          ctx,
-          px0,
-          py0,
-          px1,
-          py1,
-          px2,
-          py2,
-          clipGeometryBuffer,
-          colorBuffer,
-          vertexNormalsBuffer,
-          faceNormalsBuffer,
-          w0Idx,
-          w1Idx,
-          w2Idx,
-          idx,
-          mesh,
-          meshFaceIndexBuffer[idx],
-          ambientLightRgb,
-          lightsIndexBuffer,
-          gameObjects,
-          fogType,
-          fogColor,
-          fogNearPane,
-          fogFarPane,
-          mIdx,
-          ctxStateBuffer,
-          statsBuffer,
-          frameId,
-          last,
-        );
-        break;
-      }
       case GOURAUD_SHADE: {
         // Smoothness lives entirely in the shade layer; the albedo is an ordinary flat fill, and
         // welds with ALBEDO_FLAT's own faces because it goes through the same shader.
-        flatShaderFill(
+        avgFlatShaderFill(
           ctx,
           px0,
           py0,
@@ -2307,40 +2268,6 @@ function shadeTriangles(
       case EMISSIVE_FLAT: {
         // EMISSIVE - forward-only, nothing real to shade.
         identityFill(
-          ctx,
-          px0,
-          py0,
-          px1,
-          py1,
-          px2,
-          py2,
-          clipGeometryBuffer,
-          colorBuffer,
-          vertexNormalsBuffer,
-          faceNormalsBuffer,
-          w0Idx,
-          w1Idx,
-          w2Idx,
-          idx,
-          mesh,
-          meshFaceIndexBuffer[idx],
-          ambientLightRgb,
-          lightsIndexBuffer,
-          gameObjects,
-          fogType,
-          fogColor,
-          fogNearPane,
-          fogFarPane,
-          mIdx,
-          ctxStateBuffer,
-          statsBuffer,
-          frameId,
-          last,
-        );
-        break;
-      }
-      case AVG_ALBEDO_FLAT: {
-        avgFlatShaderShade(
           ctx,
           px0,
           py0,
