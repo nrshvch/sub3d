@@ -1,3 +1,4 @@
+import scaliaEngine from "sub3d";
 import Terrain from "./terrain.js";
 
 // Deterministic 2D hash function for seeded random properties
@@ -387,7 +388,7 @@ export default class TileGroup {
     // Update shading and normals: base pass stays generic/index-only (hard face normals, used
     // by flatShader as-is), then point same-position, same-material vertex normals the same
     // direction (without merging the vertices themselves - still fully split, just now
-    // agreeing on a value) so avgFlat/smooth shading (which reads vertexNormals) gets a smooth
+    // agreeing on a value) so GOURAUD_SHADE (which reads vertexNormals) gets a smooth
     // lighting gradient across tile boundaries - material-gated so the water/shore edge stays a
     // hard lighting seam (a shore tile's water-level corner just keeps its own face normal
     // there, since it won't find a land match at that position), and every water vertex is then
@@ -407,7 +408,9 @@ export default class TileGroup {
 
     // 6. Set shader options
     this.terrain.meshRenderer.layer = 0;
-    this.terrain.meshRenderer.shaderType = isSmooth ? 3 : 0;
+    this.terrain.meshRenderer.shaderType = isSmooth
+      ? scaliaEngine.ShaderType.GOURAUD_SHADE
+      : scaliaEngine.ShaderType.ALBEDO_FLAT;
 
     // 7. Position terrain chunk at the center of its tile region in world space
     const centerX_world = gx * segments * TILE_WORLD_SIZE;
@@ -605,7 +608,9 @@ export default class TileGroup {
    */
   setSmooth(isSmooth) {
     if (this.terrain && this.terrain.meshRenderer) {
-      this.terrain.meshRenderer.shaderType = isSmooth ? 3 : 0;
+      this.terrain.meshRenderer.shaderType = isSmooth
+        ? scaliaEngine.ShaderType.GOURAUD_SHADE
+        : scaliaEngine.ShaderType.ALBEDO_FLAT;
     }
   }
 

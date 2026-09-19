@@ -187,7 +187,7 @@ function prepareFog(
     const key = shaderTypeBuffer[idx];
 
     // The flat-fill family, by what the FILL pass draws: GOURAUD_SHADE is here because its fill is
-    // flatShaderFill, whatever its shade pass does. A key left out is marked skipped and keeps this
+    // avgFlatShaderFill, whatever its shade pass does. A key left out is marked skipped and keeps this
     // buffer's black background, which composites as FULLY fogged - so omitting a flat-filled key
     // renders its meshes solid fogColor rather than merely unfogged.
     if (key !== ALBEDO_FLAT && key !== TEXTURE && key !== GOURAUD_SHADE) {

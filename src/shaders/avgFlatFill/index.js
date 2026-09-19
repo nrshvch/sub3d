@@ -1,1 +1,1 @@
-export { avgFlatShaderFill, avgFlatShaderShade } from "./avgFlatShader.js";
+export { avgFlatShaderFill } from "./avgFlatShader.js";

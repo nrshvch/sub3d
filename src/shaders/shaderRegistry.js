@@ -1,6 +1,5 @@
-import { flatShaderFill } from "./flatFill/index.js";
+import { avgFlatShaderFill } from "./avgFlatFill/index.js";
 import { textureShaderFill } from "./textureFill/index.js";
-import { avgFlatShaderFill, avgFlatShaderShade } from "./avgFlatFill/index.js";
 import { identityFill } from "../shared/shaders.js";
 import { flatShaderShade } from "./flatShade/index.js";
 import { gouraudShaderShade } from "./gouraudShade/index.js";
@@ -13,25 +12,24 @@ let nextKey = 6;
 export const ALBEDO_FLAT = 0;
 export const TEXTURE = 1;
 export const EMISSIVE_FLAT = 2;
-export const AVG_ALBEDO_FLAT = 3;
+// 3 is a retired key (the old AVG_ALBEDO_FLAT) and 5 has never been assigned. Both are left as
+// holes rather than renumbered: a built-in key is public API, stored on meshes by consumers.
 export const GOURAUD_SHADE = 4;
 // Flat albedo fill, Gouraud shade: the deferred smooth-shading pair. Its fill is ordinary
-// flatShaderFill, so all the smoothness lives in the shade layer that multiplies over it.
+// avgFlatShaderFill, so all the smoothness lives in the shade layer that multiplies over it.
 
-// Built-ins (keys 0-5) are registered here too, purely for consistency with consumer shaders -
+// Built-ins are registered here too, purely for consistency with consumer shaders -
 // Canvas2dRenderer.js's fillTriangles/shadeTriangles switch statements still call them directly
 // by fixed key (see their case comments), never through these arrays.
-shaderRegistry[ALBEDO_FLAT] = flatShaderFill;
+shaderRegistry[ALBEDO_FLAT] = avgFlatShaderFill;
 shadeShaderRegistry[ALBEDO_FLAT] = flatShaderShade;
 // Texture replaces the albedo, not the lighting, so it shades per vertex normal like any other
 // smooth mesh. A hard-edged mesh is unaffected - its vertex normals are its face normals.
 shaderRegistry[TEXTURE] = textureShaderFill;
 shadeShaderRegistry[TEXTURE] = gouraudShaderShade;
-shaderRegistry[EMISSIVE_FLAT] = flatShaderFill;
+shaderRegistry[EMISSIVE_FLAT] = avgFlatShaderFill;
 shadeShaderRegistry[EMISSIVE_FLAT] = identityFill;
-shaderRegistry[AVG_ALBEDO_FLAT] = avgFlatShaderFill;
-shadeShaderRegistry[AVG_ALBEDO_FLAT] = avgFlatShaderShade;
-shaderRegistry[GOURAUD_SHADE] = flatShaderFill;
+shaderRegistry[GOURAUD_SHADE] = avgFlatShaderFill;
 shadeShaderRegistry[GOURAUD_SHADE] = gouraudShaderShade;
 
 /**
@@ -104,7 +102,7 @@ shadeShaderRegistry[GOURAUD_SHADE] = gouraudShaderShade;
  * never has to special-case one shader's shape against another's.
  *
  * A shader that wants to persist state across faces (e.g. merging adjacent same-color triangles
- * into one fill - see flatFill/flatShader.js) owns that state entirely itself: declare a
+ * into one fill - see avgFlatFill/avgFlatShader.js) owns that state entirely itself: declare a
  * module-level scratch array (sized to whatever it needs) in the shader's own file. The renderer
  * never allocates, passes, or knows about it - a shader with nothing to persist (most of them)
  * declares nothing.
