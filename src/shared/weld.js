@@ -25,9 +25,33 @@
 
 import { PALETTE_16BIT, WHITE16 } from "../palette.js";
 
-// Polygons kept open at once, tracked by two int32 free-mask words. Enough that a face usually
-// finds its neighbour still open; past that, the added scan costs more than the merges it wins.
+// Polygons kept open at once. THE dial: every structure below sizes itself from it, so any value
+// works and only this line changes. 64 is where the measurements put it - a face usually finds its
+// neighbour still open, and past that the extra slots buy no merges.
+//
+// Draw calls, isometric-world terrain, three colour counts (6 / 24 / 64 distinct fill colours):
+//
+//   16 slots   14801 / 15387 / 15553
+//   32 slots   10790 / 12762 / 13305
+//   64 slots    3258 /  9415 / 11212
+//  128 slots    3258 /  9393 / 11212
+//
+// Shrinking costs draw calls badly and saves nothing per face, because the guard is O(candidates),
+// not O(N_SLOTS) - see the span tables below. Growing past 64 buys 0.2% and costs frame time.
+//
+// Limits: any value >= 1, multiple of 32 or not - SLOT_WORDS covers a partial last word. The
+// binding constraint is POOL_CAP, which has to cover N_SLOTS * MAX_POLY_VERTS; see it below.
 export const N_SLOTS = 64;
+// Int32 words needed to hold one bit per slot. A partial last word is fine; weldReset only frees
+// the bits that correspond to real slots, so the surplus high bits never read as free.
+const SLOT_WORDS = (N_SLOTS + 31) >> 5;
+// Longest boundary one merged polygon may reach. A dial in its own right: it sizes the emit
+// buffers and gates the two growth paths - splice and extend - and nothing else reads it.
+//
+// Limits: >= 3, since a seed ring is three nodes and a smaller cap could never admit one. Raising
+// it raises the worst-case node count, so check POOL_CAP below. It is not free either: a longer
+// ring is a longer emit walk per flush, a harder path to rasterise, and a wider slot AABB, which
+// makes the guard flush that slot against more of the faces that arrive.
 export const MAX_POLY_VERTS = 128;
 
 // Outward offset applied to a boundary edge whose neighbour is drawn LATER, in destination pixels.
@@ -52,7 +76,14 @@ const SPAN_SHIFT = 6;
 const SPAN_DIM = 32;
 const SPAN_LAST = SPAN_DIM - 1;
 
-const POOL_CAP = 2048; // ring nodes, with headroom over the peak held across all slots
+// Ring nodes shared by every open slot, with headroom over the peak actually held.
+//
+// This is the ceiling both dials above run into. Their worst case, N_SLOTS * MAX_POLY_VERTS, sits
+// far above this number; the peak a real pass reaches sits far below it, which is why the cap is
+// measured rather than derived. Raise it when raising either dial, because exhaustion is not
+// graceful: a face that cannot allocate its three seed nodes is dropped from the pass outright,
+// losing geometry rather than merely a merge.
+const POOL_CAP = 2048;
 // One 32-byte record per ring node, read through an int view and a float view over the same
 // buffer: [x, y, id, next, slot, expand, -, -]. Allocating a node writes five of those fields and
 // the flush walk reads five, which as six parallel arrays was six cache lines per node and is now
@@ -64,7 +95,9 @@ const ND_ID = 2;
 const ND_NEXT = 3;
 const ND_SLOT = 4;
 const ND_EXPAND = 5; // 1 where the boundary edge LEAVING this node must be pushed outward
-const EDGE_CAP = 4096; // power of two; live edges <= POOL_CAP so load stays under 0.25
+// Every live node owns one outgoing edge, so live edges <= POOL_CAP and this keeps the table's
+// load factor under 0.25. Limits: a power of two, and >= 4 * POOL_CAP - grow it alongside.
+const EDGE_CAP = 4096;
 const EDGE_MASK = EDGE_CAP - 1;
 // One 16-byte record per entry: [stamp, from, to, node]. A probe step reads the stamp and both
 // endpoints, and four records share a cache line, so a short probe chain costs one line rather
@@ -91,8 +124,6 @@ const SL_X1 = 6;
 const SL_Y1 = 7;
 
 // Scalars that have to be mutable by reference.
-const SC_FREEMASK = 0; // slots 0-31
-const SC_FREEMASK2 = 5; // slots 32-63
 const SC_FREEHEAD = 1;
 const SC_GEN = 2;
 const SC_SEQ = 3;
@@ -113,9 +144,12 @@ export function createWeldState() {
   const st = {
     slots: new Int32Array(slotBuf),
     slotsF: new Float32Array(slotBuf),
-    // Two int32 words of slot bits per bucket, one table per axis.
-    colBits: new Int32Array(SPAN_DIM * 2),
-    rowBits: new Int32Array(SPAN_DIM * 2),
+    // SLOT_WORDS int32 of slot bits per bucket, one table per axis. Bucket-major, so a bucket's
+    // words are adjacent and the common case - one bucket, every word - is one cache line.
+    colBits: new Int32Array(SPAN_DIM * SLOT_WORDS),
+    rowBits: new Int32Array(SPAN_DIM * SLOT_WORDS),
+    // One bit per slot, set where the slot is free.
+    freeMask: new Int32Array(SLOT_WORDS),
     // Buckets each slot last published into, as [cx0, cy0, cx1, cy1]; -1 = not published.
     spanRect: new Int32Array(N_SLOTS * 4),
     nodes: new Int32Array(poolBuf),
@@ -144,8 +178,11 @@ export function createWeldState() {
 export function weldReset(st) {
   const slots = st.slots;
   for (let i = 0; i < N_SLOTS; i++) slots[i * SL_STRIDE + SL_COLOR] = -1;
-  st.scal[SC_FREEMASK] = -1; // slots 0-31 free
-  st.scal[SC_FREEMASK2] = -1; // slots 32-63 free
+  const freeMask = st.freeMask;
+  for (let w = 0; w < SLOT_WORDS; w++) {
+    const spare = N_SLOTS - (w << 5);
+    freeMask[w] = spare >= 32 ? -1 : (1 << spare) - 1;
+  }
 
   // Relink the whole pool. O(POOL_CAP) but called once per pass per frame at most, against
   // thousands of faces - not worth the bookkeeping needed to skip it safely.
@@ -398,8 +435,8 @@ function spanPublish(st, slot) {
   const bit = 1 << (slot & 31);
   const colBits = st.colBits;
   const rowBits = st.rowBits;
-  for (let cx = cx0; cx <= cx1; cx++) colBits[(cx << 1) + word] |= bit;
-  for (let cy = cy0; cy <= cy1; cy++) rowBits[(cy << 1) + word] |= bit;
+  for (let cx = cx0; cx <= cx1; cx++) colBits[cx * SLOT_WORDS + word] |= bit;
+  for (let cy = cy0; cy <= cy1; cy++) rowBits[cy * SLOT_WORDS + word] |= bit;
 }
 
 /**
@@ -421,8 +458,8 @@ function spanRetire(st, slot) {
   const clear = ~(1 << (slot & 31));
   const colBits = st.colBits;
   const rowBits = st.rowBits;
-  for (let cx = cx0; cx <= cx1; cx++) colBits[(cx << 1) + word] &= clear;
-  for (let cy = cy0; cy <= cy1; cy++) rowBits[(cy << 1) + word] &= clear;
+  for (let cx = cx0; cx <= cx1; cx++) colBits[cx * SLOT_WORDS + word] &= clear;
+  for (let cy = cy0; cy <= cy1; cy++) rowBits[cy * SLOT_WORDS + word] &= clear;
 }
 
 // --- flushing ---------------------------------------------------------------------------------
@@ -541,8 +578,7 @@ export function weldFlushSlot(
 
   slots[base + SL_COLOR] = -1;
   spanRetire(st, slot);
-  if (slot < 32) st.scal[SC_FREEMASK] |= 1 << slot;
-  else st.scal[SC_FREEMASK2] |= 1 << (slot - 32);
+  st.freeMask[slot >> 5] |= 1 << (slot & 31);
 
   // Close the decimation around the wrap.
   //
@@ -785,73 +821,47 @@ export function weldAddFace(
   // whose bounds overlap it - at bucket granularity, so the exact test below still decides.
   const colBits = st.colBits;
   const rowBits = st.rowBits;
-  const bx0 = bucketOf(fx0) << 1;
-  const bx1 = bucketOf(fx1) << 1;
-  const by0 = bucketOf(fy0) << 1;
-  const by1 = bucketOf(fy1) << 1;
-  let col0 = colBits[bx0];
-  let col1 = colBits[bx0 + 1];
-  for (let b = bx0 + 2; b <= bx1; b += 2) {
-    col0 |= colBits[b];
-    col1 |= colBits[b + 1];
-  }
-  let row0 = rowBits[by0];
-  let row1 = rowBits[by0 + 1];
-  for (let b = by0 + 2; b <= by1; b += 2) {
-    row0 |= rowBits[b];
-    row1 |= rowBits[b + 1];
-  }
-  let cand0 = col0 & row0;
-  let cand1 = col1 & row1;
-  let hit0 = 0;
-  let hit1 = 0;
-  while (cand0 !== 0) {
-    const gs = 31 - Math.clz32(cand0 & -cand0);
-    cand0 &= cand0 - 1;
-    const gb = gs << 3;
-    if (slots[gb + SL_COLOR] === color16) continue;
-    if (sf[gb + SL_X0] > gx1 || sf[gb + SL_X1] < gx0) continue;
-    if (sf[gb + SL_Y0] > gy1 || sf[gb + SL_Y1] < gy0) continue;
-    hit0 |= 1 << gs;
-  }
-  while (cand1 !== 0) {
-    const gs = 31 - Math.clz32(cand1 & -cand1);
-    cand1 &= cand1 - 1;
-    const gb = (gs + 32) << 3;
-    if (slots[gb + SL_COLOR] === color16) continue;
-    if (sf[gb + SL_X0] > gx1 || sf[gb + SL_X1] < gx0) continue;
-    if (sf[gb + SL_Y0] > gy1 || sf[gb + SL_Y1] < gy0) continue;
-    hit1 |= 1 << gs;
-  }
-  while (hit0 !== 0) {
-    const gs = 31 - Math.clz32(hit0 & -hit0);
-    hit0 &= hit0 - 1;
-    weldFlushSlot(
-      st,
-      gs,
-      ctx,
-      ctxStateBuffer,
-      styleSlot,
-      sawRealSlot,
-      statsBuffer,
-      callsSlot,
-      eps,
-    );
-  }
-  while (hit1 !== 0) {
-    const gs = 32 + 31 - Math.clz32(hit1 & -hit1);
-    hit1 &= hit1 - 1;
-    weldFlushSlot(
-      st,
-      gs,
-      ctx,
-      ctxStateBuffer,
-      styleSlot,
-      sawRealSlot,
-      statsBuffer,
-      callsSlot,
-      eps,
-    );
+  const bx0 = bucketOf(fx0);
+  const bx1 = bucketOf(fx1);
+  const by0 = bucketOf(fy0);
+  const by1 = bucketOf(fy1);
+  // One word of slots at a time: gather that word's candidates, then flush them. Flushing a slot
+  // clears only its own bit, which lives in its own word, so a word already walked cannot be
+  // disturbed by a later one and the words need no shared scratch between them.
+  for (let w = 0; w < SLOT_WORDS; w++) {
+    let col = colBits[bx0 * SLOT_WORDS + w];
+    for (let b = bx0 + 1; b <= bx1; b++) col |= colBits[b * SLOT_WORDS + w];
+    if (col === 0) continue;
+    let row = rowBits[by0 * SLOT_WORDS + w];
+    for (let b = by0 + 1; b <= by1; b++) row |= rowBits[b * SLOT_WORDS + w];
+    let cand = col & row;
+    const wordBase = w << 5;
+    // The tables narrow the field at bucket granularity; the exact colour and bounds test decides.
+    let hit = 0;
+    while (cand !== 0) {
+      const bitIdx = 31 - Math.clz32(cand & -cand);
+      cand &= cand - 1;
+      const gb = (wordBase + bitIdx) << 3;
+      if (slots[gb + SL_COLOR] === color16) continue;
+      if (sf[gb + SL_X0] > gx1 || sf[gb + SL_X1] < gx0) continue;
+      if (sf[gb + SL_Y0] > gy1 || sf[gb + SL_Y1] < gy0) continue;
+      hit |= 1 << bitIdx;
+    }
+    while (hit !== 0) {
+      const bitIdx = 31 - Math.clz32(hit & -hit);
+      hit &= hit - 1;
+      weldFlushSlot(
+        st,
+        wordBase + bitIdx,
+        ctx,
+        ctxStateBuffer,
+        styleSlot,
+        sawRealSlot,
+        statsBuffer,
+        callsSlot,
+        eps,
+      );
+    }
   }
 
   const seq = ++st.scal[SC_SEQ];
@@ -984,8 +994,7 @@ export function weldAddFace(
         spanRetire(st, sj);
         spanPublish(st, si);
         slots[bB + SL_COLOR] = -1;
-        if (sj < 32) st.scal[SC_FREEMASK] |= 1 << sj;
-        else st.scal[SC_FREEMASK2] |= 1 << (sj - 32);
+        st.freeMask[sj >> 5] |= 1 << (sj & 31);
         return;
       }
     }
@@ -1023,13 +1032,15 @@ export function weldAddFace(
   // Oldest-created would be actively wrong - a long-lived, still-growing strip is exactly what we
   // want to keep; least-recently-extended is the direct signal that the sweep has moved past a slot.
   let slot = -1;
-  const freeMask = st.scal[SC_FREEMASK];
-  const freeMask2 = st.scal[SC_FREEMASK2];
-  if (freeMask !== 0) {
-    slot = 31 - Math.clz32(freeMask & -freeMask);
-  } else if (freeMask2 !== 0) {
-    slot = 63 - Math.clz32(freeMask2 & -freeMask2);
-  } else {
+  const freeMask = st.freeMask;
+  for (let w = 0; w < SLOT_WORDS; w++) {
+    const fw = freeMask[w];
+    if (fw !== 0) {
+      slot = (w << 5) + 31 - Math.clz32(fw & -fw);
+      break;
+    }
+  }
+  if (slot === -1) {
     let bestSeq = 0x7fffffff;
     for (let s = 0; s < N_SLOTS; s++) {
       const q = slots[s * SL_STRIDE + SL_SEQ];
@@ -1081,6 +1092,5 @@ export function weldAddFace(
   sf[b + SL_X1] = fx1;
   sf[b + SL_Y1] = fy1;
   spanPublish(st, slot);
-  if (slot < 32) st.scal[SC_FREEMASK] &= ~(1 << slot);
-  else st.scal[SC_FREEMASK2] &= ~(1 << (slot - 32));
+  st.freeMask[slot >> 5] &= ~(1 << (slot & 31));
 }
