@@ -462,6 +462,7 @@ p.render = function (camera, viewport, stats) {
     const fillCtx = viewport.layers[i];
     const shadeCtx = viewport.shadeLayers[i];
     const fogCtx = viewport.fogLayers[i];
+    const fogCompositeCtx = viewport.fogCompositeLayers[i];
 
     let maxFacesCount = 0;
     let maxVertsCount = 0;
@@ -763,6 +764,7 @@ p.render = function (camera, viewport, stats) {
         fogPass(
           fillCtx,
           fogCtx,
+          fogCompositeCtx,
           vertexBuffer,
           vertexIndexBuffer,
           weldIdBuffer,
