@@ -28,6 +28,10 @@ export default function Canvas2dViewport(camera, canvas) {
   this.layers = [];
   this.shadeLayers = [];
   this.fogLayers = [];
+  // The fog composite's inversion runs here rather than on fogLayers: Firefox's accelerated canvas
+  // has no `difference` blend, and a canvas that falls back to software once per frame demotes
+  // for good - taking the fog raster with it. Only this canvas pays that.
+  this.fogCompositeLayers = [];
   for (var i = 0; i < config.layersCount; i++) {
     var cnv = document.createElement("canvas");
     this.layers[i] = cnv.getContext("2d", { alpha: ALPHA });
@@ -43,6 +47,13 @@ export default function Canvas2dViewport(camera, canvas) {
     this.fogLayers[i] = fogCnv.getContext("2d", { alpha: ALPHA });
     this.fogLayers[i].imageSmoothingEnabled = false;
     this.fogLayers[i].webkitImageSmoothingEnabled = false;
+
+    var fogCompositeCnv = document.createElement("canvas");
+    this.fogCompositeLayers[i] = fogCompositeCnv.getContext("2d", {
+      alpha: ALPHA,
+    });
+    this.fogCompositeLayers[i].imageSmoothingEnabled = false;
+    this.fogCompositeLayers[i].webkitImageSmoothingEnabled = false;
   }
 
   var viewport = this;
@@ -254,6 +265,10 @@ p.setSize = function (width, height) {
     var fogCtx = this.fogLayers[i];
     fogCtx.canvas.width = Math.ceil(dpiW / 1);
     fogCtx.canvas.height = Math.ceil(dpiH / 1);
+
+    var fogCompositeCtx = this.fogCompositeLayers[i];
+    fogCompositeCtx.canvas.width = fogCtx.canvas.width;
+    fogCompositeCtx.canvas.height = fogCtx.canvas.height;
   }
 
   this.camera.setup(width, height);

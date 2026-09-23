@@ -1,4 +1,4 @@
-import { PALETTE_16BIT } from "../../palette.js";
+import { PALETTE_16BIT, WHITE16 } from "../../palette.js";
 import { ALBEDO_FLAT, GOURAUD_SHADE, TEXTURE } from "../shaderRegistry.js";
 
 import {
@@ -583,17 +583,30 @@ function batchedFogFace(
 }
 
 /**
- * Composites this layer's fog buffer onto `ctx`: inverts `fogCtx` in place (keep -> fogAmount),
- * tints it by fogColor via multiply, then adds it back onto `ctx` via lighter - see fog.js's
- * fogFace for the per-face formula this composites.
+ * Composites this layer's fog buffer onto `ctx` as `fill * keep + fogColor * (1 - keep)`.
+ *
+ * The fogColor term needs `1 - keep`, and the only inversion Canvas2D offers is `difference`,
+ * which Firefox's accelerated canvas cannot draw: the canvas doing it falls back to software
+ * every frame and demotes for good by frame 10. So `difference` runs only on `compositeCtx`, and
+ * every other blend stays on accelerated-capable canvases:
+ *
+ *   ctx          *= keep                                        multiply
+ *   fogCtx        = screen(keep, 1 - c) = keep * c + (1 - c)    screen
+ *   compositeCtx  = |white - fogCtx|    = c * (1 - keep)        difference
+ *   ctx          += compositeCtx                                lighter
+ *
+ * e.g. keep = 0.25, c = 0.8: fogCtx = 0.2 + 0.2 = 0.4, compositeCtx = 0.6 = 0.8 * 0.75.
+ * `1 - c` is exact on the palette: complementing a 5-6-5 index complements its 8-bit expansion.
  * @param {CanvasRenderingContext2D} ctx - this layer's fill buffer, composited onto in place.
  * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer, holding the keep factor;
- *   inverted and tinted in place here, so it is consumed by this call.
+ *   rewritten in place here, so it is consumed by this call.
+ * @param {CanvasRenderingContext2D} compositeCtx - scratch the size of `fogCtx`, overwritten.
  * @param {number} fogColor - packed 0xRRGGBB, quantised to the 5-6-5 palette before use.
  */
-export function compositeFogPass(ctx, fogCtx, fogColor) {
+export function compositeFogPass(ctx, fogCtx, compositeCtx, fogColor) {
   const cnv = ctx.canvas;
   const fogCnv = fogCtx.canvas;
+  const compositeCnv = compositeCtx.canvas;
   const w = cnv.width;
   const h = cnv.height;
   const fogW = fogCnv.width;
@@ -607,19 +620,20 @@ export function compositeFogPass(ctx, fogCtx, fogColor) {
   const fqb = fogColor & 255;
   const fogColor16 =
     ((fqr & 0xf8) << 8) | ((fqg & 0xfc) << 3) | ((fqb & 0xf8) >> 3);
-  const fogStyle = PALETTE_16BIT[fogColor16];
 
-  fogCtx.globalCompositeOperation = "difference";
-  fogCtx.fillStyle = "#ffffff";
-  fogCtx.fillRect(0, 0, fogW, fogH);
-
-  fogCtx.globalCompositeOperation = "multiply";
-  fogCtx.fillStyle = fogStyle;
+  fogCtx.globalCompositeOperation = "screen";
+  fogCtx.fillStyle = PALETTE_16BIT[fogColor16 ^ WHITE16];
   fogCtx.fillRect(0, 0, fogW, fogH);
   fogCtx.globalCompositeOperation = "source-over";
 
+  compositeCtx.drawImage(fogCnv, 0, 0, fogW, fogH);
+  compositeCtx.globalCompositeOperation = "difference";
+  compositeCtx.fillStyle = "#ffffff";
+  compositeCtx.fillRect(0, 0, fogW, fogH);
+  compositeCtx.globalCompositeOperation = "source-over";
+
   ctx.globalCompositeOperation = "lighter";
-  ctx.drawImage(fogCnv, 0, 0, w, h);
+  ctx.drawImage(compositeCnv, 0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
 }
 
@@ -755,13 +769,15 @@ export function fogTriangles(
  * one having erased anything: fillTriangles and shadeTriangles clear their own buffers
  * unconditionally for exactly that reason.
  *
- * A layer with no fog on it anywhere is dropped whole - sort, raster and the three full-screen
+ * A layer with no fog on it anywhere is dropped whole - sort, raster and the five full-screen
  * composite steps - because the buffer would have come out uniformly white and composited back
  * as the identity. Measured on isometric-world's default view, where nothing on screen is
  * fogged: whole frame 1.9ms -> 1.5ms.
  *
  * @param {CanvasRenderingContext2D} fillCtx - this layer's fill buffer, composited onto in place.
  * @param {CanvasRenderingContext2D} fogCtx - this layer's fog buffer, cleared and consumed here.
+ * @param {CanvasRenderingContext2D} fogCompositeCtx - scratch the size of `fogCtx` that the
+ *   composite inverts the buffer in, see compositeFogPass.
  * @param {Float32Array} vertexBuffer - screen-space vertices, [x0, y0, x1, y1, ...].
  * @param {Uint32Array} vertexIndexBuffer - per-face-vertex offsets into vertexBuffer.
  * @param {Uint32Array} weldIdBuffer - per-face-vertex adjacency identities (see destructMesh).
@@ -792,6 +808,7 @@ export function fogTriangles(
 export function fogPass(
   fillCtx,
   fogCtx,
+  fogCompositeCtx,
   vertexBuffer,
   vertexIndexBuffer,
   weldIdBuffer,
@@ -843,7 +860,7 @@ export function fogPass(
   if (prepared[PREP_ANY_FOGGED] === 0) return;
 
   // Every face fully fogged: the buffer would be black edge to edge, and `fill * 0 + fogColor`
-  // is fogColor everywhere, sky included. Paint that and skip the sort, the raster and all four
+  // is fogColor everywhere, sky included. Paint that and skip the sort, the raster and all five
   // composite steps. The fill pass's style cache described this canvas and no longer does.
   if (prepared[PREP_ALL_FOGGED] === 1) {
     const fqr = fogColor >>> 16;
@@ -892,5 +909,5 @@ export function fogPass(
   );
   statsBuffer[STATS_FOG_RASTER_MS] = performance.now() - rasterStart;
 
-  compositeFogPass(fillCtx, fogCtx, fogColor);
+  compositeFogPass(fillCtx, fogCtx, fogCompositeCtx, fogColor);
 }
