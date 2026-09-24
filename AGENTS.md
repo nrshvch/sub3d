@@ -86,7 +86,7 @@ Outside those paths — event handlers, the React debug UI, scene-graph setup, m
 ## Working with examples
 
 Each folder under `examples/` is a self-contained demo with its own `package.json`/build; when changing shared engine behavior, check whether example `main.js` files need updating too (built output for examples is committed alongside source in some folders — check `git status` before assuming otherwise).
-Sub3d packages of examples usually are manually npm-linked, so no need to build and copy sub3d dist into examples.
+Sub3d packages of examples usually are manually npm-linked, so no need to copy sub3d dist into examples. The package resolves to its build output (`sub3d` → `dist/sub3d.js`, `sub3d/sub3d.css` → `dist/sub3d.css`), exactly as a published consumer sees it — keep `npm run build:watch` running at the root so engine changes reach linked examples.
 
 ## Architecture deep dive
 

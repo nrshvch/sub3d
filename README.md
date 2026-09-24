@@ -119,4 +119,7 @@ npm run dev
 
 # Build the production bundle (saves in dist/sub3d.js)
 npm run build
+
+# Rebuild dist/ on every change
+npm run build:watch
 ```
