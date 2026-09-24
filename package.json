@@ -3,13 +3,18 @@
   "version": "0.0.1",
   "type": "module",
   "description": "This is subpar 3d engine",
-  "main": "src/main.js",
-  "directories": {
-    "lib": "lib"
+  "main": "dist/sub3d.js",
+  "exports": {
+    ".": "./dist/sub3d.js",
+    "./sub3d.css": "./dist/sub3d.css"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:watch": "vite build --watch",
     "preview": "vite preview",
     "test": "vitest run"
   },
