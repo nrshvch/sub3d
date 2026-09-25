@@ -2,28 +2,16 @@
   "name": "sub3d",
   "version": "0.0.1",
   "type": "module",
-  "description": "This is extremely shameless (simple) 3d engine",
+  "description": "This is subpar 3d engine",
   "main": "sub3d.js",
-  "directories": {
-    "lib": "lib"
-  },
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "exports": {
+    ".": "./sub3d.js",
+    "./sub3d.css": "./sub3d.css"
   },
   "repository": {
     "type": "git",
-    "url": "https://git.narushevi.ch/denis/scalia"
+    "url": "https://github.com/nrshvch/sub3d"
   },
   "author": "Denis Narushevich",
-  "license": "ISC",
-  "devDependencies": {
-    "prettier": "^3.8.1",
-    "vite": "^7.3.1"
-  },
-  "dependencies": {
-    "gl-matrix": "^3.4.4"
-  }
+  "license": "ISC"
 }
