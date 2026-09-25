@@ -6,6 +6,7 @@ import {
   textureWeldReset,
 } from "./textureWeld.js";
 import { EXPAND } from "../../shared/weld.js";
+import { STATS_VERTICES_OFFSET } from "../../shared/shaders.js";
 
 /**
  * The merge is guarded by one test - does the pending face's affine still reproduce the incoming
@@ -49,6 +50,7 @@ function stubCtx() {
 }
 
 const CALLS = 0;
+const VERTS = CALLS + STATS_VERTICES_OFFSET;
 
 function makeRig() {
   const st = createTextureWeldState();
@@ -226,6 +228,7 @@ describe("textured coplanar pair merger", () => {
       [64, 0],
       [64, 64],
     ]);
+    expect(r.statsBuffer[VERTS]).toBe(5);
   });
 
   it("leaves geometry untouched when it owns no edge", () => {
