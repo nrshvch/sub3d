@@ -24,6 +24,18 @@ export const NEIGHBOUR_NOT_DRAWN = -2;
 export const STATS_FILL_DRAW_CALLS = 0;
 export const STATS_SHADE_DRAW_CALLS = 2;
 
+// A pass's vertex counter sits this far past its draw-call counter, so a welder handed one
+// `callsSlot` keeps both. Counts every point pushed to a filled path - seam-repair detours included,
+// since the rasteriser tessellates those too.
+export const STATS_VERTICES_OFFSET = 6;
+export const STATS_FILL_VERTICES =
+  STATS_FILL_DRAW_CALLS + STATS_VERTICES_OFFSET;
+export const STATS_SHADE_VERTICES =
+  STATS_SHADE_DRAW_CALLS + STATS_VERTICES_OFFSET;
+
+// Points in the path flatFill emits for one triangle.
+const TRIANGLE_VERTICES = 3;
+
 // Immediate-mode triangle fill: one stroke()+fill() per face, no batching and nothing deferred.
 // Strokes in the fill colour to close the conflation seam. The welder repairs the same seam by
 // offsetting the edges a face owns instead, which it can only do because it knows the draw order -
@@ -40,7 +52,7 @@ export const STATS_SHADE_DRAW_CALLS = 2;
  * @param {number} py2 screen y of the third corner
  * @param {number} color16 quantised 5-6-5 palette index to fill and stroke with
  * @param {number} slot index in `ctxStateBuffer` holding the colour `targetCtx` is set to, which
- *   also selects which draw-call counter this face reports to
+ *   also selects which pass's draw-call and vertex counters this face reports to
  * @param {Int32Array} ctxStateBuffer shared cache of what is currently set on the context
  * @param {Int32Array} statsBuffer shared per-frame counters
  */
@@ -77,11 +89,12 @@ export function flatFill(
   targetCtx.stroke();
   targetCtx.fill();
 
-  statsBuffer[
+  const callsSlot =
     slot === CTX_STATE_SHADE_FILL
       ? STATS_SHADE_DRAW_CALLS
-      : STATS_FILL_DRAW_CALLS
-  ]++;
+      : STATS_FILL_DRAW_CALLS;
+  statsBuffer[callsSlot]++;
+  statsBuffer[callsSlot + STATS_VERTICES_OFFSET] += TRIANGLE_VERTICES;
 }
 
 /**

@@ -33,7 +33,10 @@
  * incoming face first flushes every open chart whose screen bounds meet its own. The chart it is
  * joining is exempt - a coplanar edge-sharing neighbour cannot occlude it.
  */
-import { CTX_STATE_FILL_PASS_FILL_STYLE_SLOT } from "../../shared/shaders.js";
+import {
+  CTX_STATE_FILL_PASS_FILL_STYLE_SLOT,
+  STATS_VERTICES_OFFSET,
+} from "../../shared/shaders.js";
 import { EXPAND } from "../../shared/weld.js";
 
 const N_SLOTS = 32;
@@ -286,7 +289,8 @@ function texturePatternSource(image) {
  *   colour slot is invalidated here, because a pattern is not a palette entry and the next flat
  *   face must set its own style rather than trust a stale hit.
  * @param {Int32Array} statsBuffer shared per-frame counters
- * @param {number} callsSlot index in `statsBuffer` counting draw calls
+ * @param {number} callsSlot index in `statsBuffer` counting draw calls; the pass's vertex counter
+ *   sits `STATS_VERTICES_OFFSET` past it
  */
 export function textureWeldFlushSlot(
   st,
@@ -351,6 +355,7 @@ export function textureWeldFlushSlot(
   const det = a * d - b * c;
   const invDet = det > 1e-12 || det < -1e-12 ? 1 / det : 0;
   const bexp = st.bexp;
+  let pathVertices = len;
 
   ctx.beginPath();
   for (let i = 0; i < len; i++) {
@@ -377,11 +382,13 @@ export function textureWeldFlushSlot(
     const dv = (a * ny - b * nx) * invDet;
     ctx.lineTo(u + du, v + dv);
     ctx.lineTo(uj + du, vj + dv);
+    pathVertices += 2;
   }
   ctx.fill();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   statsBuffer[callsSlot]++;
+  statsBuffer[callsSlot + STATS_VERTICES_OFFSET] += pathVertices;
 }
 
 /**
