@@ -8,6 +8,7 @@ import {
   N_SLOTS,
   EXPAND,
 } from "./weld.js";
+import { STATS_VERTICES_OFFSET } from "./shaders.js";
 
 /**
  * The merge cases are pointer surgery on a linked ring plus an open-addressed edge table, so a bug
@@ -54,7 +55,7 @@ const GREEN = 0x3f7;
 const RED = 0x7c00;
 const STYLE = 0;
 const CALLS = 0;
-const VERTS = 1;
+const VERTS = CALLS + STATS_VERTICES_OFFSET;
 const EPS = 0.25;
 
 function makeRig() {
@@ -303,6 +304,50 @@ describe("multi-slot welder", () => {
       [10, 0],
       [10, 10],
     ]);
+    // The detour's two points are tessellated like any other, so the vertex counter sees them.
+    expect(r.stats[VERTS]).toBe(5);
+  });
+
+  it("counts exactly the points pushed to every filled path", () => {
+    // The vertex counter stands in for tessellation load, so it has to match what reached fill() -
+    // after collinear decimation, detours included - across merges, conflicts and evictions.
+    let seedState = 0x2468ace;
+    const rand = () => {
+      seedState = (Math.imul(seedState, 1103515245) + 12345) & 0x7fffffff;
+      return seedState / 0x80000000;
+    };
+    const W = 10;
+    const vid = (x, y) => y * (W + 1) + x + 1;
+    const tris = [];
+    for (let y = 0; y < W; y++) {
+      for (let x = 0; x < W; x++) {
+        const col = rand() < 0.3 ? RED : GREEN;
+        tris.push([
+          [vid(x, y), x * 10, y * 10],
+          [vid(x + 1, y), x * 10 + 10, y * 10],
+          [vid(x + 1, y + 1), x * 10 + 10, y * 10 + 10],
+          col,
+        ]);
+        tris.push([
+          [vid(x, y), x * 10, y * 10],
+          [vid(x + 1, y + 1), x * 10 + 10, y * 10 + 10],
+          [vid(x, y + 1), x * 10, y * 10 + 10],
+          col,
+        ]);
+      }
+    }
+    for (let i = tris.length - 1; i > 0; i--) {
+      const j = (rand() * (i + 1)) | 0;
+      [tris[i], tris[j]] = [tris[j], tris[i]];
+    }
+
+    for (const t of tris) r.add(t[0], t[1], t[2], t[3], 0, (rand() * 8) | 0);
+    r.flush();
+
+    const pushed = r.ctx.paths.reduce((sum, path) => sum + path.length, 0);
+    expect(r.stats[CALLS]).toBe(r.ctx.paths.length);
+    expect(r.stats[VERTS]).toBe(pushed);
+    expect(pushed).toBeGreaterThan(3 * r.ctx.paths.length); // some detours were taken
   });
 
   it("leaves geometry untouched when no edge is flagged", () => {

@@ -24,6 +24,7 @@
  */
 
 import { PALETTE_16BIT, WHITE16 } from "../palette.js";
+import { STATS_VERTICES_OFFSET } from "./shaders.js";
 
 // Polygons kept open at once. THE dial: every structure below sizes itself from it, so any value
 // works and only this line changes. 64 is where the measurements put it - a face usually finds its
@@ -480,7 +481,8 @@ function spanRetire(st, slot) {
  * @param {number} styleSlot index in `ctxStateBuffer` holding the colour `ctx` is set to
  * @param {number} sawRealSlot index to raise when a colour other than white is drawn, or -1
  * @param {Int32Array} statsBuffer shared per-frame counters
- * @param {number} callsSlot index in `statsBuffer` counting draw calls
+ * @param {number} callsSlot index in `statsBuffer` counting draw calls; the pass's vertex counter
+ *   sits `STATS_VERTICES_OFFSET` past it
  * @param {number} eps perpendicular deviation, in destination pixels, below which a boundary
  *   vertex is dropped. Small on purpose: dropping a vertex from a boundary shared with a
  *   differently-coloured region opens a hairline T-junction crack, because the neighbour still
@@ -650,6 +652,7 @@ export function weldFlushSlot(
   // computeExpandMasks. Growing an edge whose neighbour is already down would move the visible
   // boundary rather than hide a gap, and growing a silhouette just makes the object too big.
   const nv = out - start;
+  let pathVertices = nv;
 
   ctx.beginPath();
   for (let k = 0; k < nv; k++) {
@@ -672,12 +675,14 @@ export function weldFlushSlot(
     const ny = -ex * inv;
     ctx.lineTo(emitX[i] + nx, emitY[i] + ny);
     ctx.lineTo(emitX[j] + nx, emitY[j] + ny);
+    pathVertices += 2;
   }
   // No stroke, so no explicit closing lineTo is needed - fill() closes the subpath implicitly.
   // closePath() stays out regardless: it recomputes the whole path's bounds per call.
   ctx.fill();
 
   statsBuffer[callsSlot]++;
+  statsBuffer[callsSlot + STATS_VERTICES_OFFSET] += pathVertices;
 }
 
 /**
