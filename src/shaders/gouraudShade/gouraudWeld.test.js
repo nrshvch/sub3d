@@ -8,6 +8,7 @@ import {
   CTX_STATE_SAW_REAL_SHADING,
   CTX_STATE_SHADE_FILL,
   STATS_SHADE_DRAW_CALLS,
+  STATS_SHADE_VERTICES,
 } from "../../shared/shaders.js";
 
 /**
@@ -62,7 +63,7 @@ function makeRig() {
     ctx,
     st: createGouraudWeldState(),
     ctxState: new Int32Array(16).fill(-1),
-    stats: new Int32Array(8),
+    stats: new Int32Array(STATS_SHADE_VERTICES + 1),
   };
 }
 
@@ -284,6 +285,7 @@ describe("gouraudWeld", () => {
       [10, 0],
       [0, 10],
     ]);
+    expect(rig.stats[STATS_SHADE_VERTICES]).toBe(5);
   });
 
   it("flushes an overlapping chart of a different field before drawing over it", () => {
@@ -364,6 +366,9 @@ describe("gouraudWeld", () => {
     flush(rig);
     // Every triangle of the grid ends up drawn exactly once, whatever order it arrived in.
     expect(rig.stats[STATS_SHADE_DRAW_CALLS]).toBe(rig.ctx.paths.length);
+    expect(rig.stats[STATS_SHADE_VERTICES]).toBe(
+      rig.ctx.paths.reduce((sum, path) => sum + path.length, 0),
+    );
     expect(rig.ctx.paths.length).toBeGreaterThan(0);
     expect(rig.ctx.paths.length).toBeLessThan(faces.length);
   });

@@ -5,6 +5,25 @@ const formatSortTime = (val) => {
   return `${Math.round(val)} ms`;
 };
 
+/**
+ * Full-width grid divider with a small title centred in the rule, so the metrics under it can drop
+ * the group's name from their own labels.
+ *
+ * @param {object} props
+ * @param {string} props.title group name shown in the rule
+ */
+function GroupDivider({ title }) {
+  return (
+    <div className="s3d-col-span-2 s3d-flex s3d-items-center s3d-gap-1.5 s3d-my-0.5">
+      <div className="s3d-flex-1 s3d-border-t s3d-border-slate-700"></div>
+      <span className="s3d-text-slate-500 s3d-text-[8px] s3d-uppercase s3d-tracking-widest s3d-font-semibold">
+        {title}
+      </span>
+      <div className="s3d-flex-1 s3d-border-t s3d-border-slate-700"></div>
+    </div>
+  );
+}
+
 export default function DebugPanel({ viewport }) {
   const [stats, setStats] = useState({
     fps: 0,
@@ -25,6 +44,9 @@ export default function DebugPanel({ viewport }) {
     fogDrawCalls: 0,
     shadeDrawCalls: 0,
     drawCallsTotal: 0,
+    fillVertices: 0,
+    fogVertices: 0,
+    shadeVertices: 0,
     fillRasterTime: 0,
     shadeRasterTime: 0,
     fogSortTime: 0,
@@ -142,6 +164,9 @@ export default function DebugPanel({ viewport }) {
           fogDrawCalls: renderStats.fogDrawCalls || 0,
           shadeDrawCalls: renderStats.shadeDrawCalls || 0,
           drawCallsTotal: renderStats.drawCallsTotal || 0,
+          fillVertices: renderStats.fillVertices || 0,
+          fogVertices: renderStats.fogVertices || 0,
+          shadeVertices: renderStats.shadeVertices || 0,
           fillRasterTime: renderStats.fillRasterTime || 0,
           shadeRasterTime: renderStats.shadeRasterTime || 0,
           fogSortTime: renderStats.fogSortTime || 0,
@@ -390,7 +415,7 @@ export default function DebugPanel({ viewport }) {
       {/* Diagnostics Panel */}
       {isOpen && (
         <div className="s3d-w-56 s3d-bg-slate-900/85 s3d-backdrop-blur-md s3d-border s3d-border-slate-700/50 s3d-rounded-lg s3d-p-3 s3d-shadow-2xl s3d-text-slate-300 s3d-flex s3d-flex-col">
-          <div className="s3d-flex s3d-justify-between s3d-items-center s3d-border-b s3d-border-slate-800 s3d-pb-1.5 s3d-mb-2.5">
+          <div className="s3d-flex s3d-justify-between s3d-items-center s3d-border-b s3d-border-slate-700 s3d-pb-1.5 s3d-mb-2.5">
             <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide s3d-font-semibold">
               FPS / FPS (max)
             </span>
@@ -487,11 +512,11 @@ export default function DebugPanel({ viewport }) {
               </span>
             </div>
 
-            <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
+            <GroupDivider title="Fill" />
 
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Fill Draw Calls
+                Draw Calls
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
                 {stats.fillDrawCalls}
@@ -499,18 +524,26 @@ export default function DebugPanel({ viewport }) {
             </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Fill Time (Cpu)
+                Vertices
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.fillVertices}
+              </span>
+            </div>
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Time (Cpu)
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
                 {formatSortTime(stats.fillRasterTime)}
               </span>
             </div>
 
-            <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
+            <GroupDivider title="Shade" />
 
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Shade Draw Calls
+                Draw Calls
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
                 {stats.shadeDrawCalls}
@@ -518,26 +551,26 @@ export default function DebugPanel({ viewport }) {
             </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Shade Time (Cpu)
+                Vertices
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.shadeVertices}
+              </span>
+            </div>
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Time (Cpu)
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
                 {formatSortTime(stats.shadeRasterTime)}
               </span>
             </div>
 
-            <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
+            <GroupDivider title="Fog" />
 
-            <div className="s3d-flex s3d-flex-col s3d-col-span-2">
-              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Fog Sort
-              </span>
-              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
-                {formatSortTime(stats.fogSortTime)}
-              </span>
-            </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Fog Draw Calls
+                Draw Calls
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
                 {stats.fogDrawCalls}
@@ -545,14 +578,30 @@ export default function DebugPanel({ viewport }) {
             </div>
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
-                Fog Time (Cpu)
+                Vertices
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-semibold s3d-text-slate-200">
+                {stats.fogVertices}
+              </span>
+            </div>
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Sort
+              </span>
+              <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
+                {formatSortTime(stats.fogSortTime)}
+              </span>
+            </div>
+            <div className="s3d-flex s3d-flex-col">
+              <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">
+                Time (Cpu)
               </span>
               <span className="s3d-font-mono s3d-text-xs s3d-font-medium s3d-text-slate-200">
                 {formatSortTime(stats.fogRasterTime)}
               </span>
             </div>
 
-            <div className="s3d-col-span-2 s3d-border-t s3d-border-slate-800 s3d-my-0.5"></div>
+            <GroupDivider title="Total" />
 
             <div className="s3d-flex s3d-flex-col">
               <span className="s3d-text-slate-500 s3d-text-[9px] s3d-uppercase s3d-tracking-wide">

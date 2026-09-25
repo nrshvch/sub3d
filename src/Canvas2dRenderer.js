@@ -71,6 +71,8 @@ import {
   CTX_STATE_SAW_REAL_SHADING,
   STATS_FILL_DRAW_CALLS,
   STATS_SHADE_DRAW_CALLS,
+  STATS_FILL_VERTICES,
+  STATS_SHADE_VERTICES,
   CTX_STATE_FILL_PASS_FILL_STYLE_SLOT,
 } from "./shared/shaders.js";
 import { flatShaderShade } from "./shaders/flatShade/index.js";
@@ -79,6 +81,7 @@ import {
   CTX_STATE_FOG,
   fogPass,
   STATS_FOG_DRAW_CALLS,
+  STATS_FOG_VERTICES,
   STATS_FOG_SORT_MS,
   STATS_FOG_RASTER_MS,
 } from "./shaders/flatFog/index.js";
@@ -256,9 +259,10 @@ export default function Canvas2dRenderer() {
    * flag to raise", which is what the fill and fog passes pass.
    */
   this.ctxStateBuffer = new Int32Array(10);
-  // [fill draw calls, fog draw calls, shade draw calls, free, fog sort ms,
-  // fog raster ms].
-  this.statsBuffer = new Float32Array(6);
+  // [fill draw calls, fog draw calls, shade draw calls, free, fog sort ms, fog raster ms,
+  //  fill vertices,   fog vertices,   shade vertices]
+  // Each pass's vertex counter sits STATS_VERTICES_OFFSET past its draw-call counter.
+  this.statsBuffer = new Float32Array(9);
 }
 
 var p = Canvas2dRenderer.prototype;
@@ -331,8 +335,9 @@ p.fogEnabled = true;
  *   clipping planes, fog and background settings, and its transform the view matrix.
  * @param {Canvas2dViewport} viewport - Supplies the destination context and the per-layer
  *   fill/shade/fog canvases, and receives the composited frame.
- * @param {Object} stats - Written in place with this frame's counters and timings (draw calls per
- *   pass, cull/sort/raster times); Canvas2dViewport exposes it as `lastRenderStats`.
+ * @param {Object} stats - Written in place with this frame's counters and timings (draw calls and
+ *   path vertices per pass, cull/sort/raster times); Canvas2dViewport exposes it as
+ *   `lastRenderStats`.
  */
 p.render = function (camera, viewport, stats) {
   let t0 = performance.now();
@@ -389,6 +394,9 @@ p.render = function (camera, viewport, stats) {
   let fillDrawCalls = 0;
   let fogDrawCalls = 0;
   let shadeDrawCalls = 0;
+  let fillVertices = 0;
+  let fogVertices = 0;
+  let shadeVertices = 0;
   let totalFillRasterTime = 0;
   let totalShadeRasterTime = 0;
   let totalFogSortTime = 0;
@@ -647,6 +655,9 @@ p.render = function (camera, viewport, stats) {
     statsBuffer[STATS_FILL_DRAW_CALLS] = 0;
     statsBuffer[STATS_FOG_DRAW_CALLS] = 0;
     statsBuffer[STATS_SHADE_DRAW_CALLS] = 0;
+    statsBuffer[STATS_FILL_VERTICES] = 0;
+    statsBuffer[STATS_FOG_VERTICES] = 0;
+    statsBuffer[STATS_SHADE_VERTICES] = 0;
     statsBuffer[STATS_FOG_SORT_MS] = 0;
     statsBuffer[STATS_FOG_RASTER_MS] = 0;
 
@@ -798,6 +809,9 @@ p.render = function (camera, viewport, stats) {
       fillDrawCalls += statsBuffer[STATS_FILL_DRAW_CALLS];
       fogDrawCalls += statsBuffer[STATS_FOG_DRAW_CALLS];
       shadeDrawCalls += statsBuffer[STATS_SHADE_DRAW_CALLS];
+      fillVertices += statsBuffer[STATS_FILL_VERTICES];
+      fogVertices += statsBuffer[STATS_FOG_VERTICES];
+      shadeVertices += statsBuffer[STATS_SHADE_VERTICES];
       totalFogSortTime += statsBuffer[STATS_FOG_SORT_MS];
       totalFogRasterTime += statsBuffer[STATS_FOG_RASTER_MS];
     }
@@ -846,6 +860,9 @@ p.render = function (camera, viewport, stats) {
   stats.fogDrawCalls = fogDrawCalls;
   stats.shadeDrawCalls = shadeDrawCalls;
   stats.drawCallsTotal = fillDrawCalls + fogDrawCalls + shadeDrawCalls;
+  stats.fillVertices = fillVertices;
+  stats.fogVertices = fogVertices;
+  stats.shadeVertices = shadeVertices;
   stats.sortTime = totalSortTime;
   stats.cullTime = cullTime;
   stats.groupTime = groupTime;

@@ -7,6 +7,7 @@ import {
   CTX_STATE_SHADE_FILL,
   CTX_STATE_SAW_REAL_SHADING,
   STATS_SHADE_DRAW_CALLS,
+  STATS_SHADE_VERTICES,
 } from "./shaders.js";
 
 /**
@@ -68,13 +69,14 @@ describe("identityFill", () => {
   it("fills an opaque white triangle rather than doing nothing", () => {
     const ctx = stubCtx();
     const ctxStateBuffer = new Int32Array(10).fill(-1);
-    const statsBuffer = new Int32Array(8);
+    const statsBuffer = new Int32Array(STATS_SHADE_VERTICES + 1);
     run(ctx, ctxStateBuffer, statsBuffer);
 
     const names = ctx.calls.map((c) => c[0]);
     expect(names).toContain("fill");
     expect(ctx.calls).toContainEqual(["set:fillStyle", "#ffffff"]);
     expect(statsBuffer[STATS_SHADE_DRAW_CALLS]).toBe(1);
+    expect(statsBuffer[STATS_SHADE_VERTICES]).toBe(3);
     expect(ctxStateBuffer[CTX_STATE_SHADE_FILL]).toBe(0xffff);
   });
 

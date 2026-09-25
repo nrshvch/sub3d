@@ -40,6 +40,7 @@ import {
   CTX_STATE_SAW_REAL_SHADING,
   CTX_STATE_SHADE_FILL,
   STATS_SHADE_DRAW_CALLS,
+  STATS_SHADE_VERTICES,
 } from "../../shared/shaders.js";
 import { EXPAND } from "../../shared/weld.js";
 import { PALETTE_16BIT, WHITE16 } from "../../palette.js";
@@ -391,6 +392,7 @@ export function gouraudWeldFlushSlot(
   //
   // Done here rather than in the ring, so what the fit test, the edge table and the axis projection
   // above all see stays the true projected geometry.
+  let pathVertices = len;
   ctx.beginPath();
   for (let i = 0; i < len; i++) {
     const x = bx[base + i];
@@ -415,11 +417,13 @@ export function gouraudWeldFlushSlot(
     const ny = -ex * inv;
     ctx.lineTo(x + nx, y + ny);
     ctx.lineTo(xj + nx, yj + ny);
+    pathVertices += 2;
   }
   // No stroke, so no explicit closing lineTo is needed - fill() closes the subpath implicitly.
   ctx.fill();
 
   statsBuffer[STATS_SHADE_DRAW_CALLS]++;
+  statsBuffer[STATS_SHADE_VERTICES] += pathVertices;
 }
 
 /**

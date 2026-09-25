@@ -10,6 +10,7 @@ import {
 import {
   computeExpandMasks,
   CTX_STATE_FILL_PASS_FILL_STYLE_SLOT,
+  STATS_VERTICES_OFFSET,
 } from "../../shared/shaders.js";
 
 // This pass's pending geometry, keyed on quantised fog amount rather than albedo.
@@ -38,6 +39,7 @@ const COLLINEAR_EPS = 0.05;
 // shaderRegistry.js's registerShader doc comment for the full layout of the rest).
 export const CTX_STATE_FOG = 9;
 export const STATS_FOG_DRAW_CALLS = 1;
+export const STATS_FOG_VERTICES = STATS_FOG_DRAW_CALLS + STATS_VERTICES_OFFSET;
 
 // Microseconds, not milliseconds: these share the integer statsBuffer with the draw-call
 // counters, and a fog pass under a millisecond would otherwise round to nothing.
