@@ -4,7 +4,7 @@ _"Canvas can!"_
 
 A custom software 3D game engine and renderer written in pure JavaScript. It renders 3D graphics using only a standard HTML5 Canvas 2D context.
 
-**Try it: [nrshvch.github.io/sub3d/examples](https://nrshvch.github.io/sub3d/examples)**
+**Try it: [nrshvch.github.io/sub3d](https://nrshvch.github.io/sub3d/)**
 
 ---
 
@@ -20,12 +20,12 @@ As a nice side effect, this engine allows anyone without WebGL knowledge to buil
 
 ## Live Examples
 
-All demos are collected on the [examples landing page](https://nrshvch.github.io/sub3d/examples):
+All demos are collected on the [examples landing page](https://nrshvch.github.io/sub3d/):
 
-- **[Isometric World](https://nrshvch.github.io/sub3d/examples/isometric-world/)**: A green terrain block with trees, fog, camera controls, and a dynamic day/night cycle.
-- **[Boxes](https://nrshvch.github.io/sub3d/examples/boxes/)**: Real-time rendering of thousands of textured, rotating cubes.
-- **[Earth](https://nrshvch.github.io/sub3d/examples/earth/)**: A 3D globe showing texture mapping on a sphere, complete with a render scale (DPR) slider.
-- **[Cubes 2013 (Legacy)](https://nrshvch.github.io/sub3d/examples/cubes-2013/)**: A legacy demo from 2013 showing the original version of the engine (formerly named _scalia_) bundled with requirejs.
+- **[Isometric World](https://nrshvch.github.io/sub3d/isometric-world/)**: A green terrain block with trees, fog, camera controls, and a dynamic day/night cycle.
+- **[Boxes](https://nrshvch.github.io/sub3d/boxes/)**: Real-time rendering of thousands of textured, rotating cubes.
+- **[Earth](https://nrshvch.github.io/sub3d/earth/)**: A 3D globe showing texture mapping on a sphere, complete with a render scale (DPR) slider.
+- **[Cubes 2013 (Legacy)](https://nrshvch.github.io/sub3d/cubes-2013/)**: A legacy demo from 2013 showing the original version of the engine (formerly named _scalia_) bundled with requirejs.
 
 ---
 

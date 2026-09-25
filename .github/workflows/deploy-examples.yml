@@ -28,26 +28,26 @@ jobs:
         run: |
           cd examples/boxes
           npm install
-          npx vite build --base=/sub3d/examples/boxes/ --outDir=../../dist/examples/boxes
+          npx vite build --base=/sub3d/boxes/ --outDir=../../dist/boxes
 
       - name: Build Isometric World Example
         run: |
           cd examples/isometric-world
           npm install
-          npx vite build --base=/sub3d/examples/isometric-world/ --outDir=../../dist/examples/isometric-world
+          npx vite build --base=/sub3d/isometric-world/ --outDir=../../dist/isometric-world
 
       - name: Build Earth Example
         run: |
           cd examples/earth
           npm install
-          npx vite build --base=/sub3d/examples/earth/ --outDir=../../dist/examples/earth
+          npx vite build --base=/sub3d/earth/ --outDir=../../dist/earth
 
       - name: Copy Examples Index and Assets
         run: |
-          mkdir -p dist/examples
-          cp examples/index.html dist/examples/
-          cp -r examples/cubes-2013 dist/examples/
-          cp examples/*.png dist/examples/ || true
+          mkdir -p dist
+          cp examples/index.html dist/
+          cp -r examples/cubes-2013 dist/
+          cp examples/*.png dist/ || true
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
